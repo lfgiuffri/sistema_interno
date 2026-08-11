@@ -1,0 +1,12 @@
+# Listado
+GET {{baseURL}}/core/modules
+Content-Type: application/json
+x-api-key: {{apikey}}
+x-access-token: {{accesstoken}}
+###
+# Detalle
+GET {{baseURL}}/core/modules/639b571ff0ff8824c7a9508e
+Content-Type: application/json
+x-api-key: {{apikey}}
+x-access-token: {{accesstoken}}
+###

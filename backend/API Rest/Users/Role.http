@@ -1,0 +1,269 @@
+## @param name {String} name del rol
+# Listado
+GET {{baseURL}}/users/roles
+Content-Type: application/json
+x-api-key: {{apikey}}
+x-access-token: {{accesstoken}}
+###
+# Detalle
+GET {{baseURL}}/users/roles/1
+Content-Type: application/json
+x-api-key: {{apikey}}
+x-access-token: {{accesstoken}}
+###
+# Para crear
+GET {{baseURL}}/users/roles/create
+Content-Type: application/json
+x-api-key: {{apikey}}
+x-access-token: {{accesstoken}}
+###
+# Creación
+POST {{baseURL}}/users/roles
+Content-Type: application/json
+x-api-key: {{apikey}}
+x-access-token: {{accesstoken}}
+
+{
+  "name": "Testing",
+  "permissions": [
+    {
+      "view": 2,
+      "read": true,
+      "write": true
+    },
+    {
+      "view": 3,
+      "read": true,
+      "write": true
+    },
+    {
+      "view": 4,
+      "read": true,
+      "write": true
+    },
+    {
+      "view": 5,
+      "read": true,
+      "write": true
+    },
+    {
+      "view": 6,
+      "read": true,
+      "write": true
+    },
+    {
+      "view": 20,
+      "read": true,
+      "write": true
+    },
+    {
+      "view": 7,
+      "read": true,
+      "write": true
+    },
+    {
+      "view": 8,
+      "read": true,
+      "write": true
+    },
+    {
+      "view": 9,
+      "read": true,
+      "write": true
+    },
+    {
+      "view": 21,
+      "read": true,
+      "write": true
+    },
+    {
+      "view": 13,
+      "read": true,
+      "write": true
+    },
+    {
+      "view": 14,
+      "read": true,
+      "write": true
+    },
+    {
+      "view": 12,
+      "read": true,
+      "write": true
+    },
+    {
+      "view": 15,
+      "read": true,
+      "write": true
+    },
+    {
+      "view": 16,
+      "read": true,
+      "write": true
+    },
+    {
+      "view": 17,
+      "read": true,
+      "write": true
+    },
+    {
+      "view": 19,
+      "read": true,
+      "write": true
+    }
+  ]
+}
+###
+# Modificación
+PUT {{baseURL}}/users/roles/1
+Content-Type: application/json
+x-api-key: {{apikey}}
+x-access-token: {{accesstoken}}
+
+{
+    "name": "Admin",
+    "permissions": [
+        {
+            "controllerId": "1",
+            "read": true,
+            "write": true
+        },
+        {
+            "controllerId": "2",
+            "read": true,
+            "write": true
+        },
+        {
+            "controllerId": "3",
+            "read": true,
+            "write": true
+        },
+        {
+            "controllerId": "4",
+            "read": true,
+            "write": true
+        },
+        {
+            "controllerId": "5",
+            "read": true,
+            "write": true
+        },
+        {
+            "controllerId": "6",
+            "read": true,
+            "write": true
+        },
+        {
+            "controllerId": "7",
+            "read": true,
+            "write": true
+        },
+        {
+            "controllerId": "8",
+            "read": true,
+            "write": true
+        },
+        {
+            "controllerId": "9",
+            "read": true,
+            "write": true
+        },
+        {
+            "controllerId": "10",
+            "read": true,
+            "write": true
+        },
+        {
+            "controllerId": "11",
+            "read": true,
+            "write": true
+        },
+        {
+            "controllerId": "12",
+            "read": true,
+            "write": true
+        },
+        {
+            "controllerId": "13",
+            "read": true,
+            "write": true
+        },
+        {
+            "controllerId": "14",
+            "read": true,
+            "write": true
+        },
+        {
+            "controllerId": "15",
+            "read": true,
+            "write": true
+        },
+        {
+            "controllerId": "16",
+            "read": true,
+            "write": true
+        },
+        {
+            "controllerId": "17",
+            "read": true,
+            "write": true
+        },
+        {
+            "controllerId": "18",
+            "read": true,
+            "write": true
+        },
+        {
+            "controllerId": "19",
+            "read": true,
+            "write": true
+        },
+        {
+            "controllerId": "20",
+            "read": true,
+            "write": true
+        },
+        {
+            "controllerId": "21",
+            "read": true,
+            "write": true
+        },
+        {
+            "controllerId": "22",
+            "read": true,
+            "write": true
+        },
+        {
+            "controllerId": "23",
+            "read": true,
+            "write": true
+        },
+        {
+            "controllerId": "24",
+            "read": true,
+            "write": true
+        },
+        {
+            "controllerId": "25",
+            "read": true,
+            "write": true
+        },
+        {
+            "controllerId": "26",
+            "read": true,
+            "write": true
+        },
+        {
+            "controllerId": "27",
+            "read": true,
+            "write": true
+        }
+    ]
+}
+###
+# Borrado
+DELETE {{baseURL}}/users/roles/2
+Content-Type: application/json
+x-api-key: {{apikey}}
+x-access-token: {{accesstoken}}
+###

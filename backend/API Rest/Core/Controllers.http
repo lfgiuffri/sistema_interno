@@ -1,0 +1,12 @@
+# Listado
+GET {{baseURL}}/core/controllers
+Content-Type: application/json
+x-api-key: {{apikey}}
+x-access-token: {{accesstoken}}
+###
+# Detalle
+GET {{baseURL}}/core/controllers/639b571ff0ff8824c7a950a3
+Content-Type: application/json
+x-api-key: {{apikey}}
+x-access-token: {{accesstoken}}
+###

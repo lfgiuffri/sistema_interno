@@ -1,0 +1,188 @@
+## @param name {String} Nombre del tenant
+## @param contactEmail {String} Email de contacto del tenant
+## @param contactPhone {String} Teléfono de contacto del tenant
+## @param plan {String} Plan del tenant: basic, premium, enterprise
+## @param dbName {String} Nombre de la base de datos del tenant
+## @param domain {String} Dominio del tenant
+## @param features {Object} Características habilitadas para el tenant
+## @param timezone {String} Zona horaria del tenant
+## @param status {String} Estado del tenant: active, inactive, suspended
+##
+## Parámetros de sincronización de base de datos:
+## @param forceSync {Boolean} Si es true, BORRA y RECREA todas las tablas (PELIGROSO)
+## @param allowDelete {Boolean} Si es true, permite ELIMINAR columnas/tablas huérfanas (por defecto: false)
+## @param safeMode {Boolean} Si es true, fuerza allowDelete a false (modo ultra-seguro)
+## @param reorderColumns {Boolean} Si es true, reordena columnas según el orden del modelo (por defecto: true)
+
+# Listado
+GET {{baseURL}}/master/tenants
+Content-Type: application/json
+x-master-key: {{masterKey}}
+###
+
+# Detalle por ID
+GET {{baseURL}}/master/tenants/1
+Content-Type: application/json
+x-master-key: {{masterKey}}
+###
+
+# Creación
+POST {{baseURL}}/master/tenants
+Content-Type: application/json
+x-master-key: {{masterKey}}
+
+{
+    "name": "Santi",
+    "contactEmail": "santiagoaguffrida@gmail.com",
+    "contactPhone": "+5493413626480",
+    "plan": "premium",
+    "domain": "santi.com.ar",
+    "features": {
+        "customDomain": true,
+        "api": true
+    },
+    "timezone": "-03:00"
+}
+
+###
+
+# Modificación
+PUT {{baseURL}}/master/tenants/1
+Content-Type: application/json
+x-master-key: {{masterKey}}
+
+{
+    "name": "Empresa Demo Actualizada",
+    "contactEmail": "nuevo-admin@empresa-demo.com",
+    "contactPhone": "+541199887766",
+    "plan": "enterprise",
+    "features": {
+        "customDomain": true,
+        "api": true
+    }
+}
+
+###
+
+# Regenerar API Key
+PATCH {{baseURL}}/master/tenants/1/regenerate-api-key
+Content-Type: application/json
+x-master-key: {{masterKey}}
+###
+
+# Cambiar estado del tenant
+PATCH {{baseURL}}/master/tenants/1/toggle-status
+Content-Type: application/json
+x-master-key: {{masterKey}}
+
+{
+    "status": "inactive"
+}
+
+###
+
+# Sincronizar base de datos del tenant específico (modo seguro - solo agrega/modifica)
+POST {{baseURL}}/master/tenants/sync/1
+Content-Type: application/json
+x-master-key: {{masterKey}}
+
+{
+    "forceSync": false,
+    "allowDelete": false,
+    "safeMode": false,
+    "reorderColumns": true
+}
+
+###
+
+# Sincronizar tenant específico con eliminación de columnas/tablas huérfanas
+POST {{baseURL}}/master/tenants/sync/1
+Content-Type: application/json
+x-master-key: {{masterKey}}
+
+{
+    "forceSync": false,
+    "allowDelete": true,
+    "safeMode": false,
+    "reorderColumns": true
+}
+
+###
+
+# Sincronizar tenant SIN reordenar columnas (más rápido)
+POST {{baseURL}}/master/tenants/sync/1
+Content-Type: application/json
+x-master-key: {{masterKey}}
+
+{
+    "forceSync": false,
+    "allowDelete": false,
+    "safeMode": false,
+    "reorderColumns": false
+}
+
+###
+
+# Sincronizar tenant específico en modo ultra-seguro (fuerza safeMode)
+POST {{baseURL}}/master/tenants/sync/1
+Content-Type: application/json
+x-master-key: {{masterKey}}
+
+{
+    "forceSync": false,
+    "allowDelete": false,
+    "safeMode": true
+}
+
+###
+
+# Sincronizar tenant específico con recreación completa (PELIGROSO - borra todo)
+POST {{baseURL}}/master/tenants/sync/1
+Content-Type: application/json
+x-master-key: {{masterKey}}
+
+{
+    "forceSync": true,
+    "allowDelete": false,
+    "safeMode": false
+}
+
+###
+
+# Sincronizar base de datos de todos los tenants (modo seguro por defecto)
+POST {{baseURL}}/master/tenants/sync
+Content-Type: application/json
+x-master-key: {{masterKey}}
+
+{
+    "forceSync": false,
+    "allowDelete": false,
+    "safeMode": false
+}
+
+###
+
+# Sincronizar todos los tenants con eliminación de huérfanos
+POST {{baseURL}}/master/tenants/sync
+Content-Type: application/json
+x-master-key: {{masterKey}}
+
+{
+    "forceSync": false,
+    "allowDelete": true,
+    "safeMode": false
+}
+
+###
+
+# Limpiar caché de conexión del tenant específico
+POST {{baseURL}}/master/tenants/clear-cache/1
+Content-Type: application/json
+x-master-key: {{masterKey}}
+###
+
+# Limpiar caché de conexión de todos los tenants
+POST {{baseURL}}/master/tenants/clear-cache
+Content-Type: application/json
+x-master-key: {{masterKey}}
+###

@@ -1,0 +1,31 @@
+{
+  "name": "zero2-e2e",
+  "version": "2.0.0",
+  "description": "E2E tests for Zero 2.0 backend API using Playwright",
+  "private": true,
+  "scripts": {
+    "test": "npx playwright test",
+    "test:api": "npx playwright test --project=api",
+    "test:ui": "npx playwright test --project=ui",
+    "test:ws": "npx playwright test --project=websocket",
+    "test:headed": "npx playwright test --project=ui --headed",
+    "test:debug": "npx playwright test --debug",
+    "test:report": "npx playwright show-report",
+    "test:list": "npx playwright test --list",
+    "test:m00": "npx playwright test m00",
+    "test:m01": "npx playwright test m01",
+    "test:m02": "npx playwright test m02",
+    "test:m03": "npx playwright test m03",
+    "test:m06": "npx playwright test m06",
+    "test:m07": "npx playwright test m07",
+    "test:m08": "npx playwright test m08",
+    "test:m09": "npx playwright test m09",
+    "test:m17": "npx playwright test m17"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.50.0",
+    "mysql2": "^3.12.0",
+    "socket.io-client": "^4.7.0",
+    "dotenv": "^16.4.0"
+  }
+}

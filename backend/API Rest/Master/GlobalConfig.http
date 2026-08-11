@@ -1,0 +1,71 @@
+## @param category {String} Categoría de la configuración global
+## @param isPublic {Boolean} Si la configuración es pública o no
+## @param name {String} Nombre de la configuración
+## @param value {String|Number|Boolean|Object} Valor de la configuración
+## @param type {String} Tipo de dato: string, number, boolean, json
+## @param description {String} Descripción de la configuración
+## @param isEditable {Boolean} Si la configuración es editable
+
+# Listado
+GET {{baseURL}}/master/global-configs?category=general&isPublic=true
+Content-Type: application/json
+x-master-key: {{masterKey}}
+###
+
+# Detalle por nombre
+GET {{baseURL}}/master/global-configs/APP_NAME
+Content-Type: application/json
+x-master-key: {{masterKey}}
+###
+
+# Creación
+POST {{baseURL}}/master/global-configs
+Content-Type: application/json
+x-master-key: {{masterKey}}
+
+{
+    "name": "FEATURE_NEW_MODULE",
+    "value": true,
+    "type": "boolean",
+    "description": "Habilita el nuevo módulo de features",
+    "category": "features",
+    "isEditable": true,
+    "isPublic": false
+}
+
+###
+
+# Modificación
+PUT {{baseURL}}/master/global-configs/FEATURE_NEW_MODULE
+Content-Type: application/json
+x-master-key: {{masterKey}}
+
+{
+    "value": false,
+    "description": "Nuevo módulo de features deshabilitado temporalmente",
+    "category": "features",
+    "isEditable": true,
+    "isPublic": true
+}
+
+###
+
+# Borrado
+DELETE {{baseURL}}/master/global-configs/FEATURE_NEW_MODULE
+Content-Type: application/json
+x-master-key: {{masterKey}}
+###
+### Sincronizar configuraciones globales desde JSON
+POST {{baseURL}}/master/global-configs/sync
+Content-Type: application/json
+x-master-key: {{masterKey}}
+
+### Obtener todas las configuraciones globales para verificar
+GET {{baseURL}}/master/global-configs
+Content-Type: application/json
+x-master-key: {{masterKey}}
+
+### Obtener configuración específica
+GET {{baseURL}}/master/global-configs/APP_NAME
+Content-Type: application/json
+x-master-key: {{masterKey}}

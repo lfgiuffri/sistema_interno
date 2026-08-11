@@ -1,0 +1,6 @@
+# getMenu
+GET {{baseURL}}/core/utils/menu
+Content-Type: application/json
+x-api-key: {{apikey}}
+x-access-token: {{accesstoken}}
+###

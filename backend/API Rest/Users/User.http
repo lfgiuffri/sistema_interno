@@ -1,0 +1,68 @@
+## @param username {String} username del User
+## @param active {Boolean} si el User está activo o no
+## @param roles {String} Id del rol del User separados por ","
+## @param name {String} name del User
+# Listado
+GET {{baseURL}}/users/users
+Content-Type: application/json
+x-api-key: {{apikey}}
+x-access-token: {{accesstoken}}
+###
+# Detalle
+GET {{baseURL}}/users/users/1
+Content-Type: application/json
+x-api-key: {{apikey}}
+x-access-token: {{accesstoken}}
+###
+# Mi cuenta
+GET {{baseURL}}/users/users/my-account
+Content-Type: application/json
+x-api-key: {{apikey}}
+x-access-token: {{accesstoken}}
+###
+# Listado users ERP
+GET {{baseURL}}/users/users/erp
+Content-Type: application/json
+x-api-key: {{apikey}}
+x-access-token: {{accesstoken}}
+###
+# Creación
+POST {{baseURL}}/users/users
+Content-Type: application/json
+x-api-key: {{apikey}}
+x-access-token: {{accesstoken}}
+
+{ 
+    "name": "Anner",
+    "lastName": "Modestini",
+    "email": "annermodestini@depositare.com.ar",
+    "username": "modestini",
+    "password": "modestini22",
+    "confirmPassword": "modestini22",
+    "roleId": 1
+}
+
+###
+# Modificación
+PUT {{baseURL}}/users/users/10
+Content-Type: application/json
+x-api-key: {{apikey}}
+x-access-token: {{accesstoken}}
+
+{ 
+    "name": "Martin",
+    "lastName": "Maffei",
+    "email": "martin@positivemedia.com.ar",
+    "username": "martinAdmin",
+    "password": "123",
+    "confirmPassword": "",
+    "roleId": 1
+}
+
+###
+# Borrado
+DELETE {{baseURL}}/users/users/6
+Content-Type: application/json
+x-api-key: {{apikey}}
+x-access-token: {{accesstoken}}
+###

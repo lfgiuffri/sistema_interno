@@ -1,0 +1,12 @@
+# Listado
+GET {{baseURL}}/core/views
+Content-Type: application/json
+x-api-key: {{apikey}}
+x-access-token: {{accesstoken}}
+###
+# Detalle
+GET {{baseURL}}/core/views/1
+Content-Type: application/json
+x-api-key: {{apikey}}
+x-access-token: {{accesstoken}}
+###

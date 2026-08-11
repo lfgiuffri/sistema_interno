@@ -1,0 +1,65 @@
+# Dependencies
+node_modules/
+
+# Build output
+backend/build/
+frontend/dist/
+
+# Environment
+backend/.env
+frontend/.env
+
+# Firebase credentials (NEVER commit)
+backend/.firebase-service-account.json
+backend/firebase-service-account.json
+frontend/android/app/google-services.json
+frontend/ios/App/App/GoogleService-Info.plist
+
+# IDE
+.vscode/
+
+# Capacitor native projects — versionamos solo los archivos críticos
+# (MainActivity, AndroidManifest, drawables, build.gradle, etc) e ignoramos
+# todo lo regenerable (build/, .gradle/, app/release/, etc).
+frontend/android/**
+!frontend/android/app/
+!frontend/android/app/src/
+!frontend/android/app/src/**
+!frontend/android/app/build.gradle
+!frontend/android/app/proguard-rules.pro
+!frontend/android/build.gradle
+!frontend/android/variables.gradle
+!frontend/android/settings.gradle
+!frontend/android/gradle.properties
+!frontend/android/gradle/
+!frontend/android/gradle/**
+!frontend/android/gradlew
+!frontend/android/gradlew.bat
+# Build artefacts y SDK paths locales — siempre ignorados
+frontend/android/.gradle/
+frontend/android/build/
+frontend/android/app/build/
+frontend/android/app/release/
+frontend/android/local.properties
+frontend/android/captures/
+frontend/android/.idea/
+frontend/android/*.iml
+frontend/android/app/*.iml
+frontend/ios/
+
+# E2E Tests
+e2e/node_modules/
+e2e/test-results/
+e2e/playwright-report/
+e2e/blob-report/
+
+# APK builds (compiladas localmente o en server)
+apk/
+
+# Research scratchpad para clonar/auditar bots externos sin versionarlos
+prediction-lab/
+repos/
+
+# Misc
+*.tgz
+coverage/

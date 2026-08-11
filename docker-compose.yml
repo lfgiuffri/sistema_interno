@@ -1,0 +1,104 @@
+# Sistema Interno — Orquestación completa: DB + cache + backend + frontend.
+#
+# Un comando levanta todo:
+#     docker compose up -d --build
+#
+# Servicios y puertos (host):
+#   frontend  → http://localhost:8100   (nginx sirve la SPA)
+#   backend   → http://localhost:3010   (API + Socket.IO; docs en /api/docs)
+#   db        → localhost:3306          (MariaDB; datos en volumen db_data)
+#   redis     → interno                 (cache, rate-limit, BullMQ)
+#
+# Variables: se leen del archivo `.env` de este directorio (ver .env.docker.example).
+# Todo tiene default sano para que arranque sin configurar nada.
+
+services:
+  db:
+    image: mariadb:11
+    restart: unless-stopped
+    environment:
+      # El backend conecta como root; init_db crea la base con utf8mb4.
+      MARIADB_ROOT_PASSWORD: ${DB_PASS:-sistema_root}
+      # root accesible desde otros contenedores de la red (el backend).
+      MARIADB_ROOT_HOST: '%'
+    volumes:
+      - db_data:/var/lib/mysql
+    ports:
+      - "${DB_PORT:-3306}:3306"
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # Carga el .env del backend si existe (API keys de IA, Stripe, S3, etc.). Opcional:
+    # las variables de `environment` de abajo tienen prioridad y cubren lo esencial.
+    env_file:
+      - path: ./backend/.env
+        required: false
+    environment:
+      NODE_ENV: production
+      PORT: 3010
+      # Hosts internos de la red de Docker (sobrescriben localhost del .env).
+      DB_HOST: db
+      DB_NAME: ${DB_NAME:-sistema_interno}
+      DB_USER: root
+      DB_PASS: ${DB_PASS:-sistema_root}
+      DBDRIVER: mariadb
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET:-cambiar-por-un-secret-seguro}
+      ADMINUSER: ${ADMINUSER:-admin}
+      ADMINPASS: ${ADMINPASS:-admin123}
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:3010/api}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:8100}
+      AUTO_MIGRATE: "true"
+    ports:
+      - "${BACKEND_PORT:-3010}:3010"
+    volumes:
+      # Archivos privados (tareas + fichas de empleados) y storage público: PERSISTEN
+      # entre deploys — sin esto, cada rebuild pierde los adjuntos.
+      - backend_storage:/app/storage
+      - backend_public:/app/public/storage
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Inyectadas en build time (el browser del host usa estas URLs).
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:3010/api}
+        VITE_SOCKET_URL: ${VITE_SOCKET_URL:-http://localhost:3010}
+        # Observabilidad opt-in (Sentry/GlitchTip). Vacío = no-op.
+        VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-8100}:80"
+
+volumes:
+  db_data:
+  redis_data:
+  backend_storage:
+  backend_public:

@@ -1,0 +1,215 @@
+/**
+ * Service del módulo `dashboard` — arma los bloques del panel.
+ *
+ * Cada bloque se calcula SOLO si el usuario tiene la capability correspondiente
+ * (el legado calculaba todo y ocultaba al renderizar — acá se invierte, PRD §6.9).
+ * Fase 2: cotización + alertas de abonos + facturación del mes (parte abonos).
+ * Las fases siguientes suman proyectos, tareas del equipo y los gráficos anuales.
+ */
+
+import { Op } from 'sequelize';
+import { getRoleCapabilities } from '../../../kernel/index.js';
+import { getConfigAbonos, precioEnPesos } from '../../abonos/services/abono.service.js';
+import { aniosDisponibles, serieMensual, porServicio, porArea } from './estadisticas.service.js';
+
+/** Ventana de "próximo a actualizar" en días (regla del legado). */
+const VENTANA_ABONOS = 30;
+/** Ventana de "próximo a entregar" en días para proyectos (regla del legado). */
+const VENTANA_PROYECTOS = 5;
+/** Estados que cierran un proyecto (sin alertas de entrega). */
+const ESTADOS_CERRADOS = ['finalizado', 'finalizado_incompleto'];
+
+/**
+ * ¿El set de capabilities habilita esta? (comodín incluido).
+ * @param {string[]} caps - Capabilities del rol.
+ * @param {string} cap - Capability requerida.
+ * @returns {boolean}
+ */
+const puede = (caps, cap) => caps.includes('*') || caps.includes(cap);
+
+/**
+ * Bloque de abonos: totales + alertas de actualización (vencidos y próximos ≤ 30 días).
+ * @param {object} models - Modelos de la app.
+ * @param {{cotizacion: number, redondeo: number}} config - Config vigente.
+ * @returns {Promise<object>} { activos, totalPesos, vencidos[], proximos[] }.
+ */
+const bloqueAbonos = async (models, config) => {
+    const { Abono } = models;
+    const SQL_DIAS = 'DATEDIFF(DATE_ADD(COALESCE(`abonos`.`fechaUltimaActualizacion`, `abonos`.`fechaInicio`), INTERVAL `abonos`.`periodoMeses` MONTH), CURDATE())';
+
+    const rows = await Abono.findAll({
+        where: { activo: true },
+        include: [
+            { model: models.Cliente, attributes: ['id', 'nombre'] },
+            { model: models.Servicio, attributes: ['id', 'nombre'] },
+        ],
+        attributes: { include: [[Abono.sequelize.literal(SQL_DIAS), 'diasParaActualizar']] },
+        order: [Abono.sequelize.literal('diasParaActualizar ASC')],
+    });
+
+    let totalPesos = 0;
+    const vencidos = [], proximos = [];
+    for (const r of rows) {
+        const abono = r.toJSON();
+        totalPesos += precioEnPesos(abono, config.cotizacion, config.redondeo);
+        const dias = abono.diasParaActualizar;
+        if (dias === null || dias === undefined) continue;
+        const item = {
+            id: abono.id,
+            cliente: abono.cliente?.nombre,
+            servicio: abono.servicio?.nombre,
+            descripcion: abono.descripcion,
+            moneda: abono.moneda,
+            precio: Number(abono.precio),
+            precioPesos: precioEnPesos(abono, config.cotizacion, config.redondeo),
+            fechaUltimaActualizacion: abono.fechaUltimaActualizacion,
+            dias,
+        };
+        if (dias < 0) vencidos.push(item);
+        else if (dias <= VENTANA_ABONOS) proximos.push(item);
+    }
+
+    return { activos: rows.length, totalPesos, vencidos, proximos };
+};
+
+/**
+ * Bloque de facturación del mes corriente (parte abonos): lo facturado (congelado) y lo
+ * pendiente (abonos activos sin facturación vigente este mes, al dólar de hoy).
+ * @param {object} models - Modelos de la app.
+ * @param {{cotizacion: number, redondeo: number}} config - Config vigente.
+ * @returns {Promise<object>} { anio, mes, abonosFacturado, abonosPendiente }.
+ */
+const bloqueFacturacionMes = async (models, config) => {
+    const { Abono, Facturacion } = models;
+    const hoy = new Date();
+    const anio = hoy.getFullYear();
+    const mes = hoy.getMonth() + 1;
+
+    const abonosFacturado = Number(await Facturacion.sum('montoPesos', {
+        where: { anio, mes, anuladaAt: null }
+    })) || 0;
+
+    const facturadas = await Facturacion.findAll({
+        where: { anio, mes, anuladaAt: null }, attributes: ['abonoId'], raw: true
+    });
+    const yaSet = new Set(facturadas.map(f => f.abonoId));
+
+    const activos = await Abono.findAll({ where: { activo: true }, raw: true });
+    let abonosPendiente = 0;
+    for (const abono of activos) {
+        if (!yaSet.has(abono.id)) abonosPendiente += precioEnPesos(abono, config.cotizacion, config.redondeo);
+    }
+
+    return { anio, mes, abonosFacturado, abonosPendiente };
+};
+
+/**
+ * Bloque de proyectos: alertas de entrega (vencidos y próximos ≤ 5 días, no cerrados).
+ * @param {object} models - Modelos de la app.
+ * @returns {Promise<object>} { abiertos, vencidos[], proximos[] }.
+ */
+const bloqueProyectos = async (models) => {
+    const { Proyecto, Op: _ } = models;
+    const { Op } = await import('sequelize');
+    const SQL_DIAS = 'DATEDIFF(`proyectos`.`fechaEstimadaEntrega`, CURDATE())';
+
+    const rows = await Proyecto.findAll({
+        where: { estado: { [Op.notIn]: ESTADOS_CERRADOS } },
+        include: [{ model: models.Cliente, attributes: ['id', 'nombre'] }],
+        attributes: { include: [[Proyecto.sequelize.literal(SQL_DIAS), 'diasParaEntrega']] },
+        order: [Proyecto.sequelize.literal('diasParaEntrega ASC')],
+    });
+
+    const vencidos = [], proximos = [];
+    for (const r of rows) {
+        const p = r.toJSON();
+        const dias = p.diasParaEntrega;
+        if (dias === null || dias === undefined) continue;
+        const item = {
+            id: p.id, nombre: p.nombre, cliente: p.cliente?.nombre,
+            estado: p.estado, fechaEstimadaEntrega: p.fechaEstimadaEntrega, dias,
+        };
+        if (dias < 0) vencidos.push(item);
+        else if (dias <= VENTANA_PROYECTOS) proximos.push(item);
+    }
+    return { abiertos: rows.length, vencidos, proximos };
+};
+
+/**
+ * Parte proyectos de la facturación del mes: cobranzas cobradas (congeladas) y
+ * pendientes del mes (al dólar de hoy).
+ * @param {object} models - Modelos de la app.
+ * @param {{cotizacion: number}} config - Config vigente.
+ * @returns {Promise<{proyectosFacturado: number, proyectosPendiente: number}>}
+ */
+const facturacionMesProyectos = async (models, config) => {
+    const { Cobranza } = models;
+    const hoy = new Date();
+    const anio = hoy.getFullYear();
+    const mes = hoy.getMonth() + 1;
+
+    const proyectosFacturado = Number(await Cobranza.sum('montoPesos', {
+        where: { anio, mes, cobrado: true }
+    })) || 0;
+    const pendientesUsd = Number(await Cobranza.sum('montoUsd', {
+        where: { anio, mes, cobrado: false }
+    })) || 0;
+
+    return { proyectosFacturado, proyectosPendiente: pendientesUsd * config.cotizacion };
+};
+
+/**
+ * Arma el panel según las capabilities del usuario. Los bloques sin permiso viajan null
+ * y NO se calculan. Los tres gráficos anuales comparten el mismo `anio` (selector único).
+ * @param {object} models - Modelos de la app.
+ * @param {object} user - Usuario que mira ({ id, roleId }).
+ * @param {number} [anio] - Año para los gráficos (default: actual).
+ * @returns {Promise<object>} Bloques del panel (null los no permitidos).
+ */
+export const armarDashboard = async (models, user, anio) => {
+    const caps = await getRoleCapabilities(models, 'default', user.roleId);
+    const config = await getConfigAbonos(models);
+    const anioStats = (Number(anio) >= 2000 && Number(anio) <= 2100) ? Number(anio) : new Date().getFullYear();
+
+    const verAbonos = puede(caps, 'abonos:read');
+    const verFacturaciones = puede(caps, 'facturaciones:read');
+    const verProyectos = puede(caps, 'proyectos:read') && !!models.Proyecto;
+    const verCobranzas = puede(caps, 'cobranzas:read') && !!models.Cobranza;
+    // Gating de gráficos: cada bloque exige ver TODAS las secciones cuyos datos muestra
+    // (regla del legado §4.1, traducida a capabilities).
+    const verChartMensual = verFacturaciones && verCobranzas;
+    const verChartServicio = verFacturaciones && puede(caps, 'servicios:read');
+    const verChartAreas = verFacturaciones && verCobranzas && puede(caps, 'areas:read');
+    const verTareas = puede(caps, 'tareas:read') && !!models.Tarea;
+
+    // El bloque de tareas se importa acá (y no arriba) para no acoplar el boot de los
+    // módulos: dashboard funciona aunque tareas no esté montado.
+    const equipoPromise = verTareas
+        ? import('../../tareas/services/tarea.service.js').then(m => m.equipoDashboard(models, user))
+        : Promise.resolve(null);
+
+    const [abonos, facturacionMes, proyectos, factProyectos, mensual, servicios, areas, anios, tareasEquipo] = await Promise.all([
+        verAbonos ? bloqueAbonos(models, config) : Promise.resolve(null),
+        (verAbonos && verFacturaciones) ? bloqueFacturacionMes(models, config) : Promise.resolve(null),
+        verProyectos ? bloqueProyectos(models) : Promise.resolve(null),
+        verCobranzas ? facturacionMesProyectos(models, config) : Promise.resolve(null),
+        verChartMensual ? serieMensual(models, anioStats) : Promise.resolve(null),
+        verChartServicio ? porServicio(models, anioStats) : Promise.resolve(null),
+        verChartAreas ? porArea(models, anioStats) : Promise.resolve(null),
+        (verChartMensual || verChartServicio || verChartAreas) ? aniosDisponibles(models, anioStats) : Promise.resolve(null),
+        equipoPromise,
+    ]);
+
+    return {
+        cotizacion: config.cotizacion,
+        abonos,
+        facturacionMes: (facturacionMes || factProyectos)
+            ? { ...(facturacionMes || {}), ...(factProyectos || {}) }
+            : null,
+        proyectos,
+        estadisticas: (mensual || servicios || areas)
+            ? { anio: anioStats, anios, mensual, servicios, areas }
+            : null,
+        tareasEquipo,
+    };
+};

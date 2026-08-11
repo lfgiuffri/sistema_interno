@@ -1,0 +1,18 @@
+[
+  { "name": "APP_NAME", "value": "Zero", "type": "string", "description": "Nombre de la aplicación", "category": "general", "isEditable": true, "isPublic": true },
+  { "name": "SYSTEM_TIMEZONE", "value": "-03:00", "type": "string", "description": "Zona horaria por defecto de nuevos tenants", "category": "general", "isEditable": true, "isPublic": false },
+  { "name": "TRIAL_DAYS", "value": "30", "type": "number", "description": "Días de trial al crear un tenant", "category": "plans", "isEditable": true, "isPublic": false },
+  { "name": "FEATURES_ADVANCED_REPORTS_ENABLED", "value": "false", "type": "boolean", "description": "Reportes avanzados (solo enterprise)", "category": "features", "isEditable": true, "isPublic": false },
+  { "name": "NOTIFICATION_OPTIONS", "value": "{}", "type": "json", "description": "Opciones de notificación de errores del responseManager", "category": "notifications", "isEditable": true, "isPublic": false },
+
+  { "name": "PLANS_FREE_MAX_USERS", "value": "2", "type": "number", "description": "Máx usuarios plan free", "category": "plans", "isEditable": true, "isPublic": false },
+  { "name": "PLANS_FREE_MAX_STORAGE_MB", "value": "100", "type": "number", "description": "Máx storage (MB) plan free", "category": "plans", "isEditable": true, "isPublic": false },
+  { "name": "PLANS_BASIC_MAX_USERS", "value": "5", "type": "number", "description": "Máx usuarios plan basic", "category": "plans", "isEditable": true, "isPublic": false },
+  { "name": "PLANS_BASIC_MAX_STORAGE_MB", "value": "1000", "type": "number", "description": "Máx storage (MB) plan basic", "category": "plans", "isEditable": true, "isPublic": false },
+  { "name": "PLANS_PREMIUM_MAX_USERS", "value": "25", "type": "number", "description": "Máx usuarios plan premium", "category": "plans", "isEditable": true, "isPublic": false },
+  { "name": "PLANS_PREMIUM_MAX_STORAGE_MB", "value": "10000", "type": "number", "description": "Máx storage (MB) plan premium", "category": "plans", "isEditable": true, "isPublic": false },
+  { "name": "PLANS_ENTERPRISE_MAX_USERS", "value": "-1", "type": "number", "description": "Máx usuarios plan enterprise (-1 = ilimitado)", "category": "plans", "isEditable": true, "isPublic": false },
+  { "name": "PLANS_ENTERPRISE_MAX_STORAGE_MB", "value": "-1", "type": "number", "description": "Máx storage plan enterprise (-1 = ilimitado)", "category": "plans", "isEditable": true, "isPublic": false },
+  { "name": "PLANS_ULTIMATE_MAX_USERS", "value": "-1", "type": "number", "description": "Máx usuarios plan ultimate (-1 = ilimitado)", "category": "plans", "isEditable": true, "isPublic": false },
+  { "name": "PLANS_ULTIMATE_MAX_STORAGE_MB", "value": "-1", "type": "number", "description": "Máx storage plan ultimate (-1 = ilimitado)", "category": "plans", "isEditable": true, "isPublic": false }
+]

@@ -1,0 +1,43 @@
+### ============================================
+### MASTER AUTH - Autenticación Centralizada
+### ============================================
+
+### Login centralizado (no requiere API key)
+### Usa usuarios de la tabla masterUsers de la base master
+POST {{baseURL}}/master/auth/signin
+Content-Type: application/json
+
+{
+    "username": "admin@empresa_demo",
+    "password": "password123"
+}
+
+### ============================================
+
+### Obtener usuario actual (requiere token de master auth)
+GET {{baseURL}}/master/auth/me
+Content-Type: application/json
+x-access-token: {{accesstoken}}
+
+### ============================================
+
+### Refrescar token de acceso
+POST {{baseURL}}/master/auth/refresh
+Content-Type: application/json
+x-refresh-token: {{refreshToken}}
+
+{
+    "refreshToken": "{{refreshToken}}"
+}
+
+### ============================================
+
+### Cambiar contraseña
+POST {{baseURL}}/master/auth/change-password
+Content-Type: application/json
+x-access-token: {{accesstoken}}
+
+{
+    "currentPassword": "password123",
+    "newPassword": "newPassword456"
+}

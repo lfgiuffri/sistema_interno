@@ -1,0 +1,34 @@
+# Logueo
+POST {{baseURL}}/users/auth/signin
+Content-Type: application/json
+x-api-key: {{apikey}}
+
+{
+    "username": "admin",
+    "password": "positive+2"
+}
+###
+# Registración
+POST {{baseURL}}/users/auth/signout
+Content-Type: application/json
+x-api-key: {{apikey}}
+
+{
+    "username": "lfgiuffri",
+    "email": "lfgiuffri@gmail.com",
+    "password": "123"
+}
+###
+# Usuario actual
+GET {{baseURL}}/users/auth/currentuser
+Content-Type: application/json
+x-api-key: {{apikey}}
+x-access-token: {{accesstoken}}
+###
+# Refrescar token
+POST {{baseURL}}/users/auth/refresh
+Content-Type: application/json
+x-api-key: {{apikey}}
+x-access-token: {{accesstoken}}
+x-refresh-token: {{refreshToken}}
+###

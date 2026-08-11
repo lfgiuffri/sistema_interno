@@ -1,0 +1,4 @@
+[
+  { "name": "ACCESS_TOKEN_EXPIRY", "value": "15m", "description": "Expiración del access token JWT", "updatable": true },
+  { "name": "REFRESH_TOKEN_EXPIRY", "value": "7d", "description": "Expiración del refresh token JWT", "updatable": true }
+]
