@@ -20,5 +20,7 @@ yarn.lock
 .kiro/steering/byterover-rules.md
 .qoder/rules/byterover-rules.md
 .augment/rules/byterover-rules.md
-storage/
+# Storage privado en disco (adjuntos de tareas/empleados). Con barra inicial:
+# sin ella el patrón también matcheaba src/services/storage/ (código fuente).
+/storage/
 

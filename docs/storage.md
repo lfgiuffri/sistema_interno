@@ -1,13 +1,15 @@
-# Storage — Zero 2.0
+# Storage — Sistema Interno
 
 > ⚠️ **Keep in sync.** Facade en `services/storage/storage.service.js`; drivers en `services/storage/providers/`; config en `services/storage/config/storage.config.js`.
 
-Storage **pluggable** y **tenant-scoped**: los módulos guardan/leen archivos sin saber si el backend es disco local o S3. Toda key se prefija con `tenant/<tenantId>/` para aislar archivos entre tenants.
+Storage **pluggable**: los módulos guardan/leen archivos sin saber si el backend es disco local o S3. Single-tenant: no hay prefijo por tenant, toda key se prefija con `app/` (así un bucket compartido no mezcla apps).
+
+> Este facade sirve archivos **públicos**. Los adjuntos privados (tareas, empleados) NO pasan por acá: van a `storage/<modulo>/` fuera de `public`, servidos con auth por `archivo.service.js` / `archivoEmpleado.service.js`.
 
 ## Drivers
 
 - **`local`** (default): filesystem bajo `STORAGE_LOCAL_ROOT` (`public/storage`), servido como estático bajo `/public/storage`. Ideal para apps simples / dev.
-- **`s3`**: cualquier backend S3-compatible (AWS S3, Cloudflare R2, MinIO). Para R2/MinIO usar `STORAGE_S3_ENDPOINT` + `STORAGE_S3_FORCE_PATH_STYLE=true`.
+- **`s3`**: cualquier backend S3-compatible (AWS S3, Cloudflare R2, MinIO). Para R2/MinIO usar `STORAGE_S3_ENDPOINT` + `STORAGE_S3_FORCE_PATH_STYLE=true`. Sin `STORAGE_S3_ACCESS_KEY` usa la cadena de credenciales del entorno (IAM role).
 
 El driver se elige por `STORAGE_DRIVER`.
 
@@ -16,17 +18,17 @@ El driver se elige por `STORAGE_DRIVER`.
 ```js
 import { putFile, getFile, getFileUrl, deleteFile, fileExists, activeStorageDriver } from '../../../kernel/index.js';
 
-await putFile(req.tenant.id, 'avatars/u1.png', buffer, { contentType: 'image/png' });
-const url = await getFileUrl(req.tenant.id, 'avatars/u1.png');   // URL pública (local) o presignada (S3)
-const buf = await getFile(req.tenant.id, 'avatars/u1.png');
-await deleteFile(req.tenant.id, 'avatars/u1.png');
+await putFile('avatars/u1.png', buffer, { contentType: 'image/png' });
+const url = await getFileUrl('avatars/u1.png');   // URL pública (local) o presignada (S3)
+const buf = await getFile('avatars/u1.png');
+await deleteFile('avatars/u1.png');               // idempotente
 ```
 
-Todas las funciones reciben `tenantId` + key lógica; el facade aplica el prefijo de tenant. `putFile` valida `MAX_FILE_SIZE` (tira si se excede). `getFileUrl` acepta `{ expiresIn }` para presignar en S3.
+Todas las funciones reciben la key lógica; el facade aplica el prefijo `app/` y rechaza keys vacías o con path traversal (`../`). `putFile` exige un `Buffer` y valida `STORAGE_MAX_FILE_SIZE` (tira si se excede). `getFileUrl` acepta `{ expiresIn }` para presignar en S3.
 
 ## Contrato del driver (`StorageProvider`)
 
-Cada provider implementa: `name`, `put(key, buffer, opts)`, `get(key)`, `del(key)`, `exists(key)`, `getUrl(key, opts)`. Agregar un driver = crear el archivo cumpliendo el contrato y sumarlo a `providers/index.js`.
+Cada provider implementa: `name`, `put(key, buffer, opts)`, `get(key)`, `del(key)`, `exists(key)`, `getUrl(key, opts)` — siempre sobre la key **completa** (el prefijo ya lo aplicó el facade). Agregar un driver = crear el archivo cumpliendo el contrato y sumarlo a `providers/index.js`.
 
 ## Variables de entorno
 
@@ -39,4 +41,5 @@ STORAGE_LOCAL_PUBLIC_PATH=/public/storage
 # s3 / r2 / minio
 STORAGE_S3_BUCKET, STORAGE_S3_REGION, STORAGE_S3_ENDPOINT
 STORAGE_S3_ACCESS_KEY, STORAGE_S3_SECRET_KEY, STORAGE_S3_FORCE_PATH_STYLE
+STORAGE_S3_PRESIGN_EXPIRES=900       # segundos de vigencia de las URLs presignadas
 ```
