@@ -76,10 +76,6 @@ function backToCredentials(): void {
             <h1 class="text-3xl font-semibold tracking-tight text-ink leading-tight">
               Sistema Interno
             </h1>
-            <p class="mt-3 text-sm text-ink-soft leading-relaxed">
-              Clientes, abonos, proyectos, tareas y sueldos de la empresa,
-              en un solo lugar.
-            </p>
           </div>
 
           <p class="text-2xs text-ink-faint">
