@@ -10,7 +10,7 @@ backend/.env
 frontend/.env
 
 #PM2 Configs
-backend/pm2.config.js
+backend/pm2.config.cjs
 
 # Firebase credentials (NEVER commit)
 backend/.firebase-service-account.json
