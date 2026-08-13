@@ -366,7 +366,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
       </div>
 
       <!-- Modal: agregar cuota -->
-      <Teleport to="body">
+      <Teleport defer to="ion-app">
         <div v-if="modalAgregar" class="ds-modal-backdrop" @click.self="modalAgregar = false">
           <div class="ds-modal max-w-sm" role="dialog" aria-modal="true" aria-label="Agregar cuota">
             <h2 class="text-base font-semibold text-ink mb-1">Agregar cuota</h2>
@@ -399,7 +399,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
       </Teleport>
 
       <!-- Modal: mover selección -->
-      <Teleport to="body">
+      <Teleport defer to="ion-app">
         <div v-if="modalMover" class="ds-modal-backdrop" @click.self="modalMover = false">
           <div class="ds-modal max-w-sm" role="dialog" aria-modal="true" aria-label="Mover cuotas">
             <h2 class="text-base font-semibold text-ink mb-1">Mover {{ seleccion.size }} cuota(s)</h2>

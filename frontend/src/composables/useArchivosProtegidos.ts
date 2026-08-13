@@ -1,5 +1,5 @@
 /**
- * Archivos protegidos del módulo de tareas: se sirven con auth (header x-access-token),
+ * Archivos protegidos (tareas y documentación): se sirven con auth (header x-access-token),
  * así que un <img src> plano no funciona. Este composable baja el binario con axios y
  * devuelve un object URL cacheado por sesión (el mismo blob sirve para editor y vistas).
  */
@@ -7,9 +7,9 @@ import api from '@/services/api'
 
 const cache = new Map<string, string>()
 
-/** ¿La URL apunta a nuestro endpoint autenticado de archivos de tareas? */
+/** ¿La URL apunta a alguno de nuestros endpoints autenticados de archivos? */
 export function esArchivoProtegido(url: string): boolean {
-  return /(^|\/)api\/tareas\/archivos\//.test(url) || url.startsWith('/api/tareas/archivos/')
+  return /(^|\/)api\/(tareas|documentacion)\/archivos\//.test(url)
 }
 
 /**

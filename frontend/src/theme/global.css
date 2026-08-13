@@ -287,3 +287,9 @@ select option { background: rgb(var(--s-surface)); color: rgb(var(--s-ink)); }
   border-radius: 12px;
   box-shadow: 0 20px 50px -12px rgb(var(--s-shadow) / 0.25);
 }
+/* Modificadores de ancho para modales con tabla adentro.
+   OJO: `.ds-modal` sale DESPUÉS de `@tailwind utilities` (línea 3), así que su max-width
+   le gana por orden a un `max-w-*` suelto en el markup. El ancho se elige con estas
+   clases, no con utilidades de Tailwind. */
+.ds-modal-lg { max-width: 880px; }
+.ds-modal-xl { max-width: 1120px; }

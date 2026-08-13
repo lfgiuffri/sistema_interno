@@ -23,6 +23,7 @@ Base multi-tenant modular para construir apps (backend Node/Express/Sequelize + 
 | [vault.md](vault.md) | secretos cifrados por tenant (AES-256-GCM) |
 | [config-registry.md](config-registry.md) | config tipada por secciones (qué es configurable, env vars, secretos enmascarados) |
 | [migrations.md](migrations.md) | migraciones versionadas (master + tenants), idempotencia, runner, deploy de código desde el panel |
+| [migracion-legado.md](migracion-legado.md) | migración de DATOS del sistema PHP legado (`npm run migrar_legado`): mapeo de tablas, permisos → capabilities, usuarios y contraseñas |
 
 ## Decisiones de arquitectura (ADRs)
 

@@ -78,12 +78,17 @@ test.describe('M18: Notificaciones, comentarios y panel completo', () => {
   });
 
   test('M18.3 - comentario con mención @username notifica al mencionado', async ({ adminApi }) => {
+    // El username del admin sale de la sesión y no está fijo en el test: la cuenta `admin`
+    // del seed puede no existir (la migración del legado la borra).
+    const me = await adminApi.get(APP_ENDPOINTS.me);
+    const adminUsername = (await me.json()).data.user.username;
+
     // El usuario comenta mencionando al admin.
     const res = await userApi.post(`${APP_ENDPOINTS.tareas}/${tareaId}/comentarios`, {
-      data: { texto: `Necesito una mano @admin con esto` },
+      data: { texto: `Necesito una mano @${adminUsername} con esto` },
     });
     const body = await expectSuccess(res, 201);
-    expect(body.data.texto).toContain('@admin');
+    expect(body.data.texto).toContain(`@${adminUsername}`);
 
     // El detalle incluye el comentario.
     const detalle = await userApi.get(`${APP_ENDPOINTS.tareas}/${tareaId}`);
@@ -124,25 +129,30 @@ test.describe('M18: Notificaciones, comentarios y panel completo', () => {
     expect(body.data[0].usuario).toBeTruthy();
   });
 
-  test('M18.6 - dashboard completo: estadísticas + tareas del equipo (por capability)', async ({ adminApi }) => {
-    const res = await adminApi.get('dashboard?anio=2026');
+  test('M18.6 - panel: tareas del equipo; las estadísticas viven en su propio endpoint', async ({ adminApi }) => {
+    const res = await adminApi.get('dashboard');
     const data = (await expectSuccess(res, 200)).data;
 
-    // Estadísticas: series de 12 meses + años disponibles.
-    expect(data.estadisticas).toBeTruthy();
-    expect(data.estadisticas.mensual.abonos).toHaveLength(12);
-    expect(data.estadisticas.mensual.proyectos).toHaveLength(12);
-    expect(Array.isArray(data.estadisticas.anios)).toBeTruthy();
+    // El panel ya NO calcula las series anuales (pantalla Estadísticas aparte).
+    expect(data).not.toHaveProperty('estadisticas');
 
     // Tareas del equipo: tarjetas + tabla por usuario.
     expect(data.tareasEquipo).toBeTruthy();
     expect(data.tareasEquipo.tarjetas.pendientes).toBeGreaterThanOrEqual(1);
     expect(Array.isArray(data.tareasEquipo.porUsuario)).toBeTruthy();
 
-    // El usuario acotado (sin abonos/facturaciones) NO recibe estadísticas.
+    // Estadísticas: series de 12 meses + años disponibles.
+    const stats = await adminApi.get('dashboard/estadisticas?anio=2026');
+    const dataStats = (await expectSuccess(stats, 200)).data;
+    expect(dataStats.mensual.abonos).toHaveLength(12);
+    expect(dataStats.mensual.proyectos).toHaveLength(12);
+    expect(Array.isArray(dataStats.anios)).toBeTruthy();
+
+    // El usuario acotado ve el panel (tiene tareas:read) pero NO las estadísticas
+    // (los gráficos salen de facturación y no tiene facturaciones:read).
     const resUser = await userApi.get('dashboard');
-    const dataUser = (await resUser.json()).data;
-    expect(dataUser.estadisticas).toBeNull();
-    expect(dataUser.tareasEquipo).toBeTruthy(); // tareas:read sí tiene
+    expect((await resUser.json()).data.tareasEquipo).toBeTruthy();
+    const statsUser = await userApi.get('dashboard/estadisticas');
+    expect(statsUser.status()).toBe(403);
   });
 });

@@ -26,6 +26,7 @@ usuarios los crea un administrador. Permisos por **capabilities granulares** (`m
 cd backend && npm run init_db   # provisión: crea DB + schema + seed (rol Administrador + admin)
 cd backend && npm run dev       # dev (babel-node + nodemon) en :3010
 cd backend && npm run build     # build a build/
+cd backend && npm run migrar_legado -- --confirmar   # copia los DATOS del PHP legado (docs/migracion-legado.md)
 
 # Frontend
 cd frontend && npm run dev      # dev en :8100
@@ -63,7 +64,7 @@ backend/src/
 │   ├── capability.js  moduleLoader.js  handlerRegistry.js
 │   └── index.js             # BARREL: superficie pública de infra para los módulos
 ├── modules/                 # PLUGGABLE — cada uno con module.manifest.js
-│   ├── abonos/ areas/ clientes/ dashboard/ empleados/ espacios/
+│   ├── abonos/ areas/ clientes/ dashboard/ documentacion/ empleados/ espacios/
 │   ├── formas-facturacion/ proyectos/ servicios/ sueldos/ tareas/
 │   └── settings/            # infra (montado explícito en routes.js)
 ├── services/                # storage, webhooks, embeddings, ai, scheduler, push, sandbox,
@@ -259,7 +260,8 @@ Paginación en `meta` (helper `Paginate`). Validación: express-validator → 42
 - ✅ **Fase 6** — dashboard completo + notificaciones + mejoras: `estadisticas.service.js`
   en el módulo dashboard (serie mensual abonos vs proyectos del año, por servicio top 7 +
   "Otros", por área con cubeta "Sin área" — cobrado CONGELADO, mismo año para los 3
-  bloques, gating: cada gráfico exige ver TODAS sus fuentes) + `equipoDashboard` en tareas
+  bloques, gating: cada gráfico exige ver TODAS sus fuentes; desde 2026-08-12 viven en
+  `GET /dashboard/estadisticas` + pantalla propia, ver más abajo) + `equipoDashboard` en tareas
   (tarjetas del equipo, "qué está haciendo cada uno" con desde de la bitácora, tabla por
   usuario con tiempo promedio de trabajo — tramos en_progreso, cerradas, asignado actual —
   acotado a los espacios del que mira). **Notificaciones in-app**: `services/notificaciones`
@@ -290,3 +292,55 @@ Paginación en `meta` (helper `Paginate`). Validación: express-validator → 42
   compose queda como alternativa). El deploy real queda pendiente de ejecutar el runbook.
 
 **PROYECTO COMPLETO** — las 7 fases del PRD entregadas; las 12 mejoras (§10) implementadas.
+
+## Migración de datos del legado (2026-08-12)
+
+`npm run migrar_legado` (`backend/src/exec/migrarLegado.js`, doc en `docs/migracion-legado.md`)
+copia los datos reales del PHP a la base nueva **preservando los IDs**: 609 filas en 28 tablas,
+transaccional, re-ejecutable, con los AUTO_INCREMENT repuestos. Puntos a recordar:
+- Los permisos de grano grueso del legado (`rol_permisos.ver/editar` por sección) se expanden
+  al catálogo granular de capabilities; `editar` implica `ver`; el rol `es_admin` se convierte
+  en el rol de sistema (`administrador`, `isSystem`, `*`).
+- Los usuarios conservan su contraseña (hash bcrypt `$2y$` → back-compat → rehash a argon2 en
+  el primer login) y el **username se deriva del email**. La migración BORRA el usuario `admin`
+  del seed → para correr los e2e hay que recrearlo con `npm run init_db` (idempotente).
+- La conexión al legado usa la MISMA zona horaria que la app: sus fechas de alta son `TIMESTAMP`
+  (dependen de la zona de sesión) y las del sistema nuevo son `DATETIME` (sin zona).
+
+## Módulo `documentacion` (2026-08-13)
+
+Base de conocimiento con la misma forma que tareas — **espacio → lista → documento** — pero
+con espacios PROPIOS (`doc_espacios` + `usuario_doc_espacios`): la documentación puede tener
+recortes distintos a los tableros y sus accesos se administran aparte. Doc completa en
+`docs/modules/documentacion.md`. Puntos salientes:
+- **Dos capas de permisos** igual que tareas (capability `documentacion:*` Y ver/editar del
+  espacio), y capabilities separadas `doc-espacios:*` para el ABM y la matriz de accesos:
+  repartir accesos no es lo mismo que escribir documentación.
+- **Un documento es texto Y/O adjuntos** (no una cosa o la otra), con **historial de versiones
+  append-only**: cada edición archiva el estado anterior y restaurar archiva el vigente.
+- **Buscador** por título y contenido, acotado a los espacios visibles, y **orden manual**
+  (drag & drop) de listas y documentos con `orden` en múltiplos de 10.
+- **Refactors para no duplicar**: las defensas de archivos subidos viven en
+  `services/archivos/archivoPrivado.service.js` y el saneado de HTML en
+  `services/html/sanitizador.service.js` (antes dentro de tareas) — UNA sola copia de cada
+  cosa, compartida por los dos módulos. `DescripcionEditor.vue` recibe la subida por prop.
+- **Menú**: Tareas y Documentación viven ahora en el grupo **Proyectos** (el grupo Tareas
+  desapareció); «Espacios de documentación» está en Administración.
+
+## Panel vs Estadísticas (2026-08-12)
+
+El módulo `dashboard` expone DOS superficies, cada una con su pantalla:
+- `GET /dashboard` (`dashboard:read`) → **Panel** (`views/dashboard/HomePage.vue`, grupo
+  Principal del menú): qué está pasando ahora — cotización, contadores y alertas de abonos,
+  facturación del mes, proyectos y tareas del equipo. NO calcula series anuales.
+- `GET /dashboard/estadisticas?anio=` (**`estadisticas:read`**, capability propia desde
+  2026-08-13 — migración `0002` se la dio a los roles que ya tenían `facturaciones:read`) →
+  **Estadísticas** (`views/dashboard/EstadisticasPage.vue`, también en Principal): mensual
+  abonos vs proyectos, abonos por servicio y facturación por área, con el selector de año
+  único. El gating fino por gráfico (facturaciones, cobranzas, servicios, áreas) sigue dentro
+  del service; si los tres vienen null la pantalla lo explica.
+
+**Menú y landing** (`frontend/src/config/nav.ts`): el menú es FUENTE ÚNICA y lo consumen el
+shell (para pintarlo) y el router (para decidir el destino inicial). El Panel se otorga con
+`dashboard:read` como cualquier otra pantalla; quien no lo tenga entra a la PRIMERA opción del
+menú que sí puede ver (antes caía en un panel vacío). Ir a `/panel` sin permiso redirige igual.

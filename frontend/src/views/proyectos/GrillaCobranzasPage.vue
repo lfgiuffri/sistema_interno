@@ -33,8 +33,8 @@ interface Grilla {
   anios: number[]
   cotizacion: number
   filas: Fila[]
-  totalesMes: Record<number, number>
-  granTotal: number
+  totalesMes: Record<number, { pesos: number; usd: number }>
+  granTotal: { pesos: number; usd: number }
 }
 
 const store = useProyectosStore()
@@ -106,11 +106,14 @@ function onDragEnd(): void {
   dragOver.value = null
 }
 
-/** Monto compacto para las celdas (los completos van en el tooltip). */
-function compacto(pesos: number): string {
-  if (pesos >= 1_000_000) return `${(pesos / 1_000_000).toLocaleString('es-AR', { maximumFractionDigits: 1 })} M`
-  if (pesos >= 1_000) return `${Math.round(pesos / 1_000)} k`
-  return String(Math.round(pesos))
+/**
+ * Dólares con formato local y sin decimales (van SIEMPRE debajo del peso, más chicos:
+ * la grilla se lee de un vistazo sin tener que abrir tooltips).
+ * @param usd - Monto en dólares.
+ * @returns Texto tipo «US$ 1.500».
+ */
+function fmtUsd(usd: number): string {
+  return `US$ ${Math.round(usd).toLocaleString('es-AR')}`
 }
 
 let loadedOnce = false
@@ -126,7 +129,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
       </IonToolbar>
     </IonHeader>
     <IonContent class="page-content">
-      <div class="max-w-[1400px] mx-auto px-5 lg:px-8 py-6 ds-enter">
+      <div class="w-full px-4 lg:px-6 py-6 ds-enter">
 
         <header class="flex flex-wrap items-center justify-between gap-3 pb-5">
           <div>
@@ -156,6 +159,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
               <thead>
                 <tr>
                   <th class="col-proyecto text-left">Proyecto</th>
+                  <th class="col-presupuesto">Presupuesto</th>
                   <th v-for="(m, i) in MESES" :key="i">{{ m.slice(0, 3) }}</th>
                   <th class="col-total">Total</th>
                 </tr>
@@ -167,6 +171,10 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
                       <p class="font-medium text-ink text-[13px] truncate group-hover:text-accent transition-colors">{{ f.nombre }}</p>
                       <p class="text-2xs text-ink-faint truncate">{{ f.cliente }} · {{ ESTADOS_PROYECTO[f.estado]?.label ?? f.estado }}</p>
                     </button>
+                  </td>
+                  <td class="col-presupuesto">
+                    <span class="tnum text-ink block leading-tight">{{ fmtMoneda(f.total, f.moneda) }}</span>
+                    <span class="text-2xs text-ink-faint font-mono">{{ f.moneda }}</span>
                   </td>
                   <td
                     v-for="mes in 12"
@@ -190,20 +198,34 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
                       @dragstart="onDragStart(f, mes, $event)"
                       @dragend="onDragEnd"
                     >
-                      <span class="tnum font-medium">{{ compacto(f.celdas[mes]!.pesos) }}</span>
-                      <span v-if="f.celdas[mes]!.cantidad > 1" class="text-2xs opacity-70 tnum">×{{ f.celdas[mes]!.cantidad }}</span>
+                      <span class="tnum font-medium leading-tight">
+                        {{ fmtMoneda(f.celdas[mes]!.pesos) }}
+                        <span v-if="f.celdas[mes]!.cantidad > 1" class="text-2xs opacity-70">×{{ f.celdas[mes]!.cantidad }}</span>
+                      </span>
+                      <span class="tnum text-2xs opacity-70 leading-tight">{{ fmtUsd(f.celdas[mes]!.usd) }}</span>
                     </div>
                   </td>
-                  <td class="col-total tnum font-medium text-ink">{{ compacto(f.totalPesos) }}</td>
+                  <td class="col-total">
+                    <span class="tnum font-medium text-ink block leading-tight">{{ fmtMoneda(f.totalPesos) }}</span>
+                    <span class="tnum text-2xs text-ink-faint block leading-tight">{{ fmtUsd(f.totalUsd) }}</span>
+                  </td>
                 </tr>
               </tbody>
               <tfoot>
                 <tr>
                   <td class="col-proyecto text-2xs font-medium uppercase tracking-wide text-ink-faint">Total mes</td>
-                  <td v-for="mes in 12" :key="mes" class="tnum text-xs" :class="grilla.totalesMes[mes] ? 'text-ink font-medium' : 'text-ink-faint'">
-                    {{ grilla.totalesMes[mes] ? compacto(grilla.totalesMes[mes]) : '—' }}
+                  <td class="col-presupuesto"></td>
+                  <td v-for="mes in 12" :key="mes" class="text-xs">
+                    <template v-if="grilla.totalesMes[mes]?.pesos">
+                      <span class="tnum font-medium text-ink block leading-tight">{{ fmtMoneda(grilla.totalesMes[mes].pesos) }}</span>
+                      <span class="tnum text-2xs text-ink-faint block leading-tight">{{ fmtUsd(grilla.totalesMes[mes].usd) }}</span>
+                    </template>
+                    <span v-else class="text-ink-faint">—</span>
                   </td>
-                  <td class="col-total tnum font-semibold text-accent-ink">{{ fmtMoneda(grilla.granTotal) }}</td>
+                  <td class="col-total">
+                    <span class="tnum font-semibold text-accent-ink block leading-tight">{{ fmtMoneda(grilla.granTotal.pesos) }}</span>
+                    <span class="tnum text-2xs text-ink-faint block leading-tight">{{ fmtUsd(grilla.granTotal.usd) }}</span>
+                  </td>
                 </tr>
               </tfoot>
             </table>
@@ -233,28 +255,33 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
 .page-content { --background: rgb(var(--s-canvas)); }
 .app-toolbar { --background: rgb(var(--s-canvas)); --border-width: 0; --min-height: 44px; }
 
-.grilla-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+/* table-layout fijo + anchos porcentuales: la grilla entra completa en el ancho de la
+   pantalla, sin scroll horizontal (el número manda, no el ancho del contenido). */
+.grilla-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 11.5px; }
 .grilla-table th {
-  height: 36px; padding: 0 6px; text-align: center; white-space: nowrap;
+  height: 36px; padding: 0 3px; text-align: center; white-space: nowrap;
   font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em;
   color: rgb(var(--s-ink-faint)); border-bottom: 1px solid rgb(var(--s-line));
   background: rgb(var(--s-surface-2) / 0.5);
 }
 .grilla-table td {
-  height: 44px; padding: 3px 4px; text-align: center;
+  height: 52px; padding: 3px 2px; text-align: center;
   border-bottom: 1px solid rgb(var(--s-line-soft));
 }
 .grilla-table tbody tr:hover td { background: rgb(var(--s-surface-2) / 0.4); }
 .grilla-table tfoot td { border-bottom: none; border-top: 1px solid rgb(var(--s-line)); height: 40px; }
-.col-proyecto { min-width: 180px; max-width: 220px; text-align: left !important; padding-left: 12px !important; }
-.col-total { min-width: 80px; }
-
-.celda { min-width: 66px; }
+.col-proyecto { width: 13%; text-align: left !important; padding-left: 12px !important; }
+.col-presupuesto { width: 7%; }
+.col-total { width: 8%; }
+/* 12 meses repartiendo el resto (6% cada uno). */
+.celda { width: 6%; }
 .celda-drop { outline: 2px dashed rgb(var(--s-accent)); outline-offset: -3px; border-radius: 8px; background: rgb(var(--s-accent-soft)) !important; }
 
+/* Los dos números NUNCA se parten: prefiero achicar la tipografía a que el monto quede
+   cortado en dos renglones (el punto de la grilla es leerlo de un vistazo). */
 .chip {
-  display: inline-flex; align-items: center; gap: 3px; justify-content: center;
-  min-width: 54px; padding: 3px 7px; border-radius: 7px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  width: 100%; padding: 3px 2px; border-radius: 7px; white-space: nowrap; font-size: 10.5px;
   background: rgb(var(--s-surface-2)); border: 1px solid rgb(var(--s-line));
   color: rgb(var(--s-ink)); user-select: none;
 }

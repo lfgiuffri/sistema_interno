@@ -53,9 +53,31 @@ const actionLabel = (cap: string): string => {
   return ACTION_LABELS[action] ?? action
 }
 
-/** Nombre legible del módulo (primera letra en mayúscula). */
+/**
+ * Nombres de módulo que NO se leen bien con la regla automática (o que en el menú se
+ * llaman distinto de como se llama su capability).
+ */
+const MODULE_LABELS: Record<string, string> = {
+  dashboard: 'Panel',
+  areas: 'Áreas',
+  estadisticas: 'Estadísticas',
+  'doc-espacios': 'Espacios de documentación',
+  documentacion: 'Documentación',
+  'formas-facturacion': 'Formas de facturación',
+  'empleados-archivos': 'Archivos de empleados',
+  espacios: 'Espacios de trabajo',
+  configuracion: 'Configuración',
+  planificacion: 'Planificación',
+}
+
+/** Nombre legible del módulo (mapa explícito, o primera letra en mayúscula). */
 const moduleLabel = (module: string): string =>
-  module.charAt(0).toUpperCase() + module.slice(1).replace(/-/g, ' ')
+  MODULE_LABELS[module] ?? module.charAt(0).toUpperCase() + module.slice(1).replace(/-/g, ' ')
+
+/** Catálogo ordenado por la etiqueta VISIBLE (el backend lo manda por clave de módulo). */
+const catalogoOrdenado = computed(() =>
+  [...rolesStore.catalog].sort((a, b) => moduleLabel(a.module).localeCompare(moduleLabel(b.module), 'es')),
+)
 
 /** Orden lógico de las acciones dentro de un módulo (el catálogo viene alfabético). */
 const ACTION_ORDER = ['read', 'create', 'update', 'toggle', 'delete', 'manage']
@@ -226,7 +248,7 @@ onIonViewWillEnter(() => { void load() })
       </div>
 
       <!-- Modal alta/edición con matriz -->
-      <Teleport to="body">
+      <Teleport defer to="ion-app">
         <div v-if="modalOpen" class="ds-modal-backdrop" @click.self="modalOpen = false">
           <div class="ds-modal !max-w-xl ds-enter" role="dialog" aria-modal="true" :aria-label="isEdit ? 'Editar rol' : 'Nuevo rol'">
             <header class="flex items-center justify-between px-5 h-12 border-b border-line sticky top-0 bg-surface z-10">
@@ -252,7 +274,7 @@ onIonViewWillEnter(() => { void load() })
               <div>
                 <p class="ds-label mb-2">Permisos</p>
                 <div class="border border-line rounded-lg divide-y divide-line-soft">
-                  <div v-for="group in rolesStore.catalog" :key="group.module" class="px-4 py-3">
+                  <div v-for="group in catalogoOrdenado" :key="group.module" class="px-4 py-3">
                     <div class="flex items-center justify-between mb-2">
                       <p class="text-xs font-semibold text-ink">{{ moduleLabel(group.module) }}</p>
                       <button

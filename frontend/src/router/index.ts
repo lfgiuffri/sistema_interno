@@ -23,6 +23,7 @@ const routes: RouteRecordRaw[] = [
     meta: { auth: true },
     children: [
       { path: 'panel', name: 'Panel', component: () => import('@/views/dashboard/HomePage.vue') },
+      { path: 'estadisticas', name: 'Estadisticas', component: () => import('@/views/dashboard/EstadisticasPage.vue'), meta: { module: 'facturaciones' } },
       { path: 'abonos', name: 'Abonos', component: () => import('@/views/abonos/AbonosPage.vue'), meta: { module: 'abonos' } },
       { path: 'abonos/nuevo', name: 'AbonoNuevo', component: () => import('@/views/abonos/AbonoFormPage.vue'), meta: { module: 'abonos' } },
       { path: 'abonos/:id/editar', name: 'AbonoEditar', component: () => import('@/views/abonos/AbonoFormPage.vue'), meta: { module: 'abonos' } },
@@ -36,6 +37,15 @@ const routes: RouteRecordRaw[] = [
       { path: 'tareas/resumen', name: 'TareasResumen', component: () => import('@/views/tareas/ResumenPage.vue'), meta: { module: 'tareas' } },
       { path: 'tareas/espacios/:eid', name: 'Listas', component: () => import('@/views/tareas/ListasPage.vue'), meta: { module: 'tareas' } },
       { path: 'tareas/espacios/:eid/listas/:lid', name: 'TareasLista', component: () => import('@/views/tareas/TareasListaPage.vue'), meta: { module: 'tareas' } },
+      { path: 'documentacion', name: 'Documentacion', component: () => import('@/views/documentacion/DocumentacionHomePage.vue'), meta: { module: 'documentacion' } },
+      { path: 'documentacion/espacios', name: 'DocEspacios', component: () => import('@/views/documentacion/DocEspaciosPage.vue'), meta: { module: 'doc-espacios' } },
+      // ⚠️ Los parámetros se llaman `deid`/`dlid` y NO `eid`/`lid` a propósito. Con los mismos
+      // nombres que las rutas de tareas (`tareas/espacios/:eid/listas/:lid`), el router-outlet
+      // de Ionic confundía las vistas cacheadas: entrar a una lista de documentación después
+      // de haber visitado una lista de tareas terminaba renderizando —y navegando a—
+      // `/tareas/espacios/<id>`. Verificado A/B; si los renombrás, vuelve el bug.
+      { path: 'documentacion/espacios/:deid', name: 'DocListas', component: () => import('@/views/documentacion/DocListasPage.vue'), meta: { module: 'documentacion' } },
+      { path: 'documentacion/espacios/:deid/listas/:dlid', name: 'DocDocumentos', component: () => import('@/views/documentacion/DocumentosPage.vue'), meta: { module: 'documentacion' } },
       { path: 'espacios', name: 'Espacios', component: () => import('@/views/espacios/EspaciosPage.vue'), meta: { module: 'espacios' } },
       { path: 'empleados', name: 'Empleados', component: () => import('@/views/empleados/EmpleadosPage.vue'), meta: { module: 'empleados' } },
       { path: 'empleados/nuevo', name: 'EmpleadoNuevo', component: () => import('@/views/empleados/EmpleadoFormPage.vue'), meta: { module: 'empleados' } },
@@ -62,6 +72,21 @@ const router = createRouter({
   routes,
 })
 
+/**
+ * Destino de quien entra a la app: el panel si puede verlo, y si no, la PRIMERA pantalla
+ * del menú a la que tenga acceso (antes caía en un panel vacío, sin nada y sin explicación).
+ * @returns Path al que hay que ir.
+ */
+async function destinoInicial(): Promise<string> {
+  const { useMeStore } = await import('@/stores/me')
+  const me = useMeStore()
+  if (!me.loaded) await me.loadContext()
+  if (me.canAny('dashboard')) return '/panel'
+
+  const { primeraRutaVisible } = await import('@/config/nav')
+  return primeraRutaVisible(m => me.canAny(m))
+}
+
 // El auth store es la ÚNICA fuente de verdad de la sesión: el guard lo restaura una sola vez
 // (ensureInitialized es idempotente) y decide en base a sus getters, sin leer localStorage directo.
 router.beforeEach(async (to, _from, next) => {
@@ -70,7 +95,14 @@ router.beforeEach(async (to, _from, next) => {
   auth.ensureInitialized()
 
   if (to.meta.auth && !auth.isAuthenticated) return next('/login')
-  if (to.meta.guest && auth.isAuthenticated) return next('/panel')
+  if (to.meta.guest && auth.isAuthenticated) return next(await destinoInicial())
+
+  // Ir al panel sin permiso para verlo (link viejo, favorito o el redirect por defecto)
+  // termina en una pantalla vacía: se resuelve al primer destino disponible.
+  if (to.path === '/panel' && auth.isAuthenticated) {
+    const destino = await destinoInicial()
+    if (destino !== '/panel') return next(destino)
+  }
 
   return next()
 })

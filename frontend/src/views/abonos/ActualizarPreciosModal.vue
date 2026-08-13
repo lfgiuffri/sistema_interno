@@ -84,7 +84,7 @@ async function aplicar(): Promise<void> {
 </script>
 
 <template>
-  <Teleport to="body">
+  <Teleport defer to="ion-app">
     <div v-if="open" class="ds-modal-backdrop" @click.self="emit('close')">
       <div class="ds-modal !max-w-xl ds-enter" role="dialog" aria-modal="true" aria-label="Actualizar precios">
         <header class="flex items-center justify-between px-5 h-12 border-b border-line sticky top-0 bg-surface z-10">

@@ -249,7 +249,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
       </div>
 
       <!-- Modal actualizar por % -->
-      <Teleport to="body">
+      <Teleport defer to="ion-app">
         <div v-if="modalPct" class="ds-modal-backdrop" @click.self="modalPct = false">
           <div class="ds-modal max-w-lg" role="dialog" aria-modal="true" aria-label="Actualizar sueldos por porcentaje">
             <h2 class="text-base font-semibold text-ink mb-1">Actualizar por porcentaje</h2>
@@ -308,24 +308,28 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
       </Teleport>
 
       <!-- Modal historial -->
-      <Teleport to="body">
+      <Teleport defer to="ion-app">
         <div v-if="modalHist && historial" class="ds-modal-backdrop" @click.self="modalHist = false">
-          <div class="ds-modal max-w-xl" role="dialog" aria-modal="true" aria-label="Historial de sueldo">
+          <div class="ds-modal ds-modal-lg" role="dialog" aria-modal="true" aria-label="Historial de sueldo">
             <h2 class="text-base font-semibold text-ink mb-1">Historial · {{ historial.empleado.nombre }}</h2>
             <p class="text-xs text-ink-soft mb-3 tnum">Vigente: {{ fmtMoneda(historial.vigente) }}</p>
-            <div class="border border-line rounded-lg overflow-x-auto max-h-80 overflow-y-auto">
+            <div class="border border-line rounded-lg overflow-x-auto max-h-[55vh] overflow-y-auto">
               <table class="ds-table">
                 <thead><tr><th>Fecha</th><th>Tipo</th><th>Anterior</th><th>Nuevo</th><th>Variación</th><th>Usuario</th></tr></thead>
                 <tbody>
                   <tr v-for="h in historial.historial" :key="h.id">
-                    <td class="tnum text-ink-soft">{{ fmtFecha(h.fecha) }}</td>
-                    <td><span class="ds-badge-neutral">{{ h.tipo }}</span></td>
-                    <td class="tnum text-ink-soft">{{ fmtMoneda(h.anterior) }}</td>
-                    <td class="tnum font-medium text-ink">{{ fmtMoneda(h.nuevo) }}</td>
-                    <td class="tnum" :class="h.variacion === null ? 'text-ink-faint' : h.variacion < 0 ? 'text-danger' : 'text-ok'">
+                    <td class="tnum text-ink-soft whitespace-nowrap">{{ fmtFecha(h.fecha) }}</td>
+                    <td>
+                      <!-- El tipo puede ser largo ("Ajuste +5.7% (base 05/2026)"): sin `!h-auto`
+                           el texto se parte dentro del badge de alto fijo y se monta sobre la fila. -->
+                      <span class="ds-badge-neutral !h-auto min-h-[22px] py-0.5 whitespace-nowrap">{{ h.tipo }}</span>
+                    </td>
+                    <td class="tnum text-ink-soft whitespace-nowrap">{{ fmtMoneda(h.anterior) }}</td>
+                    <td class="tnum font-medium text-ink whitespace-nowrap">{{ fmtMoneda(h.nuevo) }}</td>
+                    <td class="tnum whitespace-nowrap" :class="h.variacion === null ? 'text-ink-faint' : h.variacion < 0 ? 'text-danger' : 'text-ok'">
                       {{ h.variacion === null ? '—' : `${h.variacion >= 0 ? '+' : ''}${fmtPct(h.variacion)}%` }}
                     </td>
-                    <td class="text-xs text-ink-soft">{{ h.usuario ?? '—' }}</td>
+                    <td class="text-xs text-ink-soft whitespace-nowrap">{{ h.usuario ?? '—' }}</td>
                   </tr>
                   <tr v-if="!historial.historial.length">
                     <td colspan="6" class="text-center text-ink-faint py-6">Sin registros todavía.</td>

@@ -52,6 +52,8 @@ export async function hardDeleteByPath(cleanupPath: string): Promise<void> {
       'tareas': 'tareas',
       'empleados': 'empleados',
       'cuentas': 'cuentas_pago',
+      'doc-espacios': 'doc_espacios',
+      'documentos': 'documentos',
     };
     if (catalogTables[parts[0]] && parts[1] && parts[1] !== 'roles') {
       // Proyectos: primero los hijos (cobranza_eventos + cobranzas tienen FK al proyecto).
@@ -76,6 +78,19 @@ export async function hardDeleteByPath(cleanupPath: string): Promise<void> {
         for (const tabla of ['empleado_areas', 'vacacion_asignaciones', 'vacacion_tomas', 'empleado_archivos', 'sueldo_actualizaciones', 'sueldo_pagos']) {
           await conn.query(`DELETE FROM ${tabla} WHERE empleadoId = ?`, [Number(parts[1])]);
         }
+      }
+      // Espacios de documentación: accesos, documentos (con versiones/archivos) y listas.
+      if (parts[0] === 'doc-espacios') {
+        const eid = Number(parts[1]);
+        await conn.query('DELETE dv FROM documento_versiones dv JOIN documentos d ON d.id = dv.documentoId WHERE d.docEspacioId = ?', [eid]);
+        await conn.query('DELETE da FROM documento_archivos da JOIN documentos d ON d.id = da.documentoId WHERE d.docEspacioId = ?', [eid]);
+        await conn.query('DELETE FROM documentos WHERE docEspacioId = ?', [eid]);
+        await conn.query('DELETE FROM doc_listas WHERE docEspacioId = ?', [eid]);
+        await conn.query('DELETE FROM usuario_doc_espacios WHERE docEspacioId = ?', [eid]);
+      }
+      if (parts[0] === 'documentos') {
+        await conn.query('DELETE FROM documento_versiones WHERE documentoId = ?', [Number(parts[1])]);
+        await conn.query('DELETE FROM documento_archivos WHERE documentoId = ?', [Number(parts[1])]);
       }
       if (parts[0] === 'cuentas') {
         await conn.query('DELETE FROM sueldo_pagos WHERE cuentaId = ?', [Number(parts[1])]);

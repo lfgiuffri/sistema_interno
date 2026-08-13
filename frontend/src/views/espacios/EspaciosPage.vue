@@ -245,7 +245,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void espaciosStore.fetchAll() })
       </div>
 
       <!-- Modal alta/edición -->
-      <Teleport to="body">
+      <Teleport defer to="ion-app">
         <div v-if="modalForm" class="ds-modal-backdrop" @click.self="modalForm = false">
           <div class="ds-modal max-w-sm" role="dialog" aria-modal="true" :aria-label="editando ? 'Editar espacio' : 'Nuevo espacio'">
             <h2 class="text-base font-semibold text-ink mb-3">{{ editando ? 'Editar espacio' : 'Nuevo espacio de trabajo' }}</h2>
@@ -272,7 +272,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void espaciosStore.fetchAll() })
       </Teleport>
 
       <!-- Modal matriz (eje espacio) -->
-      <Teleport to="body">
+      <Teleport defer to="ion-app">
         <div v-if="modalMatriz" class="ds-modal-backdrop" @click.self="modalMatriz = false">
           <div class="ds-modal max-w-md" role="dialog" aria-modal="true" aria-label="Accesos del espacio">
             <h2 class="text-base font-semibold text-ink mb-1">Accesos · {{ matrizDe?.nombre }}</h2>

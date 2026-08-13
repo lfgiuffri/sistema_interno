@@ -1,15 +1,21 @@
 <script setup lang="ts">
 /**
- * Modal dual de tarea (regla del legado §1.3.e):
- *  - Alta/edición RÁPIDA: nombre + asignado + vencimiento + prioridad. La edición rápida
- *    NO manda descripción ni estado (PATCH /rapida — no destruye).
- *  - Edición COMPLETA: todo + editor TipTap + fechas + historial + adjuntos + tiempo.
- * La tarea no se mueve de lista desde acá (acción "mover" aparte).
+ * Modal de tarea — MISMA pantalla para alta y edición (antes el alta era un formulario
+ * recortado y había que "expandir" para ver descripción, adjuntos y comentarios).
+ *
+ * Layout de dos columnas para que no quede un modal larguísimo:
+ *  - Izquierda: los campos de la tarea (nombre, asignado, fechas, prioridad, estado,
+ *    descripción y adjuntos).
+ *  - Derecha: la actividad (comentarios e historial de estados), que es lo que más crece.
+ *
+ * Adjuntar durante el ALTA: el archivo se sube antes de que exista la tarea (queda huérfano
+ * en el índice) y el POST lo liga con `archivoIds`. Si se cancela el alta, el GC diario
+ * borra los huérfanos > 48 h.
  */
 import { ref, computed, watch, nextTick } from 'vue'
 import { IonIcon, alertController } from '@ionic/vue'
 import {
-  timeOutline, attachOutline, downloadOutline, trashOutline, expandOutline,
+  timeOutline, attachOutline, downloadOutline, trashOutline,
   chatbubbleOutline, sendOutline,
 } from 'ionicons/icons'
 import { useTareasStore, ESTADOS_TAREA, PRIORIDADES, type TareaDetalle } from '@/stores/tareas'
@@ -25,7 +31,7 @@ const props = defineProps<{
   listaId: number
   /** null = alta; id = edición (carga el detalle). */
   tareaId: number | null
-  asignables: Array<{ id: number; nombre: string }>
+  asignables: Array<{ id: number; nombre: string; username: string }>
 }>()
 const emit = defineEmits<{ (e: 'close'): void; (e: 'saved'): void }>()
 
@@ -33,7 +39,9 @@ const tareasStore = useTareasStore()
 const meStore = useMeStore()
 const toast = useToast()
 
-const modoCompleto = ref(false)
+/** Adjunto ya subido (de la tarea, o pendiente de ligar si es un alta). */
+interface AdjuntoVista { id: number; nombreOriginal: string; size: number; url: string }
+
 const detalle = ref<TareaDetalle | null>(null)
 const cargando = ref(false)
 const guardando = ref(false)
@@ -41,6 +49,8 @@ const formError = ref('')
 const subiendoAdjunto = ref(false)
 const comentarioNuevo = ref('')
 const comentando = ref(false)
+/** Adjuntos subidos en un ALTA: viven acá hasta que el POST los liga. */
+const adjuntosPendientes = ref<AdjuntoVista[]>([])
 
 const form = ref({
   nombre: '',
@@ -56,6 +66,11 @@ const esEdicion = computed(() => props.tareaId !== null)
 const abierto = computed(() => props.open)
 useEscapeToClose(abierto, () => emit('close'))
 
+/** Adjuntos a mostrar: los de la tarea (edición) o los pendientes (alta). */
+const adjuntos = computed<AdjuntoVista[]>(() =>
+  esEdicion.value ? (detalle.value?.archivos ?? []) : adjuntosPendientes.value,
+)
+
 const puedeAsignarOtros = computed(() => meStore.can('tareas:asignar'))
 // Sin tareas:asignar solo puede asignarse a sí mismo (o dejar sin asignar).
 const opcionesAsignado = computed(() => {
@@ -67,13 +82,15 @@ const opcionesAsignado = computed(() => {
   return [...new Set([yo, actual].filter(Boolean))] as Array<{ id: number; nombre: string }>
 })
 
+const descripcionRef = ref<HTMLElement | null>(null)
+
 watch(() => props.open, async (v) => {
   if (!v) return
   formError.value = ''
   detalle.value = null
-  modoCompleto.value = false
+  adjuntosPendientes.value = []
   if (props.tareaId === null) {
-    // Alta rápida preasignada a mí, prioridad verde (regla del legado).
+    // Alta preasignada a mí, prioridad verde (regla del legado).
     form.value = {
       nombre: '', asignadoA: meStore.user?.id ?? 0, fechaVencimiento: '',
       prioridad: 'verde', estado: 'abierta', fechaInicio: '', descripcion: '',
@@ -94,41 +111,34 @@ watch(() => props.open, async (v) => {
     fechaInicio: d.fechaInicio ?? '',
     descripcion: d.descripcion ?? '',
   }
+  await nextTick()
+  await hidratarImagenes(descripcionRef.value)
 })
-
-// Al expandir a modo completo, hidratar las imágenes protegidas del historial visual no
-// hace falta (el editor las resuelve solo); el contenedor de adjuntos es reactivo.
-const descripcionRef = ref<HTMLElement | null>(null)
-watch(modoCompleto, async () => { await nextTick(); await hidratarImagenes(descripcionRef.value) })
 
 async function guardar(): Promise<void> {
   if (!form.value.nombre.trim() || guardando.value) return
   guardando.value = true
   formError.value = ''
-  let r
+
   const base = {
     nombre: form.value.nombre.trim(),
     asignadoA: form.value.asignadoA || 0,
     fechaVencimiento: form.value.fechaVencimiento || '',
     prioridad: form.value.prioridad,
+    estado: form.value.estado,
+    fechaInicio: form.value.fechaInicio || '',
+    descripcion: form.value.descripcion,
   }
-  if (!esEdicion.value) {
-    r = await tareasStore.createTarea({
+
+  const r = esEdicion.value
+    ? await tareasStore.updateTarea(props.tareaId as number, base)
+    : await tareasStore.createTarea({
       listaId: props.listaId,
       ...base,
-      ...(modoCompleto.value ? { estado: form.value.estado, fechaInicio: form.value.fechaInicio || '', descripcion: form.value.descripcion } : {}),
+      // Adjuntos subidos durante el alta: el backend los liga a la tarea nueva.
+      ...(adjuntosPendientes.value.length ? { archivoIds: adjuntosPendientes.value.map(a => a.id) } : {}),
     })
-  } else if (modoCompleto.value) {
-    r = await tareasStore.updateTarea(props.tareaId as number, {
-      ...base,
-      estado: form.value.estado,
-      fechaInicio: form.value.fechaInicio || '',
-      descripcion: form.value.descripcion,
-    })
-  } else {
-    // Rápida: NUNCA manda descripción/estado.
-    r = await tareasStore.updateRapida(props.tareaId as number, base)
-  }
+
   guardando.value = false
   if (!r.ok) { formError.value = r.message; return }
   toast.success(esEdicion.value ? 'Tarea actualizada' : 'Tarea creada')
@@ -140,13 +150,81 @@ async function subirAdjunto(ev: Event): Promise<void> {
   const input = ev.target as HTMLInputElement
   const file = input.files?.[0]
   input.value = ''
-  if (!file || !props.tareaId) return
+  if (!file) return
   subiendoAdjunto.value = true
-  const r = await tareasStore.subirArchivo(file, props.tareaId)
+  // En el alta sube sin tareaId (queda huérfano hasta que se guarde la tarea).
+  const r = await tareasStore.subirArchivo(file, props.tareaId ?? undefined)
   subiendoAdjunto.value = false
   if (!r.ok) { toast.error(r.message); return }
+
   toast.success('Adjunto subido')
-  detalle.value = await tareasStore.fetchTarea(props.tareaId)
+  if (esEdicion.value) {
+    detalle.value = await tareasStore.fetchTarea(props.tareaId as number)
+  } else if (r.data) {
+    adjuntosPendientes.value.push(r.data as unknown as AdjuntoVista)
+  }
+}
+
+// ── Autocompletado de menciones (@) en el comentario ──
+const comentarioRef = ref<HTMLInputElement | null>(null)
+const mencionAbierta = ref(false)
+const mencionQuery = ref('')
+const mencionIndex = ref(0)
+
+/** Candidatos a mencionar: los asignables filtrados por nombre o username. */
+const candidatosMencion = computed(() => {
+  const q = mencionQuery.value.toLowerCase()
+  const lista = props.asignables.filter(a =>
+    !q || a.username?.toLowerCase().includes(q) || a.nombre.toLowerCase().includes(q),
+  )
+  return lista.slice(0, 6)
+})
+
+/**
+ * Detecta si el cursor está escribiendo una mención (`@algo` pegado al arroba) y abre
+ * la lista. El token se busca hacia atrás desde el cursor, así funciona también al
+ * corregir en el medio del texto.
+ */
+function onComentarioInput(): void {
+  const el = comentarioRef.value
+  if (!el) return
+  const hasta = comentarioNuevo.value.slice(0, el.selectionStart ?? comentarioNuevo.value.length)
+  const m = hasta.match(/(?:^|\s)@([a-zA-Z0-9._-]*)$/)
+  if (!m) { mencionAbierta.value = false; return }
+  mencionQuery.value = m[1]
+  mencionIndex.value = 0
+  mencionAbierta.value = true
+}
+
+/**
+ * Reemplaza el token que se está escribiendo por `@username ` (el username exacto es lo
+ * que el backend busca para notificar: escribir el nombre visible no menciona a nadie).
+ * @param u - Usuario elegido.
+ */
+function elegirMencion(u: { username: string }): void {
+  const el = comentarioRef.value
+  const cursor = el?.selectionStart ?? comentarioNuevo.value.length
+  const antes = comentarioNuevo.value.slice(0, cursor).replace(/@([a-zA-Z0-9._-]*)$/, `@${u.username} `)
+  const despues = comentarioNuevo.value.slice(cursor)
+  comentarioNuevo.value = antes + despues
+  mencionAbierta.value = false
+  void nextTick(() => {
+    el?.focus()
+    const pos = antes.length
+    el?.setSelectionRange(pos, pos)
+  })
+}
+
+/** Teclado sobre el input: con la lista abierta, las flechas y Enter la manejan a ella. */
+function onComentarioKeydown(e: KeyboardEvent): void {
+  if (!mencionAbierta.value || !candidatosMencion.value.length) {
+    if (e.key === 'Enter') { e.preventDefault(); void comentar() }
+    return
+  }
+  if (e.key === 'ArrowDown') { e.preventDefault(); mencionIndex.value = (mencionIndex.value + 1) % candidatosMencion.value.length }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); mencionIndex.value = (mencionIndex.value - 1 + candidatosMencion.value.length) % candidatosMencion.value.length }
+  else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); elegirMencion(candidatosMencion.value[mencionIndex.value]) }
+  else if (e.key === 'Escape') { e.preventDefault(); mencionAbierta.value = false }
 }
 
 async function comentar(): Promise<void> {
@@ -156,6 +234,7 @@ async function comentar(): Promise<void> {
   comentando.value = false
   if (!r.ok) { toast.error(r.message); return }
   comentarioNuevo.value = ''
+  mencionAbierta.value = false
   detalle.value = await tareasStore.fetchTarea(props.tareaId)
 }
 
@@ -176,7 +255,8 @@ async function borrarAdjunto(id: number): Promise<void> {
         handler: async () => {
           const r = await tareasStore.removeArchivo(id)
           if (!r.ok) { toast.error(r.message); return }
-          if (props.tareaId) detalle.value = await tareasStore.fetchTarea(props.tareaId)
+          if (esEdicion.value) detalle.value = await tareasStore.fetchTarea(props.tareaId as number)
+          else adjuntosPendientes.value = adjuntosPendientes.value.filter(a => a.id !== id)
         },
       },
     ],
@@ -186,66 +266,70 @@ async function borrarAdjunto(id: number): Promise<void> {
 </script>
 
 <template>
-  <Teleport to="body">
+  <Teleport defer to="ion-app">
     <div v-if="open" class="ds-modal-backdrop" @click.self="emit('close')">
-      <div class="ds-modal" :class="modoCompleto ? 'max-w-2xl' : 'max-w-md'" role="dialog" aria-modal="true" :aria-label="esEdicion ? 'Editar tarea' : 'Nueva tarea'">
-        <header class="flex items-start justify-between gap-3 mb-3">
-          <div>
-            <h2 class="text-base font-semibold text-ink">{{ esEdicion ? 'Editar tarea' : 'Nueva tarea' }}</h2>
-            <p v-if="detalle?.lista" class="text-2xs text-ink-faint mt-0.5">Lista: {{ detalle.lista.nombre }} (para moverla usá la acción «Mover»)</p>
-          </div>
-          <button v-if="!modoCompleto" type="button" class="ds-btn-ghost h-7 px-2 text-xs" @click="modoCompleto = true">
-            <IonIcon :icon="expandOutline" class="text-[13px]" />
-            Modo completo
-          </button>
+      <div class="ds-modal ds-modal-xl" role="dialog" aria-modal="true" :aria-label="esEdicion ? 'Editar tarea' : 'Nueva tarea'">
+        <header class="mb-3">
+          <h2 class="text-base font-semibold text-ink">{{ esEdicion ? 'Editar tarea' : 'Nueva tarea' }}</h2>
+          <p v-if="detalle?.lista" class="text-2xs text-ink-faint mt-0.5">
+            Lista: {{ detalle.lista.nombre }} (para moverla usá la acción «Mover»)
+          </p>
         </header>
 
-        <div v-if="cargando" class="space-y-2"><div v-for="i in 4" :key="i" class="ds-skeleton h-9"></div></div>
+        <div v-if="cargando" class="space-y-2"><div v-for="i in 5" :key="i" class="ds-skeleton h-9"></div></div>
 
-        <form v-else class="space-y-3" @submit.prevent="guardar">
-          <div>
-            <label class="ds-label" for="tm-nombre">Nombre</label>
-            <input id="tm-nombre" v-model="form.nombre" class="ds-input" type="text" required maxlength="200" />
-          </div>
+        <form v-else @submit.prevent="guardar">
+          <div class="grid lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] gap-x-5 gap-y-3">
 
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label class="ds-label" for="tm-asignado">Asignada a</label>
-              <select id="tm-asignado" v-model.number="form.asignadoA" class="ds-input">
-                <option :value="0">— Sin asignar —</option>
-                <option v-for="a in opcionesAsignado" :key="a.id" :value="a.id">
-                  {{ a.nombre }}{{ a.id === meStore.user?.id ? ' (vos)' : '' }}
-                </option>
-              </select>
-              <p v-if="!puedeAsignarOtros" class="ds-hint">Sin permiso para asignar a otros.</p>
-            </div>
-            <div>
-              <label class="ds-label" for="tm-venc">Vencimiento</label>
-              <input id="tm-venc" v-model="form.fechaVencimiento" class="ds-input" type="date" />
-            </div>
-          </div>
+            <!-- ── Columna izquierda: la tarea ── -->
+            <div class="space-y-3 min-w-0">
+              <div>
+                <label class="ds-label" for="tm-nombre">Nombre</label>
+                <input id="tm-nombre" v-model="form.nombre" class="ds-input" type="text" required maxlength="200" />
+              </div>
 
-          <div>
-            <span class="ds-label">Prioridad</span>
-            <div class="flex gap-1.5" role="radiogroup" aria-label="Prioridad">
-              <button
-                v-for="(meta, key) in PRIORIDADES"
-                :key="key"
-                type="button"
-                class="pill"
-                role="radio"
-                :aria-checked="form.prioridad === key"
-                :class="{ 'pill-activa': form.prioridad === key }"
-                :style="{ '--c': meta.color }"
-                @click="form.prioridad = key as string"
-              >
-                {{ meta.label }}
-              </button>
-            </div>
-          </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="ds-label" for="tm-asignado">Asignada a</label>
+                  <select id="tm-asignado" v-model.number="form.asignadoA" class="ds-input">
+                    <option :value="0">— Sin asignar —</option>
+                    <option v-for="a in opcionesAsignado" :key="a.id" :value="a.id">
+                      {{ a.nombre }}{{ a.id === meStore.user?.id ? ' (vos)' : '' }}
+                    </option>
+                  </select>
+                  <p v-if="!puedeAsignarOtros" class="ds-hint">Sin permiso para asignar a otros.</p>
+                </div>
+                <div>
+                  <label class="ds-label" for="tm-venc">Vencimiento</label>
+                  <input id="tm-venc" v-model="form.fechaVencimiento" class="ds-input" type="date" />
+                </div>
+              </div>
 
-          <template v-if="modoCompleto">
-            <div class="grid grid-cols-2 gap-3">
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <span class="ds-label">Prioridad</span>
+                  <div class="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Prioridad">
+                    <button
+                      v-for="(meta, key) in PRIORIDADES"
+                      :key="key"
+                      type="button"
+                      class="pill"
+                      role="radio"
+                      :aria-checked="form.prioridad === key"
+                      :class="{ 'pill-activa': form.prioridad === key }"
+                      :style="{ '--c': meta.color }"
+                      @click="form.prioridad = key as string"
+                    >
+                      {{ meta.label }}
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label class="ds-label" for="tm-inicio">Fecha de inicio</label>
+                  <input id="tm-inicio" v-model="form.fechaInicio" class="ds-input" type="date" />
+                </div>
+              </div>
+
               <div>
                 <span class="ds-label">Estado</span>
                 <div class="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Estado">
@@ -264,112 +348,149 @@ async function borrarAdjunto(id: number): Promise<void> {
                   </button>
                 </div>
               </div>
+
+              <div ref="descripcionRef">
+                <span class="ds-label">Descripción</span>
+                <DescripcionEditor v-model="form.descripcion" />
+              </div>
+
+              <!-- Adjuntos: también en el alta (se ligan al guardar) -->
               <div>
-                <label class="ds-label" for="tm-inicio">Fecha de inicio</label>
-                <input id="tm-inicio" v-model="form.fechaInicio" class="ds-input" type="date" />
-              </div>
-            </div>
-
-            <div>
-              <span class="ds-label">Descripción</span>
-              <DescripcionEditor v-model="form.descripcion" />
-            </div>
-
-            <!-- Adjuntos (solo en edición: la tarea tiene que existir) -->
-            <div v-if="esEdicion && detalle">
-              <div class="flex items-center justify-between">
-                <span class="ds-label !mb-0">Adjuntos</span>
-                <label class="ds-btn-ghost h-7 px-2 text-xs cursor-pointer">
-                  <IonIcon :icon="attachOutline" class="text-[13px]" />
-                  {{ subiendoAdjunto ? 'Subiendo…' : 'Adjuntar archivo' }}
-                  <input type="file" class="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.zip" @change="subirAdjunto" />
-                </label>
-              </div>
-              <div v-if="detalle.archivos.length" class="mt-1 divide-y divide-line-soft border border-line rounded-lg">
-                <div v-for="a in detalle.archivos" :key="a.id" class="flex items-center gap-2 px-3 h-9">
-                  <IonIcon :icon="attachOutline" class="text-[13px] text-ink-faint shrink-0" />
-                  <span class="flex-1 text-xs text-ink truncate">{{ a.nombreOriginal }}</span>
-                  <span class="text-2xs text-ink-faint tnum shrink-0">{{ (a.size / 1024).toFixed(0) }} KB</span>
-                  <button type="button" class="row-action" title="Descargar" aria-label="Descargar" @click="descargarArchivo(a.url, a.nombreOriginal)">
-                    <IonIcon :icon="downloadOutline" class="text-[13px]" />
-                  </button>
-                  <button type="button" class="row-action hover:!text-danger" title="Eliminar" aria-label="Eliminar adjunto" @click="borrarAdjunto(a.id)">
-                    <IonIcon :icon="trashOutline" class="text-[13px]" />
-                  </button>
+                <div class="flex items-center justify-between">
+                  <span class="ds-label !mb-0">Adjuntos</span>
+                  <label class="ds-btn-ghost h-7 px-2 text-xs cursor-pointer">
+                    <IonIcon :icon="attachOutline" class="text-[13px]" />
+                    {{ subiendoAdjunto ? 'Subiendo…' : 'Adjuntar archivo' }}
+                    <input type="file" class="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.zip" @change="subirAdjunto" />
+                  </label>
                 </div>
-              </div>
-              <p v-else class="text-2xs text-ink-faint mt-1">Sin adjuntos. Acepta PDF, Office, CSV, TXT y ZIP (máx. 15 MB).</p>
-            </div>
-
-            <!-- Historial + tiempo (solo edición) -->
-            <div v-if="esEdicion && detalle && detalle.historial.length">
-              <div class="flex items-center justify-between">
-                <span class="ds-label !mb-0">Historial de estados</span>
-                <span class="text-2xs text-ink-faint tnum flex items-center gap-1">
-                  <IonIcon :icon="timeOutline" class="text-[12px]" />
-                  Trabajo: {{ detalle.tiempoTrabajado ? duracion(detalle.tiempoTrabajado) : 'sin datos' }}
-                </span>
-              </div>
-              <div class="mt-1 border border-line rounded-lg divide-y divide-line-soft max-h-40 overflow-y-auto">
-                <div v-for="h in detalle.historial" :key="h.id" class="flex items-center gap-2 px-3 h-8 text-xs">
-                  <span class="w-2 h-2 rounded-full shrink-0" :style="{ background: ESTADOS_TAREA[h.estadoNuevo]?.color }"></span>
-                  <span class="text-ink">
-                    {{ h.estadoAnterior ? `${ESTADOS_TAREA[h.estadoAnterior]?.label ?? h.estadoAnterior} → ` : 'Creada como ' }}{{ ESTADOS_TAREA[h.estadoNuevo]?.label ?? h.estadoNuevo }}
-                  </span>
-                  <span class="flex-1"></span>
-                  <span class="text-ink-faint">{{ h.usuario ?? 'usuario dado de baja' }}</span>
-                  <span class="text-ink-faint tnum">{{ fechaHora(h.fecha) }}</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Comentarios (mejora §10.9: hilo simple con menciones @username) -->
-            <div v-if="esEdicion && detalle">
-              <span class="ds-label flex items-center gap-1.5">
-                <IonIcon :icon="chatbubbleOutline" class="text-[13px]" />
-                Comentarios
-              </span>
-              <div v-if="detalle.comentarios.length" class="border border-line rounded-lg divide-y divide-line-soft max-h-48 overflow-y-auto mb-2">
-                <div v-for="c in detalle.comentarios" :key="c.id" class="px-3 py-2 group">
-                  <div class="flex items-center gap-2">
-                    <span class="text-xs font-medium text-ink">{{ c.usuario }}</span>
-                    <span class="text-2xs text-ink-faint tnum">{{ fechaHora(c.fecha) }}</span>
-                    <span class="flex-1"></span>
-                    <button
-                      v-if="c.userId === meStore.user?.id"
-                      type="button" class="row-action opacity-0 group-hover:opacity-100 hover:!text-danger"
-                      title="Eliminar comentario" aria-label="Eliminar comentario"
-                      @click="borrarComentario(c.id)"
-                    >
-                      <IonIcon :icon="trashOutline" class="text-[12px]" />
+                <div v-if="adjuntos.length" class="mt-1 divide-y divide-line-soft border border-line rounded-lg">
+                  <div v-for="a in adjuntos" :key="a.id" class="flex items-center gap-2 px-3 h-9">
+                    <IonIcon :icon="attachOutline" class="text-[13px] text-ink-faint shrink-0" />
+                    <span class="flex-1 text-xs text-ink truncate">{{ a.nombreOriginal }}</span>
+                    <span class="text-2xs text-ink-faint tnum shrink-0">{{ (a.size / 1024).toFixed(0) }} KB</span>
+                    <button type="button" class="row-action" title="Descargar" aria-label="Descargar" @click="descargarArchivo(a.url, a.nombreOriginal)">
+                      <IonIcon :icon="downloadOutline" class="text-[13px]" />
+                    </button>
+                    <button type="button" class="row-action hover:!text-danger" title="Eliminar" aria-label="Eliminar adjunto" @click="borrarAdjunto(a.id)">
+                      <IonIcon :icon="trashOutline" class="text-[13px]" />
                     </button>
                   </div>
-                  <p class="text-xs text-ink-soft whitespace-pre-wrap mt-0.5">{{ c.texto }}</p>
                 </div>
-              </div>
-              <div class="flex gap-2">
-                <input
-                  v-model="comentarioNuevo"
-                  class="ds-input h-8 flex-1 text-xs"
-                  type="text"
-                  placeholder="Comentar… (@usuario para mencionar)"
-                  maxlength="2000"
-                  @keyup.enter="comentar"
-                />
-                <button type="button" class="ds-btn-secondary h-8 px-2.5" :disabled="!comentarioNuevo.trim() || comentando" aria-label="Enviar comentario" @click="comentar">
-                  <IonIcon :icon="sendOutline" class="text-[13px]" />
-                </button>
+                <p v-else class="text-2xs text-ink-faint mt-1">Sin adjuntos. Acepta PDF, Office, CSV, TXT y ZIP (máx. 15 MB).</p>
+                <p v-if="!esEdicion && adjuntos.length" class="text-2xs text-ink-faint mt-1">
+                  Se van a asociar a la tarea cuando la crees.
+                </p>
               </div>
             </div>
 
-            <p v-if="detalle" class="text-2xs text-ink-faint">
-              Creada por {{ detalle.creador ? `${detalle.creador.name} ${detalle.creador.lastName}` : '—' }} el {{ fmtFecha(detalle.createdAt) }}
-            </p>
-          </template>
+            <!-- ── Columna derecha: actividad ── -->
+            <div class="space-y-3 min-w-0 lg:border-l lg:border-line-soft lg:pl-5">
+              <!-- Comentarios -->
+              <div>
+                <span class="ds-label flex items-center gap-1.5">
+                  <IonIcon :icon="chatbubbleOutline" class="text-[13px]" />
+                  Comentarios
+                </span>
 
-          <p v-if="formError" class="ds-error" role="alert">{{ formError }}</p>
+                <template v-if="esEdicion && detalle">
+                  <div v-if="detalle.comentarios.length" class="border border-line rounded-lg divide-y divide-line-soft max-h-[22rem] overflow-y-auto mb-2">
+                    <div v-for="c in detalle.comentarios" :key="c.id" class="px-3 py-2 group">
+                      <div class="flex items-center gap-2">
+                        <span class="text-xs font-medium text-ink">{{ c.usuario }}</span>
+                        <span class="text-2xs text-ink-faint tnum">{{ fechaHora(c.fecha) }}</span>
+                        <span class="flex-1"></span>
+                        <button
+                          v-if="c.userId === meStore.user?.id"
+                          type="button" class="row-action opacity-0 group-hover:opacity-100 hover:!text-danger"
+                          title="Eliminar comentario" aria-label="Eliminar comentario"
+                          @click="borrarComentario(c.id)"
+                        >
+                          <IonIcon :icon="trashOutline" class="text-[12px]" />
+                        </button>
+                      </div>
+                      <p class="text-xs text-ink-soft whitespace-pre-wrap mt-0.5">{{ c.texto }}</p>
+                    </div>
+                  </div>
+                  <p v-else class="text-2xs text-ink-faint mb-2">Todavía no hay comentarios.</p>
 
-          <footer class="flex justify-end gap-2 pt-1">
+                  <div class="flex gap-2 relative">
+                    <!-- Desplegable de menciones: se abre al tipear «@». -->
+                    <div
+                      v-if="mencionAbierta && candidatosMencion.length"
+                      class="absolute bottom-full left-0 mb-1 w-64 z-10 border border-line rounded-lg bg-surface shadow-lg overflow-hidden"
+                      role="listbox"
+                      aria-label="Mencionar a"
+                    >
+                      <button
+                        v-for="(u, i) in candidatosMencion"
+                        :key="u.id"
+                        type="button"
+                        class="w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 transition-colors"
+                        :class="i === mencionIndex ? 'bg-accent-soft text-accent-ink' : 'hover:bg-surface-2'"
+                        role="option"
+                        :aria-selected="i === mencionIndex"
+                        @mousedown.prevent="elegirMencion(u)"
+                        @mouseenter="mencionIndex = i"
+                      >
+                        <span class="font-medium truncate">{{ u.nombre }}</span>
+                        <span class="text-ink-faint">@{{ u.username }}</span>
+                      </button>
+                    </div>
+
+                    <input
+                      ref="comentarioRef"
+                      v-model="comentarioNuevo"
+                      class="ds-input h-8 flex-1 text-xs"
+                      type="text"
+                      placeholder="Comentar… (escribí @ para mencionar)"
+                      maxlength="2000"
+                      autocomplete="off"
+                      @input="onComentarioInput"
+                      @keydown="onComentarioKeydown"
+                      @blur="mencionAbierta = false"
+                    />
+                    <button type="button" class="ds-btn-secondary h-8 px-2.5" :disabled="!comentarioNuevo.trim() || comentando" aria-label="Enviar comentario" @click="comentar">
+                      <IonIcon :icon="sendOutline" class="text-[13px]" />
+                    </button>
+                  </div>
+                </template>
+
+                <p v-else class="text-2xs text-ink-faint">
+                  Vas a poder comentar (y mencionar con @usuario) apenas crees la tarea.
+                </p>
+              </div>
+
+              <!-- Historial de estados -->
+              <div v-if="esEdicion && detalle && detalle.historial.length">
+                <div class="flex items-center justify-between">
+                  <span class="ds-label !mb-0">Historial de estados</span>
+                  <span class="text-2xs text-ink-faint tnum flex items-center gap-1">
+                    <IonIcon :icon="timeOutline" class="text-[12px]" />
+                    {{ detalle.tiempoTrabajado ? duracion(detalle.tiempoTrabajado) : 'sin datos' }}
+                  </span>
+                </div>
+                <div class="mt-1 border border-line rounded-lg divide-y divide-line-soft max-h-52 overflow-y-auto">
+                  <div v-for="h in detalle.historial" :key="h.id" class="flex items-center gap-2 px-3 h-8 text-xs">
+                    <span class="w-2 h-2 rounded-full shrink-0" :style="{ background: ESTADOS_TAREA[h.estadoNuevo]?.color }"></span>
+                    <span class="text-ink truncate">
+                      {{ h.estadoAnterior ? `${ESTADOS_TAREA[h.estadoAnterior]?.label ?? h.estadoAnterior} → ` : 'Creada como ' }}{{ ESTADOS_TAREA[h.estadoNuevo]?.label ?? h.estadoNuevo }}
+                    </span>
+                    <span class="flex-1"></span>
+                    <span class="text-ink-faint tnum shrink-0">{{ fechaHora(h.fecha) }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <p v-if="detalle" class="text-2xs text-ink-faint">
+                Creada por {{ detalle.creador ? `${detalle.creador.name} ${detalle.creador.lastName}` : '—' }} el {{ fmtFecha(detalle.createdAt) }}
+              </p>
+            </div>
+          </div>
+
+          <p v-if="formError" class="ds-error mt-3" role="alert">{{ formError }}</p>
+
+          <footer class="flex justify-end gap-2 pt-4 mt-3 border-t border-line-soft">
             <button type="button" class="ds-btn-secondary" @click="emit('close')">Cancelar</button>
             <button type="submit" class="ds-btn-primary" :disabled="!form.nombre.trim() || guardando">
               {{ guardando ? 'Guardando…' : (esEdicion ? 'Guardar cambios' : 'Crear tarea') }}

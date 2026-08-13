@@ -13,7 +13,7 @@ export default {
     description: 'Panel con alertas de abonos y estadísticas de facturación.',
     basePath: '/dashboard',
     models: [],
-    capabilities: ['dashboard:read'],
+    capabilities: ['dashboard:read', 'estadisticas:read'],
     dependsOn: ['abonos'],
     router
 };

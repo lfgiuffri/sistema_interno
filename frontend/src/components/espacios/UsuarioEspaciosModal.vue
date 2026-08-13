@@ -50,7 +50,7 @@ async function guardar(): Promise<void> {
 </script>
 
 <template>
-  <Teleport to="body">
+  <Teleport defer to="ion-app">
     <div v-if="open" class="ds-modal-backdrop" @click.self="emit('close')">
       <div class="ds-modal max-w-md" role="dialog" aria-modal="true" aria-label="Espacios del usuario">
         <h2 class="text-base font-semibold text-ink mb-1">Espacios · {{ userNombre }}</h2>

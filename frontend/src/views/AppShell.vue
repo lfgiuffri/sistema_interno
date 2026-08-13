@@ -11,28 +11,14 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   IonPage, IonSplitPane, IonMenu, IonContent, IonRouterOutlet, menuController,
 } from '@ionic/vue'
-import {
-  gridOutline, peopleOutline, shieldCheckmarkOutline,
-  settingsOutline, logOutOutline, moonOutline, sunnyOutline,
-  briefcaseOutline, layersOutline, gitBranchOutline, receiptOutline,
-  walletOutline, documentTextOutline, folderOpenOutline, calendarOutline,
-  checkboxOutline, albumsOutline, personOutline, cashOutline, trendingUpOutline,
-  calendarNumberOutline, cardOutline,
-} from 'ionicons/icons'
+import { logOutOutline, moonOutline, sunnyOutline } from 'ionicons/icons'
+import { gruposVisibles, type NavGroup } from '@/config/nav'
 import { IonIcon } from '@ionic/vue'
 import { useMeStore } from '@/stores/me'
 import { useAuthStore } from '@/stores/auth'
 import { useTheme } from '@/composables/useTheme'
 import NotificacionesBell from '@/components/shared/NotificacionesBell.vue'
 
-interface NavItem {
-  label: string
-  path: string
-  icon: string
-  /** Prefijo de módulo cuyas capabilities habilitan el ítem; null = siempre visible. */
-  module: string | null
-}
-interface NavGroup { label: string; items: NavItem[] }
 
 const meStore = useMeStore()
 const authStore = useAuthStore()
@@ -40,71 +26,8 @@ const route = useRoute()
 const router = useRouter()
 const { isDark, toggle: toggleTheme } = useTheme()
 
-// Grupos del menú (se expanden por fase; mismos grupos que el sistema legado).
-const NAV: NavGroup[] = [
-  {
-    label: 'Principal',
-    items: [
-      { label: 'Panel', path: '/panel', icon: gridOutline, module: null },
-    ],
-  },
-  {
-    label: 'General',
-    items: [
-      { label: 'Clientes', path: '/clientes', icon: briefcaseOutline, module: 'clientes' },
-      { label: 'Servicios', path: '/servicios', icon: layersOutline, module: 'servicios' },
-      { label: 'Áreas', path: '/areas', icon: gitBranchOutline, module: 'areas' },
-    ],
-  },
-  {
-    label: 'Abonos',
-    items: [
-      { label: 'Abonos', path: '/abonos', icon: walletOutline, module: 'abonos' },
-      { label: 'Facturaciones', path: '/facturaciones', icon: documentTextOutline, module: 'facturaciones' },
-      { label: 'Formas de facturación', path: '/formas-facturacion', icon: receiptOutline, module: 'formas-facturacion' },
-    ],
-  },
-  {
-    label: 'Proyectos',
-    items: [
-      { label: 'Proyectos', path: '/proyectos', icon: folderOpenOutline, module: 'proyectos' },
-      { label: 'Grilla de cobranzas', path: '/grilla-cobranzas', icon: calendarOutline, module: 'cobranzas' },
-    ],
-  },
-  {
-    label: 'Tareas',
-    items: [
-      { label: 'Tareas', path: '/tareas', icon: checkboxOutline, module: 'tareas' },
-    ],
-  },
-  {
-    label: 'Equipo',
-    items: [
-      { label: 'Empleados', path: '/empleados', icon: personOutline, module: 'empleados' },
-      { label: 'Sueldos', path: '/sueldos', icon: cashOutline, module: 'sueldos' },
-      { label: 'Aumentos', path: '/sueldos/aumentos', icon: trendingUpOutline, module: 'aumentos' },
-      { label: 'Planificación', path: '/sueldos/planificacion', icon: calendarNumberOutline, module: 'planificacion' },
-      { label: 'Cuentas', path: '/sueldos/cuentas', icon: cardOutline, module: 'cuentas' },
-    ],
-  },
-  {
-    label: 'Administración',
-    items: [
-      { label: 'Espacios de trabajo', path: '/espacios', icon: albumsOutline, module: 'espacios' },
-      { label: 'Usuarios', path: '/usuarios', icon: peopleOutline, module: 'usuarios' },
-      { label: 'Roles', path: '/roles', icon: shieldCheckmarkOutline, module: 'roles' },
-      { label: 'Configuración', path: '/configuracion', icon: settingsOutline, module: null },
-    ],
-  },
-]
-
-/** Grupos visibles: se filtran los ítems sin permiso y los grupos vacíos. */
-const visibleGroups = computed<NavGroup[]>(() =>
-  NAV.map(g => ({
-    ...g,
-    items: g.items.filter(i => i.module === null || meStore.canAny(i.module)),
-  })).filter(g => g.items.length > 0)
-)
+/** Grupos visibles: se filtran los ítems sin permiso y los grupos vacíos (config/nav.ts). */
+const visibleGroups = computed<NavGroup[]>(() => gruposVisibles(m => meStore.canAny(m)))
 
 const isActive = (path: string): boolean => route.path.startsWith(path)
 

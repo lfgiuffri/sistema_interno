@@ -3,8 +3,9 @@
  *
  * Cada bloque se calcula SOLO si el usuario tiene la capability correspondiente
  * (el legado calculaba todo y ocultaba al renderizar — acá se invierte, PRD §6.9).
- * Fase 2: cotización + alertas de abonos + facturación del mes (parte abonos).
- * Las fases siguientes suman proyectos, tareas del equipo y los gráficos anuales.
+ *
+ * Dos superficies separadas: `armarDashboard` (el panel: estado actual del negocio) y
+ * `armarEstadisticas` (los gráficos anuales de facturación, pantalla propia).
  */
 
 import { Op } from 'sequelize';
@@ -160,26 +161,23 @@ const facturacionMesProyectos = async (models, config) => {
 
 /**
  * Arma el panel según las capabilities del usuario. Los bloques sin permiso viajan null
- * y NO se calculan. Los tres gráficos anuales comparten el mismo `anio` (selector único).
+ * y NO se calculan.
+ *
+ * El panel es "qué está pasando ahora": totales, alertas y tareas del equipo. Los gráficos
+ * anuales de facturación viven en su propia pantalla (`armarEstadisticas`), así que abrir el
+ * panel no paga las consultas de las series.
  * @param {object} models - Modelos de la app.
  * @param {object} user - Usuario que mira ({ id, roleId }).
- * @param {number} [anio] - Año para los gráficos (default: actual).
  * @returns {Promise<object>} Bloques del panel (null los no permitidos).
  */
-export const armarDashboard = async (models, user, anio) => {
+export const armarDashboard = async (models, user) => {
     const caps = await getRoleCapabilities(models, 'default', user.roleId);
     const config = await getConfigAbonos(models);
-    const anioStats = (Number(anio) >= 2000 && Number(anio) <= 2100) ? Number(anio) : new Date().getFullYear();
 
     const verAbonos = puede(caps, 'abonos:read');
     const verFacturaciones = puede(caps, 'facturaciones:read');
     const verProyectos = puede(caps, 'proyectos:read') && !!models.Proyecto;
     const verCobranzas = puede(caps, 'cobranzas:read') && !!models.Cobranza;
-    // Gating de gráficos: cada bloque exige ver TODAS las secciones cuyos datos muestra
-    // (regla del legado §4.1, traducida a capabilities).
-    const verChartMensual = verFacturaciones && verCobranzas;
-    const verChartServicio = verFacturaciones && puede(caps, 'servicios:read');
-    const verChartAreas = verFacturaciones && verCobranzas && puede(caps, 'areas:read');
     const verTareas = puede(caps, 'tareas:read') && !!models.Tarea;
 
     // El bloque de tareas se importa acá (y no arriba) para no acoplar el boot de los
@@ -188,15 +186,11 @@ export const armarDashboard = async (models, user, anio) => {
         ? import('../../tareas/services/tarea.service.js').then(m => m.equipoDashboard(models, user))
         : Promise.resolve(null);
 
-    const [abonos, facturacionMes, proyectos, factProyectos, mensual, servicios, areas, anios, tareasEquipo] = await Promise.all([
+    const [abonos, facturacionMes, proyectos, factProyectos, tareasEquipo] = await Promise.all([
         verAbonos ? bloqueAbonos(models, config) : Promise.resolve(null),
         (verAbonos && verFacturaciones) ? bloqueFacturacionMes(models, config) : Promise.resolve(null),
         verProyectos ? bloqueProyectos(models) : Promise.resolve(null),
         verCobranzas ? facturacionMesProyectos(models, config) : Promise.resolve(null),
-        verChartMensual ? serieMensual(models, anioStats) : Promise.resolve(null),
-        verChartServicio ? porServicio(models, anioStats) : Promise.resolve(null),
-        verChartAreas ? porArea(models, anioStats) : Promise.resolve(null),
-        (verChartMensual || verChartServicio || verChartAreas) ? aniosDisponibles(models, anioStats) : Promise.resolve(null),
         equipoPromise,
     ]);
 
@@ -207,9 +201,37 @@ export const armarDashboard = async (models, user, anio) => {
             ? { ...(facturacionMes || {}), ...(factProyectos || {}) }
             : null,
         proyectos,
-        estadisticas: (mensual || servicios || areas)
-            ? { anio: anioStats, anios, mensual, servicios, areas }
-            : null,
         tareasEquipo,
     };
+};
+
+/**
+ * Arma las estadísticas anuales de facturación (pantalla propia). Los tres gráficos
+ * comparten el mismo `anio` (selector único) y cada uno viaja null si el rol no puede ver
+ * TODAS las secciones cuyos datos muestra (regla del legado §4.1 en capabilities):
+ * mensual = facturaciones + cobranzas · por servicio = facturaciones + servicios ·
+ * por área = facturaciones + cobranzas + áreas.
+ * @param {object} models - Modelos de la app.
+ * @param {object} user - Usuario que mira ({ id, roleId }).
+ * @param {number} [anio] - Año de las series (default: actual).
+ * @returns {Promise<object>} { anio, anios, mensual, servicios, areas }.
+ */
+export const armarEstadisticas = async (models, user, anio) => {
+    const caps = await getRoleCapabilities(models, 'default', user.roleId);
+    const anioStats = (Number(anio) >= 2000 && Number(anio) <= 2100) ? Number(anio) : new Date().getFullYear();
+
+    const verFacturaciones = puede(caps, 'facturaciones:read');
+    const verCobranzas = puede(caps, 'cobranzas:read') && !!models.Cobranza;
+    const verChartMensual = verFacturaciones && verCobranzas;
+    const verChartServicio = verFacturaciones && puede(caps, 'servicios:read');
+    const verChartAreas = verFacturaciones && verCobranzas && puede(caps, 'areas:read');
+
+    const [mensual, servicios, areas, anios] = await Promise.all([
+        verChartMensual ? serieMensual(models, anioStats) : Promise.resolve(null),
+        verChartServicio ? porServicio(models, anioStats) : Promise.resolve(null),
+        verChartAreas ? porArea(models, anioStats) : Promise.resolve(null),
+        aniosDisponibles(models, anioStats),
+    ]);
+
+    return { anio: anioStats, anios, mensual, servicios, areas };
 };

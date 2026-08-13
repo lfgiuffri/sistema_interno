@@ -153,12 +153,17 @@ test.describe('M12: Proyectos y cobranzas', () => {
     expect(body.message).toContain('cobrada');
   });
 
-  test('M12.9 - grilla anual: celdas con pesos/USD/ids', async ({ adminApi }) => {
+  test('M12.9 - grilla anual: celdas y totales con pesos Y dólares', async ({ adminApi }) => {
     const res = await adminApi.get(`${APP_ENDPOINTS.proyectos}/grilla?anio=2030`);
     const body = await expectSuccess(res, 200);
     expect(body.data).toHaveProperty('filas');
-    expect(body.data).toHaveProperty('totalesMes');
     expect(Array.isArray(body.data.anios)).toBeTruthy();
+
+    // La grilla muestra el peso completo con el dólar debajo: los totales traen las dos.
+    expect(body.data.totalesMes[1]).toHaveProperty('pesos');
+    expect(body.data.totalesMes[1]).toHaveProperty('usd');
+    expect(body.data.granTotal).toHaveProperty('pesos');
+    expect(body.data.granTotal).toHaveProperty('usd');
   });
 
   test('M12.10 - capability gating: el fixture no ve proyectos → 403', async ({ authedApi }) => {

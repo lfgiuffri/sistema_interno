@@ -10,17 +10,15 @@
  */
 import type { Component } from 'vue'
 import {
+  businessOutline,
   notificationsOutline,
-  serverOutline,
   personCircleOutline,
   informationCircleOutline,
-  shieldCheckmarkOutline,
 } from 'ionicons/icons'
 
+import NegocioSection from './sections/NegocioSection.vue'
 import NotificationsSection from './sections/NotificationsSection.vue'
-import DataSection from './sections/DataSection.vue'
 import AccountSection from './sections/AccountSection.vue'
-import SecuritySection from './sections/SecuritySection.vue'
 import AboutSection from './sections/AboutSection.vue'
 
 /** Definición de una sección de configuración. */
@@ -34,6 +32,14 @@ export interface SettingsSectionDef {
 
 export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
   {
+    // Primera: son los parámetros que impactan en la plata (cotización, redondeo) y en los avisos.
+    id: 'negocio',
+    label: 'Negocio',
+    description: 'Cotización, redondeo de abonos y avisos de tareas',
+    icon: businessOutline,
+    component: NegocioSection,
+  },
+  {
     id: 'notifications',
     label: 'Notificaciones',
     description: 'Push, no molestar y horario silencioso',
@@ -41,25 +47,11 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     component: NotificationsSection,
   },
   {
-    id: 'data',
-    label: 'Datos',
-    description: 'Exportación de tus datos',
-    icon: serverOutline,
-    component: DataSection,
-  },
-  {
     id: 'account',
     label: 'Perfil',
     description: 'Tus datos, contraseña y sesión',
     icon: personCircleOutline,
     component: AccountSection,
-  },
-  {
-    id: 'security',
-    label: 'Seguridad',
-    description: 'Verificación en dos pasos (2FA)',
-    icon: shieldCheckmarkOutline,
-    component: SecuritySection,
   },
   {
     id: 'about',

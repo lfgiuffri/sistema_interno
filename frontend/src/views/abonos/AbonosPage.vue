@@ -172,7 +172,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
         <div class="flex flex-wrap items-end gap-3 mb-4">
           <div class="relative w-56">
             <IonIcon :icon="searchOutline" class="absolute left-3 top-1/2 -translate-y-1/2 text-[15px] text-ink-faint pointer-events-none" />
-            <input v-model="filtros.search" class="ds-input h-9 pl-9" type="search" placeholder="Buscar descripción…" @input="onSearch" />
+            <input v-model="filtros.search" class="ds-input h-9 pl-9" type="search" placeholder="Buscar por descripción o cliente…" @input="onSearch" />
           </div>
           <select v-model="filtros.estado" class="ds-input h-9 w-44" @change="onFiltro">
             <option value="">Estado: todos</option>

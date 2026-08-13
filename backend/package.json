@@ -10,7 +10,8 @@
     "start": "node --import ./instrument.mjs build/index.js",
     "start:sandbox-worker": "node build/exec/sandboxWorker.js",
     "dev:sandbox-worker": "babel-node src/exec/sandboxWorker.js",
-    "init_db": "babel-node src/exec/initDb.js"
+    "init_db": "babel-node src/exec/initDb.js",
+    "migrar_legado": "babel-node src/exec/migrarLegado.js"
   },
   "author": "Santiago Giuffrida",
   "license": "ISC",

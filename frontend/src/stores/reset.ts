@@ -14,6 +14,7 @@ import { useAbonosStore } from './abonos'
 import { useProyectosStore } from './proyectos'
 import { useEspaciosStore } from './espacios'
 import { useTareasStore } from './tareas'
+import { useDocumentacionStore } from './documentacion'
 import { useEmpleadosStore } from './empleados'
 import { useSueldosStore } from './sueldos'
 import { useNotificacionesStore } from './notificaciones'
@@ -29,6 +30,7 @@ export function resetAllStores(): void {
   useProyectosStore().reset()
   useEspaciosStore().reset()
   useTareasStore().reset()
+  useDocumentacionStore().reset()
   useEmpleadosStore().reset()
   useSueldosStore().reset()
   useNotificacionesStore().reset()

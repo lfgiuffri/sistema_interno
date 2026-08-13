@@ -6,7 +6,8 @@
  *  - Admin (rol con `*`): todos los espacios con ver+editar, INCLUIDOS los inactivos.
  *  - editar implica ver; la matriz se edita desde dos ejes y cada eje reemplaza solo lo suyo;
  *    los admins nunca se tocan desde el eje espacio.
- *  - El creador de un espacio queda SIEMPRE con acceso total.
+ *  - El creador NO admin queda con acceso total al espacio que crea (un admin ya entra
+ *    por su rol: darle fila explícita solo lo duplicaría en el listado de accesos).
  *  - No se elimina un espacio con listas o tareas.
  */
 
@@ -147,7 +148,7 @@ export const listEspacios = async (models) => {
         countPorEspacio(Tarea),
         UsuarioEspacio.findAll({
             where: { espacioId: { [Op.in]: ids }, ver: true },
-            include: [{ model: User, attributes: ['id', 'name', 'lastName', 'active'], paranoid: false }],
+            include: [{ model: User, attributes: ['id', 'name', 'lastName', 'active', 'roleId'], paranoid: false }],
             raw: false
         })
     ]);
@@ -164,9 +165,14 @@ export const listEspacios = async (models) => {
         id: u.id, nombre: `${u.name} ${u.lastName}`.trim(), activo: !!u.active, porRol: true, ver: true, editar: true
     }));
 
+    const idsRolAdmin = rolesAdmin.map(r => r.roleId);
+
     const porEspacio = {};
     for (const a of accesos) {
         if (!a.user) continue;
+        // Un admin con fila explícita (creador del espacio, o dato heredado del legado) ya
+        // figura arriba por su rol: sin este salto aparecería DOS veces en la lista.
+        if (idsRolAdmin.includes(a.user.roleId)) continue;
         (porEspacio[a.espacioId] ??= []).push({
             id: a.user.id,
             nombre: `${a.user.name} ${a.user.lastName}`.trim(),
@@ -206,13 +212,19 @@ export const createEspacio = async (models, data, userId) => {
     const { EspacioTrabajo, UsuarioEspacio } = models;
     await checkNombreUnico(models, data.nombre);
 
+    // Un admin ya entra a todo por su rol: darle además fila explícita lo duplicaría en
+    // el listado de accesos. La fila es para el creador NO admin, que sí podría quedarse afuera.
+    const creadorEsAdmin = await esRolAdmin(models, (await models.User.findByPk(userId))?.roleId);
+
     return EspacioTrabajo.sequelize.transaction(async (t) => {
         const espacio = await EspacioTrabajo.create(data, { transaction: t });
-        // upsert: si ya tuviera fila (imposible en alta, defensivo), la pisa con acceso total.
-        await UsuarioEspacio.upsert(
-            { userId, espacioId: espacio.id, ver: true, editar: true },
-            { transaction: t }
-        );
+        if (!creadorEsAdmin) {
+            // upsert: si ya tuviera fila (imposible en alta, defensivo), la pisa con acceso total.
+            await UsuarioEspacio.upsert(
+                { userId, espacioId: espacio.id, ver: true, editar: true },
+                { transaction: t }
+            );
+        }
         return espacio;
     });
 };

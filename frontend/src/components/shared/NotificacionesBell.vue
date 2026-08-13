@@ -71,7 +71,7 @@ onMounted(() => {
   </button>
 
   <!-- Panel al body: dentro del menú lo recorta el overflow del ion-menu. -->
-  <Teleport to="body">
+  <Teleport defer to="ion-app">
     <template v-if="abierto">
       <div class="fixed inset-0 z-[70]" @click="abierto = false"></div>
       <div

@@ -1,12 +1,16 @@
 /**
- * Saneado de HTML de descripciones de tareas — SEGURIDAD CRÍTICA.
+ * Saneado del HTML del editor enriquecido — SEGURIDAD CRÍTICA.
+ *
+ * Compartido por los módulos que aceptan HTML del usuario (descripciones de tareas y
+ * cuerpos de documentación): UNA sola lista blanca, para que no puedan divergir.
  *
  * Réplica de la lista blanca del legado (../analisis_app_php/03 §2.11) sobre sanitize-html:
  *  - script/style/iframe/object/embed/svg se eliminan CON contenido; el resto de las
  *    etiquetas desconocidas se "desenvuelven" (queda el contenido).
  *  - Atributos fuera de lista blanca se quitan (adiós on*, style).
  *  - href solo http/https/mailto; src de <img> SOLO nuestro endpoint de archivos
- *    (`/api/tareas/archivos/<nombre>` — la regex del legado se adaptó al nuevo esquema, §5.28).
+ *    autenticado de archivos (`/api/{tareas|documentacion}/archivos/<nombre>` — la regex del
+ *    legado se adaptó al nuevo esquema, §5.28).
  *  - class solo checklist/checklist-item/hecho; una clase ajena invalida el atributo.
  *  - Todo <a> queda con target="_blank" + rel="noopener noreferrer" FORZADOS.
  *  - Resultado sin texto ni imágenes → ''.
@@ -16,7 +20,7 @@
 import sanitizeHtml from 'sanitize-html';
 
 /** Regex del src permitido para imágenes embebidas (nuestro endpoint autenticado). */
-const IMG_SRC_RE = /(^|\/)(api\/)?tareas\/archivos\/[0-9]{6}_[0-9a-f]{20}\.(png|jpg|jpeg|gif|webp)$/i;
+const IMG_SRC_RE = /(^|\/)(api\/)?(tareas|documentacion)\/archivos\/[0-9]{6}_[0-9a-f]{20}\.(png|jpg|jpeg|gif|webp)$/i;
 
 /** Clases permitidas (solo las del checklist del editor). */
 const CLASES_PERMITIDAS = new Set(['checklist', 'checklist-item', 'hecho']);
@@ -72,7 +76,7 @@ const OPCIONES = {
 };
 
 /**
- * Sanea el HTML de una descripción de tarea con la lista blanca del legado.
+ * Sanea HTML del editor (descripción de tarea o cuerpo de documento) con la lista blanca.
  * @param {string|null|undefined} html - HTML crudo (del editor o de la base).
  * @returns {string} HTML seguro; '' si no queda texto ni imágenes.
  */

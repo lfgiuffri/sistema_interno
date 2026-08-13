@@ -62,6 +62,7 @@ export const buildOpenApiSpec = () => ({
         { name: 'Empleados', description: 'Ficha del personal, vacaciones y archivos' },
         { name: 'Sueldos', description: 'Salarios: vigente por historial, aumentos, planificación y cuentas' },
         { name: 'Espacios', description: 'Espacios de trabajo: ABM y matriz de accesos por usuario (doble eje)' },
+        { name: 'Documentación', description: 'Base de conocimiento: espacios propios, listas, documentos con versiones y adjuntos' },
         { name: 'Panel', description: 'Dashboard con bloques por capability' }
     ],
     paths: {
@@ -156,7 +157,7 @@ export const buildOpenApiSpec = () => ({
             put: op('Guardar matriz eje usuario (reemplaza SOLO sus filas; admin → 403)', 'Espacios', auth)
         },
         '/tareas/espacios': { get: op('Home del módulo: espacios visibles + mi resumen (fuente única)', 'Tareas', auth) },
-        '/tareas/asignables': { get: op('Usuarios que pueden recibir tareas (activos con tareas:update o admin)', 'Tareas', auth) },
+        '/tareas/asignables': { get: op('Usuarios que pueden recibir tareas y ser mencionados (id, nombre, username)', 'Tareas', auth) },
         '/tareas/resumen': { get: op('Resumen por categorías (f=pendientes|hoy|por_vencer|vencidas; u=todos|sin|id)', 'Tareas', auth) },
         '/tareas/espacios/{eid}/listas': {
             get: op('Listas del espacio con agregados (requiere VER el espacio)', 'Tareas', auth),
@@ -181,6 +182,51 @@ export const buildOpenApiSpec = () => ({
         '/tareas/archivos': { post: op('Subir imagen (5 MB, firma binaria) o adjunto (15 MB, lista blanca)', 'Tareas', auth) },
         '/tareas/archivos/{nombre}': { get: op('Servir archivo (headers defensivos; nombre aleatorio validado)', 'Tareas', auth) },
         '/tareas/archivos/{id}': { delete: op('Eliminar adjunto', 'Tareas', auth) },
+        '/documentacion/espacios': { get: op('Home: espacios de documentación visibles con conteos (capa 2 por usuario)', 'Documentación', auth) },
+        '/documentacion/buscar': { get: op('Buscar por título y contenido (?q, min 2 chars) en los espacios visibles', 'Documentación', auth) },
+        '/documentacion/espacios/{eid}/listas': {
+            get: op('Listas del espacio con conteo de documentos (requiere VER el espacio)', 'Documentación', auth),
+            post: op('Crear lista (requiere EDITAR; unicidad por espacio + reactivación)', 'Documentación', auth)
+        },
+        '/documentacion/espacios/{eid}/listas/orden': { patch: op('Reordenar listas (drag & drop; ids en el orden deseado)', 'Documentación', auth) },
+        '/documentacion/espacios/{eid}/listas/{lid}': {
+            put: op('Editar lista (título/descripción)', 'Documentación', auth),
+            delete: op('Eliminar lista (409 si tiene documentos)', 'Documentación', auth)
+        },
+        '/documentacion/espacios/{eid}/listas/{lid}/active': { patch: op('Activar/desactivar lista', 'Documentación', auth) },
+        '/documentacion/espacios/{eid}/listas/{lid}/restore': { patch: op('Reactivar lista eliminada', 'Documentación', auth) },
+        '/documentacion/espacios/{eid}/listas/{lid}/documentos': { get: op('Documentos de la lista (livianos, con extracto y adjuntos)', 'Documentación', auth) },
+        '/documentacion/espacios/{eid}/listas/{lid}/documentos/orden': { patch: op('Reordenar documentos (drag & drop)', 'Documentación', auth) },
+        '/documentacion/documentos': { post: op('Crear documento (título + HTML saneado; adjuntos aparte)', 'Documentación', auth) },
+        '/documentacion/documentos/{id}': {
+            get: op('Documento completo (cuerpo saneado al servir + adjuntos)', 'Documentación', auth),
+            put: op('Editar (si cambia título o cuerpo, archiva la versión anterior)', 'Documentación', auth),
+            delete: op('Eliminar documento (soft; sus versiones quedan)', 'Documentación', auth)
+        },
+        '/documentacion/documentos/{id}/mover': { patch: op('Mover a otra lista (exige editar AMBOS espacios)', 'Documentación', auth) },
+        '/documentacion/documentos/{id}/versiones': { get: op('Historial de versiones (append-only, más nuevas primero)', 'Documentación', auth) },
+        '/documentacion/documentos/{id}/versiones/{vid}/restaurar': { post: op('Restaurar una versión (la actual se archiva)', 'Documentación', auth) },
+        '/documentacion/archivos': { post: op('Subir imagen (5 MB) o adjunto (15 MB) — mismas defensas que tareas', 'Documentación', auth) },
+        '/documentacion/archivos/{nombre}': { get: op('Servir archivo (headers defensivos; nombre aleatorio validado)', 'Documentación', auth) },
+        '/documentacion/archivos/{id}': { delete: op('Eliminar archivo', 'Documentación', auth) },
+        '/documentacion/admin/espacios': {
+            get: op('Administración: todos los espacios con accesos (doc-espacios:read)', 'Documentación', auth),
+            post: op('Crear espacio (el creador queda con acceso total)', 'Documentación', auth)
+        },
+        '/documentacion/admin/espacios/{id}': {
+            put: op('Editar espacio', 'Documentación', auth),
+            delete: op('Eliminar espacio (409 si tiene listas o documentos)', 'Documentación', auth)
+        },
+        '/documentacion/admin/espacios/{id}/active': { patch: op('Activar/desactivar espacio', 'Documentación', auth) },
+        '/documentacion/admin/espacios/{id}/restore': { patch: op('Reactivar espacio eliminado', 'Documentación', auth) },
+        '/documentacion/admin/espacios/{id}/accesos': {
+            get: op('Matriz del eje ESPACIO (usuarios con ver/editar)', 'Documentación', auth),
+            put: op('Guardar matriz del eje ESPACIO (editar⇒ver; admins intocables)', 'Documentación', auth)
+        },
+        '/documentacion/admin/usuarios/{userId}/espacios': {
+            get: op('Matriz del eje USUARIO (espacios de documentación)', 'Documentación', auth),
+            put: op('Guardar matriz del eje USUARIO', 'Documentación', auth)
+        },
         '/empleados': {
             get: op('Listado con áreas y vacaciones por lote (bloques según capabilities)', 'Empleados', auth),
             post: op('Alta de ficha (el sueldo se carga desde Sueldos)', 'Empleados', auth)
@@ -222,7 +268,8 @@ export const buildOpenApiSpec = () => ({
             get: op('Configuración de negocio (cotización, redondeo, avisos)', 'Settings', auth),
             put: op('Actualizar una clave de configuración (validada)', 'Settings', auth)
         },
-        '/dashboard': { get: op('Bloques del panel según capabilities (+ ?anio para las estadísticas: mensual, por servicio top-7+Otros, por área, tareas del equipo)', 'Panel', auth) },
+        '/dashboard': { get: op('Bloques del panel según capabilities: cotización, abonos, facturación del mes, proyectos y tareas del equipo', 'Panel', auth) },
+        '/dashboard/estadisticas': { get: op('Estadísticas anuales de facturación (?anio): mensual abonos vs proyectos, por servicio top-7+Otros, por área. Requiere estadisticas:read', 'Panel', auth) },
         '/notificaciones': { get: op('Mis notificaciones (+ conteo de no leídas) — personales, sin capability', 'Me', auth) },
         '/notificaciones/leidas': { patch: op('Marcar mis notificaciones como leídas (todas o ids)', 'Me', auth) },
         '/app-config/cotizaciones': { get: op('Histórico de la cotización del dólar (mejora §10.10)', 'Settings', auth) },

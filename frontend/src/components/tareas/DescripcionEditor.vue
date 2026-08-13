@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
- * Editor de descripciones de tareas (TipTap) — reemplaza el contenteditable+execCommand
- * del legado. Mismo vocabulario que la lista blanca del servidor: formato básico, h3,
+ * Editor de texto enriquecido (TipTap) — reemplaza el contenteditable+execCommand
+ * del legado. Lo usan las descripciones de tareas y los cuerpos de documentación: quién
+ * recibe las imágenes se pasa por la prop `subir` (default: el módulo de tareas). Mismo vocabulario que la lista blanca del servidor: formato básico, h3,
  * listas, checklist, tabla, enlace (http/https/mailto) e imágenes subidas al backend.
  * El servidor RE-SANEA siempre: este editor es UX, no seguridad.
  */
@@ -26,7 +27,11 @@ import { useTareasStore } from '@/stores/tareas'
 import { useToast } from '@/composables/useToast'
 import { resolverArchivo, esArchivoProtegido } from '@/composables/useArchivosProtegidos'
 
-const props = defineProps<{ modelValue: string }>()
+const props = defineProps<{
+  modelValue: string
+  /** Sube una imagen y devuelve su URL; por defecto, al storage de tareas. */
+  subir?: (file: File) => Promise<{ ok: boolean; message: string; url?: string }>
+}>()
 const emit = defineEmits<{ (e: 'update:modelValue', v: string): void }>()
 
 const tareasStore = useTareasStore()
@@ -91,7 +96,7 @@ watch(() => props.modelValue, (v) => {
 onBeforeUnmount(() => editor.value?.destroy())
 
 async function subirImagen(file: File): Promise<void> {
-  const r = await tareasStore.subirArchivo(file)
+  const r = props.subir ? await props.subir(file) : await tareasStore.subirArchivo(file)
   if (!r.ok || !r.url) { toast.error(r.message); return }
   editor.value?.chain().focus().setImage({ src: r.url }).run()
 }

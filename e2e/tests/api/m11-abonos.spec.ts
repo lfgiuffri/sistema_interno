@@ -193,9 +193,33 @@ test.describe('M11: Abonos', () => {
     expect(aBody.data).toHaveProperty('cotizacion');
     expect(aBody.data.abonos).toBeTruthy();
     expect(aBody.data.facturacionMes).toBeTruthy();
+    // Las estadísticas anuales tienen su propio endpoint (pantalla Estadísticas):
+    // el panel no las calcula.
+    expect(aBody.data).not.toHaveProperty('estadisticas');
 
     // El fixture no tiene dashboard:read → 403.
     const fixture = await authedApi.get(APP_ENDPOINTS.dashboard);
+    await expectError(fixture, 403);
+  });
+
+  test('M11.13 - estadísticas: series anuales con filtro de año', async ({ adminApi, authedApi }) => {
+    const res = await adminApi.get(`${APP_ENDPOINTS.estadisticas}?anio=${new Date().getFullYear()}`);
+    const body = await expectSuccess(res, 200);
+    expect(body.data.anio).toBe(new Date().getFullYear());
+    expect(Array.isArray(body.data.anios)).toBe(true);
+    // Admin (comodín) ve los tres gráficos: mensual (12 meses), por servicio y por área.
+    expect(body.data.mensual.abonos).toHaveLength(12);
+    expect(body.data.mensual.proyectos).toHaveLength(12);
+    expect(Array.isArray(body.data.servicios)).toBe(true);
+    expect(Array.isArray(body.data.areas)).toBe(true);
+
+    // Año fuera de rango → cae al actual (no rompe).
+    const raro = await adminApi.get(`${APP_ENDPOINTS.estadisticas}?anio=1800`);
+    const rBody = await expectSuccess(raro, 200);
+    expect(rBody.data.anio).toBe(new Date().getFullYear());
+
+    // El fixture no tiene estadisticas:read (capability propia de la pantalla) → 403.
+    const fixture = await authedApi.get(APP_ENDPOINTS.estadisticas);
     await expectError(fixture, 403);
   });
 });

@@ -18,7 +18,7 @@ import { Op } from 'sequelize';
 import { getRoleCapabilities, getAppConfigNumber, crearNotificacion } from '../../../kernel/index.js';
 import { ESTADOS_TAREA, ESTADOS_PENDIENTES, PRIORIDADES_TAREA } from '../models/Tarea.js';
 import { getEspacioPermisos, exigirEspacioVer, exigirEspacioEditar } from '../../espacios/services/espacio.service.js';
-import { sanearHtml } from './sanitizador.service.js';
+import { sanearHtml } from '../../../services/html/sanitizador.service.js';
 import { ligarImagenes } from './archivo.service.js';
 
 export { ESTADOS_TAREA, ESTADOS_PENDIENTES, PRIORIDADES_TAREA };
@@ -88,7 +88,9 @@ const rolPuede = async (models, roleId, cap) => {
  * Usuarios asignables: ACTIVOS con rol admin (`*`) o con `tareas:update`.
  * No mira el espacio (regla del legado §5.18: se valida también al guardar).
  * @param {object} models - Modelos de la app.
- * @returns {Promise<object[]>} [{ id, nombre }] ordenados por nombre.
+ * Incluye el `username` porque la misma lista alimenta el autocompletado de menciones
+ * (@username) en los comentarios: el token que se inserta tiene que ser el username exacto.
+ * @returns {Promise<object[]>} [{ id, nombre, username }] ordenados por nombre.
  */
 export const usuariosAsignables = async (models) => {
     const { User, RoleCapability } = models;
@@ -100,10 +102,10 @@ export const usuariosAsignables = async (models) => {
     if (!roles.length) return [];
     const users = await User.findAll({
         where: { active: true, roleId: { [Op.in]: [...new Set(roles)] } },
-        attributes: ['id', 'name', 'lastName'],
+        attributes: ['id', 'name', 'lastName', 'username'],
         order: [['name', 'ASC'], ['lastName', 'ASC']]
     });
-    return users.map(u => ({ id: u.id, nombre: `${u.name} ${u.lastName}`.trim() }));
+    return users.map(u => ({ id: u.id, nombre: `${u.name} ${u.lastName}`.trim(), username: u.username }));
 };
 
 /**
@@ -640,7 +642,10 @@ const registrarEstado = async (models, tareaId, anterior, nuevo, userId, opts = 
  * Crea una tarea (capa espacio: editar sobre el espacio de la lista).
  * @param {object} models - Modelos de la app.
  * @param {object} user - Usuario del request.
- * @param {object} data - { listaId, nombre, asignadoA?, prioridad?, estado?, fechaInicio?, fechaVencimiento?, descripcion? }.
+ * @param {object} data - { listaId, nombre, asignadoA?, prioridad?, estado?, fechaInicio?,
+ *   fechaVencimiento?, descripcion?, archivoIds? }. `archivoIds` son adjuntos ya subidos
+ *   (todavía sin tarea) que el alta liga a la tarea recién creada: permite adjuntar durante
+ *   la creación, cuando el id de la tarea todavía no existe.
  * @returns {Promise<object>} La tarea creada.
  */
 export const createTarea = async (models, user, data, io = null) => {
@@ -669,6 +674,15 @@ export const createTarea = async (models, user, data, io = null) => {
         return nueva;
     });
     await ligarImagenes(models, tarea.id, descripcion);
+    // Adjuntos subidos ANTES de existir la tarea: se ligan ahora (solo los que siguen
+    // huérfanos, para que nadie pueda robarse el adjunto de otra tarea pasando su id).
+    const archivoIds = (data.archivoIds || []).map(Number).filter(Boolean);
+    if (archivoIds.length) {
+        await models.TareaArchivo.update(
+            { tareaId: tarea.id },
+            { where: { id: archivoIds, tareaId: null } }
+        );
+    }
     if (tarea.asignadoA && tarea.asignadoA !== user.id) {
         await notificar(models, io, {
             userId: tarea.asignadoA, tipo: 'tarea-asignada',

@@ -19,6 +19,9 @@ Cada test tiene un ID (`M5.2`, `M17.1`, ...) usado en su título.
 - Headers: `x-access-token` / `x-refresh-token` (no existen x-api-key ni x-master-key).
 - `POST /auth/signin { username, password }` (acepta username o email) → sesión `{ accessToken, refreshToken, user }` o `{ mfaRequired, mfaToken }`.
   - Admin sembrado por `init_db`: `admin` / `ADMINPASS` (default `admin123`), rol Administrador (capability `*`).
+    Si esa cuenta no existe (la migración del legado la borra), corré la suite con las credenciales
+    de un admin real: `ADMINUSER=<usuario> ADMINPASS=<clave> npx playwright test tests/api`.
+    Los tests NO deben depender del username `admin`: resolvé el admin desde `GET /me`.
   - Usuario de fixture (lo crea `global-setup`): rol acotado `areas:*` + `usuarios:read` → sirve para probar el deny-by-default.
 - Sin token → **401**. Sin la capability → **403** con el nombre de la capability en el mensaje.
 - Lockout: 5 fallos por usuario+IP en 15 min → **429** `LOGIN_LOCKED` (los fallos cuentan aun para usuarios inexistentes; un login exitoso los limpia).
@@ -126,4 +129,5 @@ test('MNN.1 - crea un recurso', async ({ authedApi }) => {
 cd e2e
 npx playwright test --list   # Debe listar todos los tests sin errores de parseo
 npm run test:api             # Requiere backend en :3010 con la base sembrada (npm run init_db)
+                             # ⚠️ crea y borra datos en la base: no apuntar a producción
 ```

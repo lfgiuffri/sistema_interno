@@ -100,9 +100,11 @@ test.describe('M13: Espacios de trabajo', () => {
   });
 
   test('M13.5 - la matriz de un admin no se edita → 403', async ({ adminApi }) => {
-    const usuarios = await adminApi.get('users?limit=100');
-    const admin = (await usuarios.json()).data.users.find((u: { username: string }) => u.username === 'admin');
-    const res = await adminApi.put(`${APP_ENDPOINTS.espacios}/usuario/${admin.id}`, { data: { espacios: [] } });
+    // El admin se resuelve desde la sesión (quien corre la suite), y no por un username
+    // fijo: la cuenta `admin` del seed puede no existir (la migración del legado la borra).
+    const me = await adminApi.get(APP_ENDPOINTS.me);
+    const adminId = (await me.json()).data.user.id;
+    const res = await adminApi.put(`${APP_ENDPOINTS.espacios}/usuario/${adminId}`, { data: { espacios: [] } });
     await expectError(res, 403);
   });
 

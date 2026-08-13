@@ -187,7 +187,7 @@ export const useTareasStore = defineStore('tareas', () => {
   const moverTarea = (id: number, listaId: number) => accion(() => api.patch(`/tareas/${id}/mover`, { listaId }))
   const removeTarea = (id: number) => accion(() => api.delete(`/tareas/${id}`))
 
-  async function fetchAsignables(): Promise<Array<{ id: number; nombre: string }>> {
+  async function fetchAsignables(): Promise<Array<{ id: number; nombre: string; username: string }>> {
     const { data } = await api.get('/tareas/asignables')
     return data.success ? data.data : []
   }

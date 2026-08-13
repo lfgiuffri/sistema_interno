@@ -510,11 +510,18 @@ export const getGrillaAnual = async (models, anio) => {
         };
     });
 
+    // Totales con las DOS monedas: la grilla muestra el peso completo y abajo el dólar.
     const totalesMes = {};
     for (let mes = 1; mes <= 12; mes++) {
-        totalesMes[mes] = filas.reduce((acc, f) => acc + (f.celdas[mes]?.pesos || 0), 0);
+        totalesMes[mes] = {
+            pesos: filas.reduce((acc, f) => acc + (f.celdas[mes]?.pesos || 0), 0),
+            usd: filas.reduce((acc, f) => acc + (f.celdas[mes]?.usd || 0), 0),
+        };
     }
-    const granTotal = filas.reduce((acc, f) => acc + f.totalPesos, 0);
+    const granTotal = {
+        pesos: filas.reduce((acc, f) => acc + f.totalPesos, 0),
+        usd: filas.reduce((acc, f) => acc + f.totalUsd, 0),
+    };
 
     return { anio: Number(anio), anios, cotizacion, filas, totalesMes, granTotal };
 };

@@ -38,7 +38,7 @@ const puedeEditar = ref(false)
 const tareas = ref<TareaRow[]>([])
 const total = ref(0)
 const loading = ref(false)
-const asignables = ref<Array<{ id: number; nombre: string }>>([])
+const asignables = ref<Array<{ id: number; nombre: string; username: string }>>([])
 
 // ── Filtros (espejo de la query string) ──
 const filtrosAbiertos = ref(false)
@@ -523,7 +523,7 @@ watch([espacioId, listaId], () => { if (loadedOnce && espacioId.value && listaId
       />
 
       <!-- Modal mover -->
-      <Teleport to="body">
+      <Teleport defer to="ion-app">
         <div v-if="modalMover" class="ds-modal-backdrop" @click.self="modalMover = false">
           <div class="ds-modal max-w-sm" role="dialog" aria-modal="true" aria-label="Mover tarea">
             <h2 class="text-base font-semibold text-ink mb-1">Mover «{{ tareaMoviendo?.nombre }}»</h2>

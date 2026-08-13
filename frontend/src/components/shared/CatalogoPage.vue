@@ -303,7 +303,7 @@ defineExpose({ reload: load })
       </div>
 
       <!-- Modal alta/edición -->
-      <Teleport to="body">
+      <Teleport defer to="ion-app">
         <div v-if="modalOpen" class="ds-modal-backdrop" @click.self="modalOpen = false">
           <div class="ds-modal ds-enter" role="dialog" aria-modal="true" :aria-label="isEdit ? `Editar ${sustantivo}` : `Nuevo ${sustantivo}`">
             <header class="flex items-center justify-between px-5 h-12 border-b border-line">

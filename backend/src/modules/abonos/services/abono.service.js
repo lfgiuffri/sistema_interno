@@ -122,7 +122,16 @@ const buildAbonoFilters = (models, query) => {
     if (query.moneda === 'ARS' || query.moneda === 'USD') where.moneda = query.moneda;
     if (query.periodoMeses) where.periodoMeses = Number(query.periodoMeses);
     if (query.activo !== undefined && query.activo !== '') where.activo = query.activo === 'true' || query.activo === true;
-    if (query.search) where.descripcion = { [Op.like]: `%${query.search}%` };
+    if (query.search) {
+        // Busca en la descripción del abono O en el nombre del cliente. Va por subconsulta y
+        // no por `$cliente.nombre$` porque este WHERE lo comparten el listado (que incluye a
+        // Cliente) y el resumen (que consulta la tabla sola, sin include).
+        const like = Abono.sequelize.escape(`%${query.search}%`);
+        where[Op.or] = [
+            { descripcion: { [Op.like]: `%${query.search}%` } },
+            Abono.sequelize.literal(`\`abonos\`.\`clienteId\` IN (SELECT \`id\` FROM \`clientes\` WHERE \`nombre\` LIKE ${like})`),
+        ];
+    }
 
     // Estado de actualización, resuelto en SQL (paginable).
     let literalWhere = null;

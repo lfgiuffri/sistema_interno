@@ -66,6 +66,9 @@ const camposTarea = [
 export const validateCreate = [
     body('listaId').isInt({ min: 1 }).withMessage('Elegí una lista'),
     ...camposTarea,
+    // Adjuntos subidos durante el alta (todavía sin tarea): el service los liga.
+    body('archivoIds').optional().isArray(),
+    body('archivoIds.*').isInt({ min: 1 }),
     validator
 ];
 
