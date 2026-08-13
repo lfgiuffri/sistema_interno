@@ -1,7 +1,7 @@
 module.exports = {
   apps : [
       {
-        name: "lifesync",
+        name: "sistema_interno",
         script: "./build/index.js",
         watch: false,
         node_args : '-r dotenv/config'
