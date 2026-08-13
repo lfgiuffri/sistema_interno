@@ -9,6 +9,9 @@ frontend/dist/
 backend/.env
 frontend/.env
 
+#PM2 Configs
+backend/pm2.config.js
+
 # Firebase credentials (NEVER commit)
 backend/.firebase-service-account.json
 backend/firebase-service-account.json
