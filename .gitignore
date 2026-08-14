@@ -8,6 +8,7 @@ frontend/dist/
 # Environment
 backend/.env
 frontend/.env
+frontend/.env.production
 
 # Firebase credentials (NEVER commit)
 backend/.firebase-service-account.json
