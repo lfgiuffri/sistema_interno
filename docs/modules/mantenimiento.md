@@ -42,6 +42,30 @@ Deja el script en `/usr/local/bin`, la config en `/etc/sistema-interno-agente.en
 
 **El token** se guarda **hasheado** (sha256) y se muestra UNA sola vez, como el secreto de los webhooks. Si se pierde, se regenera desde la llave del listado (y hay que reinstalar el agente).
 
+### El servicio corre con el filesystem en solo lectura
+
+El unit lleva `ProtectSystem=strict` + `ProtectHome=true` + `NoNewPrivileges=true`: el agente solo necesita **leer** `/proc` y `/etc`, así que no tiene por qué poder escribir nada. Consecuencia práctica, y **la trampa que ya nos comió una vez**:
+
+> Con el filesystem en solo lectura, **un here-document de bash falla**. `<<EOF` no es una construcción en memoria: bash lo materializa en un archivo temporal y revienta con `cannot create temp file for here-document`. Lo mismo con `curl -o /tmp/...`.
+
+Por eso el agente **no usa ningún archivo temporal**: el JSON se arma en una variable y la respuesta de curl se captura en memoria con `-w '\n%{http_code}'` (última línea = código, el resto = cuerpo o el error de curl). El unit además declara `PrivateTmp=true`, que le da un `/tmp` propio y escribible — el agente no lo usa, pero evita que cualquier agregado futuro vuelva a pisar esta mina.
+
+Si tocás el script, probalo con el filesystem realmente en solo lectura antes de darlo por bueno:
+
+```bash
+unshare -rm bash -c 'mount -o remount,ro,bind /tmp; AGENTE_CONFIG=/etc/sistema-interno-agente.env bash /usr/local/bin/agente-sistema-interno.sh'
+```
+
+### Cuando el agente falla
+
+| En `journalctl -u sistema-interno-agente` | Qué pasa |
+|---|---|
+| `cannot create temp file for here-document` / `Read-only file system` | Agente viejo (anterior a 2026-08-14) con el unit endurecido. **Reinstalá el agente** (el instalador es idempotente). |
+| `ERROR HTTP 401` | El token no coincide con el del servidor en la app: regenerá el token desde la llave del listado y reinstalá. |
+| `ERROR HTTP 000 — curl: (6) Could not resolve host` | DNS del VPS o `API_URL` mal escrita en `/etc/sistema-interno-agente.env`. |
+| `ERROR HTTP 000 — curl: (7) Failed to connect` | El VPS no llega a la app (firewall de salida, app caída). |
+| `ERROR HTTP 404` | `API_URL` sin el `/api` final. |
+
 ## Umbrales y alertas
 
 Los umbrales globales se configuran en **Configuración → Negocio** (`MANTENIMIENTO_UMBRAL_CPU` 90, `_RAM` 90, `_DISCO` 85) y cada servidor puede tener el suyo, para el que legítimamente vive alto.

@@ -44,7 +44,11 @@ ExecStart=$BIN
 # El agente solo lee /proc y /etc: sin privilegios extra ni escritura en el sistema.
 ProtectSystem=strict
 ProtectHome=true
-PrivateTmp=false
+# /tmp propio y descartable. Con ProtectSystem=strict el filesystem queda en SOLO LECTURA,
+# así que sin esto cualquier archivo temporal —incluido el que bash necesita para un
+# here-document— falla con «Read-only file system». El agente no lo usa, pero un /tmp
+# escribible y aislado sale gratis y evita ese modo de falla.
+PrivateTmp=true
 NoNewPrivileges=true
 EOF
 

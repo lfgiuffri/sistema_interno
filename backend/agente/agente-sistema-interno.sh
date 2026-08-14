@@ -59,22 +59,35 @@ DISCOS=$(leer_discos)
 CARGA=$(awk '{printf "%.2f", $1}' /proc/loadavg)
 UPTIME=$(awk '{printf "%d", $1}' /proc/uptime)
 SO=$( (. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME") || uname -sr )
+# El nombre del SO se mete crudo en el JSON: se le sacan comillas y barras por las dudas.
+SO=${SO//\\/}; SO=${SO//\"/}
 
-PAYLOAD=$(cat <<JSON
-{"cpu":$CPU,"ram":$RAM,"disco":$DISCO,"discos":[$DISCOS],"carga1":$CARGA,"uptimeSeg":$UPTIME,"so":"$SO"}
-JSON
-)
+# ⚠️ NADA de archivos temporales de acá en adelante.
+#
+# El servicio corre con `ProtectSystem=strict`, así que el filesystem está en solo lectura.
+# Un here-document (`<<JSON`) NO sirve: bash lo materializa en un archivo temporal y falla con
+# «cannot create temp file for here-document». Por eso el JSON se arma en una variable, y la
+# respuesta de curl se captura en memoria en vez de con `-o archivo`.
+PAYLOAD='{"cpu":'"$CPU"',"ram":'"$RAM"',"disco":'"$DISCO"',"discos":['"$DISCOS"'],"carga1":'"$CARGA"',"uptimeSeg":'"$UPTIME"',"so":"'"$SO"'"}'
 
-# --max-time: si la app no responde, el agente no se queda colgado ocupando el timer.
-RESPUESTA=$(curl -sS --max-time 20 -o /tmp/.si-agente.out -w '%{http_code}' \
+# `-w '\n%{http_code}'` agrega el código en la última línea del cuerpo: con eso alcanza para
+# distinguir éxito de error sin escribir nada al disco. `2>&1` trae el mensaje de curl (DNS,
+# TLS, timeout) al mismo lugar. --max-time: si la app no responde, el agente no se cuelga
+# ocupando el timer.
+SALIDA=$(curl -sS --max-time 20 -w '\n%{http_code}' \
     -X POST "${API_URL%/}/agente/metricas" \
     -H 'Content-Type: application/json' \
     -H "x-agent-token: $AGENT_TOKEN" \
-    --data "$PAYLOAD" 2>/tmp/.si-agente.err)
+    --data "$PAYLOAD" 2>&1)
 
-if [ "$RESPUESTA" = "200" ]; then
+CODIGO=${SALIDA##*$'\n'}     # última línea = %{http_code}
+CUERPO=${SALIDA%$'\n'*}      # todo lo anterior = cuerpo o error de curl
+
+if [ "$CODIGO" = "200" ]; then
     echo "ok cpu=${CPU}% ram=${RAM}% disco=${DISCO}%"
 else
-    echo "ERROR HTTP $RESPUESTA — $(head -c 200 /tmp/.si-agente.out 2>/dev/null) $(head -c 200 /tmp/.si-agente.err 2>/dev/null)" >&2
+    # Código 000 = curl no llegó a hablar con el servidor (DNS, red, TLS): el motivo está
+    # en el cuerpo.
+    echo "ERROR HTTP ${CODIGO:-sin-respuesta} — $(printf '%.200s' "$CUERPO")" >&2
     exit 1
 fi
