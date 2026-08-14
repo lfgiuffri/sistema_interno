@@ -68,6 +68,7 @@ const MODULE_LABELS: Record<string, string> = {
   espacios: 'Espacios de trabajo',
   configuracion: 'Configuración',
   planificacion: 'Planificación',
+  sitios: 'Sitios web',
 }
 
 /** Nombre legible del módulo (mapa explícito, o primera letra en mayúscula). */

@@ -63,7 +63,8 @@ export const buildOpenApiSpec = () => ({
         { name: 'Sueldos', description: 'Salarios: vigente por historial, aumentos, planificación y cuentas' },
         { name: 'Espacios', description: 'Espacios de trabajo: ABM y matriz de accesos por usuario (doble eje)' },
         { name: 'Documentación', description: 'Base de conocimiento: espacios propios, listas, documentos con versiones y adjuntos' },
-        { name: 'Panel', description: 'Dashboard con bloques por capability' }
+        { name: 'Panel', description: 'Dashboard con bloques por capability' },
+        { name: 'Mantenimiento', description: 'Monitoreo de servidores (métricas del agente, umbrales) y de sitios web (disponibilidad, dominio, certificado)' }
     ],
     paths: {
         '/auth/signin': { post: op('Login con usuario/contraseña', 'Auth') },
@@ -270,6 +271,32 @@ export const buildOpenApiSpec = () => ({
         },
         '/dashboard': { get: op('Bloques del panel según capabilities: cotización, abonos, facturación del mes, proyectos y tareas del equipo', 'Panel', auth) },
         '/dashboard/estadisticas': { get: op('Estadísticas anuales de facturación (?anio): mensual abonos vs proyectos, por servicio top-7+Otros, por área. Requiere estadisticas:read', 'Panel', auth) },
+        '/mantenimiento/servidores': {
+            get: op('Inventario de servidores con su última métrica e incidentes abiertos', 'Mantenimiento', auth),
+            post: op('Alta de servidor (devuelve el token del agente UNA sola vez)', 'Mantenimiento', auth)
+        },
+        '/mantenimiento/servidores/{id}': {
+            get: op('Ficha: métricas actuales, series (fina y diaria) e incidentes', 'Mantenimiento', auth),
+            put: op('Editar servidor (incluye umbrales propios)', 'Mantenimiento', auth),
+            delete: op('Eliminar servidor (baja lógica; borra su historial)', 'Mantenimiento', auth)
+        },
+        '/mantenimiento/servidores/{id}/token': { post: op('Regenerar el token del agente (invalida el anterior)', 'Mantenimiento', auth) },
+        '/mantenimiento/servidores/{id}/active': { patch: op('Activar/desactivar el monitoreo del servidor', 'Mantenimiento', auth) },
+        '/mantenimiento/sitios': {
+            get: op('Sitios web con estado, vencimiento de dominio y de certificado', 'Mantenimiento', auth),
+            post: op('Alta de sitio (verificaMarcador=false para sitios de terceros)', 'Mantenimiento', auth)
+        },
+        '/mantenimiento/sitios/{id}': {
+            get: op('Ficha del sitio: disponibilidad, últimos chequeos e incidentes', 'Mantenimiento', auth),
+            put: op('Editar sitio (cargar dominioVenceAt a mano desactiva el refresco por RDAP)', 'Mantenimiento', auth),
+            delete: op('Eliminar sitio (baja lógica; cierra sus incidentes)', 'Mantenimiento', auth)
+        },
+        '/mantenimiento/sitios/{id}/chequear': { post: op('Chequeo manual de disponibilidad (no abre ni cierra incidentes)', 'Mantenimiento', auth) },
+        '/mantenimiento/sitios/{id}/dominio': { post: op('Consultar por RDAP el vencimiento del dominio', 'Mantenimiento', auth) },
+        '/mantenimiento/sitios/{id}/active': { patch: op('Activar/desactivar el monitoreo del sitio', 'Mantenimiento', auth) },
+        '/agente/metricas': { post: op('Reporte del agente (auth por header x-agent-token, SIN sesión): cpu, ram, disco, discos[]', 'Mantenimiento') },
+        '/health': { get: op('Salud del backend y su base (público, sin sesión): lo consulta el watchdog externo', 'Mantenimiento') },
+        '/agente/instalar-agente.sh': { get: op('Instalador del agente (público, sin secretos)', 'Mantenimiento') },
         '/notificaciones': { get: op('Mis notificaciones (+ conteo de no leídas) — personales, sin capability', 'Me', auth) },
         '/notificaciones/leidas': { patch: op('Marcar mis notificaciones como leídas (todas o ids)', 'Me', auth) },
         '/app-config/cotizaciones': { get: op('Histórico de la cotización del dólar (mejora §10.10)', 'Settings', auth) },

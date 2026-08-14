@@ -54,6 +54,8 @@ export async function hardDeleteByPath(cleanupPath: string): Promise<void> {
       'cuentas': 'cuentas_pago',
       'doc-espacios': 'doc_espacios',
       'documentos': 'documentos',
+      'servidores': 'servidores',
+      'sitios': 'sitios_web',
     };
     if (catalogTables[parts[0]] && parts[1] && parts[1] !== 'roles') {
       // Proyectos: primero los hijos (cobranza_eventos + cobranzas tienen FK al proyecto).
@@ -91,6 +93,18 @@ export async function hardDeleteByPath(cleanupPath: string): Promise<void> {
       if (parts[0] === 'documentos') {
         await conn.query('DELETE FROM documento_versiones WHERE documentoId = ?', [Number(parts[1])]);
         await conn.query('DELETE FROM documento_archivos WHERE documentoId = ?', [Number(parts[1])]);
+      }
+      // Servidores: métricas, resumen diario e incidentes cuelgan del servidor.
+      if (parts[0] === 'servidores') {
+        for (const tabla of ['servidor_metricas', 'servidor_metricas_dia', 'servidor_incidentes']) {
+          await conn.query(`DELETE FROM ${tabla} WHERE servidorId = ?`, [Number(parts[1])]);
+        }
+      }
+      // Sitios web: chequeos e incidentes cuelgan del sitio.
+      if (parts[0] === 'sitios') {
+        for (const tabla of ['sitio_chequeos', 'sitio_incidentes']) {
+          await conn.query(`DELETE FROM ${tabla} WHERE sitioId = ?`, [Number(parts[1])]);
+        }
       }
       if (parts[0] === 'cuentas') {
         await conn.query('DELETE FROM sueldo_pagos WHERE cuentaId = ?', [Number(parts[1])]);

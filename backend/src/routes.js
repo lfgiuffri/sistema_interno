@@ -24,12 +24,18 @@ import webhooksRoutes from './services/webhooks/routes/webhooks.routes.js';
 import notificationActionsRoutes from './services/notifications/routes/notificationActions.routes.js';
 import meRoutes from './services/me/me.routes.js';
 import notificacionesRoutes from './services/notificaciones/notificaciones.routes.js';
+import agenteRoutes from './modules/mantenimiento/routes/agente.routes.js';
+import healthRoutes from './kernel/registry/routes/health.routes.js';
 
 const router = Router();
 
 // Contexto de base de datos + auditoría para TODO.
 router.use(dbContext);
 router.use(actionTrackingMidd);
+
+// SALUD: público y sin sesión — lo consulta el watchdog externo que vigila que esta app
+// (y con ella todo el monitoreo) siga viva. Ver docs/modules/mantenimiento.md.
+router.use('/health', healthRoutes);
 
 // AUTH (con rate limit propio, sin verifyAccessToken: signin/refresh son públicas).
 router.use('/auth', authRateLimit, authRoute);
@@ -54,6 +60,11 @@ router.use('/notification-actions', verifyAccessToken, notificationActionsRoutes
 router.use('/me', verifyAccessToken, meRoutes);
 // Notificaciones personales: sin capability (scope duro por userId), como /me.
 router.use('/notificaciones', verifyAccessToken, notificacionesRoutes);
+
+// AGENTE de monitoreo: lo llama una máquina, no una sesión. Se autentica con el token del
+// servidor (`x-agent-token`) que valida el service, así que va FUERA de verifyAccessToken
+// (mismo criterio que /auth). Tiene rate limit propio.
+router.use('/agente', agenteRoutes);
 
 /**
  * Descubre y monta los MÓDULOS FEATURE (los que tienen module.manifest.js) sobre el router.

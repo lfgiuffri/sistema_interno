@@ -46,6 +46,9 @@ const routes: RouteRecordRaw[] = [
       // `/tareas/espacios/<id>`. Verificado A/B; si los renombrás, vuelve el bug.
       { path: 'documentacion/espacios/:deid', name: 'DocListas', component: () => import('@/views/documentacion/DocListasPage.vue'), meta: { module: 'documentacion' } },
       { path: 'documentacion/espacios/:deid/listas/:dlid', name: 'DocDocumentos', component: () => import('@/views/documentacion/DocumentosPage.vue'), meta: { module: 'documentacion' } },
+      { path: 'mantenimiento/servidores', name: 'Servidores', component: () => import('@/views/mantenimiento/ServidoresPage.vue'), meta: { module: 'servidores' } },
+      { path: 'mantenimiento/servidores/:id', name: 'ServidorFicha', component: () => import('@/views/mantenimiento/ServidorFichaPage.vue'), meta: { module: 'servidores' } },
+      { path: 'mantenimiento/sitios', name: 'Sitios', component: () => import('@/views/mantenimiento/SitiosPage.vue'), meta: { module: 'sitios' } },
       { path: 'espacios', name: 'Espacios', component: () => import('@/views/espacios/EspaciosPage.vue'), meta: { module: 'espacios' } },
       { path: 'empleados', name: 'Empleados', component: () => import('@/views/empleados/EmpleadosPage.vue'), meta: { module: 'empleados' } },
       { path: 'empleados/nuevo', name: 'EmpleadoNuevo', component: () => import('@/views/empleados/EmpleadoFormPage.vue'), meta: { module: 'empleados' } },

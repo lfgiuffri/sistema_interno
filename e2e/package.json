@@ -21,7 +21,8 @@
     "test:m08": "npx playwright test m08",
     "test:m09": "npx playwright test m09",
     "test:m17": "npx playwright test m17",
-    "test:m19": "npx playwright test m19"
+    "test:m19": "npx playwright test m19",
+    "test:m20": "npx playwright test m20"
   },
   "devDependencies": {
     "@playwright/test": "^1.50.0",

@@ -179,19 +179,26 @@ export const armarDashboard = async (models, user) => {
     const verProyectos = puede(caps, 'proyectos:read') && !!models.Proyecto;
     const verCobranzas = puede(caps, 'cobranzas:read') && !!models.Cobranza;
     const verTareas = puede(caps, 'tareas:read') && !!models.Tarea;
+    const verServidores = puede(caps, 'servidores:read') && !!models.Servidor;
+    const verSitios = puede(caps, 'sitios:read') && !!models.SitioWeb;
 
-    // El bloque de tareas se importa acá (y no arriba) para no acoplar el boot de los
-    // módulos: dashboard funciona aunque tareas no esté montado.
+    // Los bloques de otros módulos se importan acá (y no arriba) para no acoplar el boot:
+    // dashboard funciona aunque tareas o mantenimiento no estén montados.
     const equipoPromise = verTareas
         ? import('../../tareas/services/tarea.service.js').then(m => m.equipoDashboard(models, user))
         : Promise.resolve(null);
+    const mantenimientoPromise = (verServidores || verSitios)
+        ? import('../../mantenimiento/services/resumen.service.js')
+            .then(m => m.resumenMantenimiento(models, { verServidores, verSitios }))
+        : Promise.resolve(null);
 
-    const [abonos, facturacionMes, proyectos, factProyectos, tareasEquipo] = await Promise.all([
+    const [abonos, facturacionMes, proyectos, factProyectos, tareasEquipo, mantenimiento] = await Promise.all([
         verAbonos ? bloqueAbonos(models, config) : Promise.resolve(null),
         (verAbonos && verFacturaciones) ? bloqueFacturacionMes(models, config) : Promise.resolve(null),
         verProyectos ? bloqueProyectos(models) : Promise.resolve(null),
         verCobranzas ? facturacionMesProyectos(models, config) : Promise.resolve(null),
         equipoPromise,
+        mantenimientoPromise,
     ]);
 
     return {
@@ -202,6 +209,7 @@ export const armarDashboard = async (models, user) => {
             : null,
         proyectos,
         tareasEquipo,
+        mantenimiento,
     };
 };
 

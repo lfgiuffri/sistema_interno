@@ -14,8 +14,10 @@
  */
 export const up = async (sequelize) => {
     const q = sequelize.getQueryInterface();
-    const existentes = await q.showAllTables();
-    const hay = (t) => existentes.map(String).map(s => s.toLowerCase()).includes(t);
+    // showAllTables() devuelve OBJETOS ({ tableName, schema }) en MariaDB, no strings:
+    // convertir con String() daría "[object Object]" y el guard nunca cortaría.
+    const existentes = (await q.showAllTables()).map(t => String(t?.tableName ?? t).toLowerCase());
+    const hay = (t) => existentes.includes(t);
 
     if (!hay('doc_espacios')) {
         await sequelize.query(`CREATE TABLE doc_espacios (

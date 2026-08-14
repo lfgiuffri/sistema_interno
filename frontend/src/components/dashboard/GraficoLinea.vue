@@ -17,7 +17,14 @@ Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryS
 
 export interface Serie { label: string; slot?: string | null; data: number[] }
 
-const props = defineProps<{ series: Serie[]; alto?: number }>()
+const props = defineProps<{
+  series: Serie[]
+  alto?: number
+  /** Etiquetas del eje X; por defecto los 12 meses (uso original: series anuales). */
+  labels?: string[]
+  /** Cómo se leen los valores: importes (default) o porcentajes (métricas de servidores). */
+  formato?: 'moneda' | 'porcentaje'
+}>()
 
 const PALETA_CLARO = ['#0F7660', '#2563eb', '#ea7317', '#7c3aed', '#e34948', '#b45309', '#0891b2', '#db2777']
 const PALETA_OSCURO = ['#34d399', '#60a5fa', '#fb923c', '#a78bfa', '#f87171', '#fbbf24', '#22d3ee', '#f472b6']
@@ -46,7 +53,7 @@ function construir(): void {
   chart = new Chart(ctx, {
     type: 'line',
     data: {
-      labels: MESES.map(m => m.slice(0, 3)),
+      labels: props.labels ?? MESES.map(m => m.slice(0, 3)),
       datasets: props.series.map((s, i) => {
         const c = color(i, s.slot)
         let fondo: string | CanvasGradient = 'transparent'
@@ -83,7 +90,9 @@ function construir(): void {
         },
         tooltip: {
           callbacks: {
-            label: (item) => `${item.dataset.label}: $ ${Number(item.parsed.y).toLocaleString('es-AR')}`,
+            label: (item) => (props.formato === 'porcentaje'
+              ? `${item.dataset.label}: ${Number(item.parsed.y).toFixed(1)}%`
+              : `${item.dataset.label}: $ ${Number(item.parsed.y).toLocaleString('es-AR')}`),
           },
         },
       },
@@ -91,10 +100,13 @@ function construir(): void {
         x: { ticks: { color: ink, font: { size: 10 } }, grid: { display: false } },
         y: {
           beginAtZero: true,
+          ...(props.formato === 'porcentaje' ? { max: 100 } : {}),
           ticks: {
             color: ink,
             font: { size: 10 },
-            callback: (v) => `$${Math.round(Number(v) / 1000).toLocaleString('es-AR')}k`,
+            callback: (v) => (props.formato === 'porcentaje'
+              ? `${Math.round(Number(v))}%`
+              : `$${Math.round(Number(v) / 1000).toLocaleString('es-AR')}k`),
           },
           grid: { color: linea },
         },

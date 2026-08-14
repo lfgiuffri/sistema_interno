@@ -32,6 +32,76 @@ export const APP_CONFIG_KEYS = {
             return String(v);
         },
     },
+    MANTENIMIENTO_UMBRAL_CPU: {
+        label: 'Alerta de CPU (%)',
+        description: 'Uso de procesador sostenido a partir del cual un servidor alerta (50 a 100).',
+        default: '90',
+        parse: (raw) => {
+            const v = parseInt(raw, 10);
+            if (!Number.isFinite(v) || v < 50 || v > 100) throw new Error('El umbral de CPU tiene que estar entre 50 y 100');
+            return String(v);
+        },
+    },
+    MANTENIMIENTO_UMBRAL_RAM: {
+        label: 'Alerta de memoria RAM (%)',
+        description: 'Uso de memoria a partir del cual un servidor alerta (50 a 100).',
+        default: '90',
+        parse: (raw) => {
+            const v = parseInt(raw, 10);
+            if (!Number.isFinite(v) || v < 50 || v > 100) throw new Error('El umbral de RAM tiene que estar entre 50 y 100');
+            return String(v);
+        },
+    },
+    MANTENIMIENTO_UMBRAL_DISCO: {
+        label: 'Alerta de disco (%)',
+        description: 'Uso del disco más lleno a partir del cual un servidor alerta (50 a 100).',
+        default: '85',
+        parse: (raw) => {
+            const v = parseInt(raw, 10);
+            if (!Number.isFinite(v) || v < 50 || v > 100) throw new Error('El umbral de disco tiene que estar entre 50 y 100');
+            return String(v);
+        },
+    },
+    MANTENIMIENTO_MINUTOS_SIN_REPORTE: {
+        label: 'Minutos sin reporte para marcar caído',
+        description: 'Cuántos minutos sin señal del agente hacen que un servidor cuente como caído (2 a 60).',
+        default: '5',
+        parse: (raw) => {
+            const v = parseInt(raw, 10);
+            if (!Number.isFinite(v) || v < 2 || v > 60) throw new Error('Los minutos sin reporte tienen que estar entre 2 y 60');
+            return String(v);
+        },
+    },
+    MANTENIMIENTO_FALLOS_PARA_ALERTA: {
+        label: 'Chequeos fallidos para alertar un sitio',
+        description: 'Cuántos chequeos seguidos (de 5 minutos) tiene que fallar un sitio antes de avisar (1 a 10).',
+        default: '2',
+        parse: (raw) => {
+            const v = parseInt(raw, 10);
+            if (!Number.isFinite(v) || v < 1 || v > 10) throw new Error('Los chequeos fallidos tienen que estar entre 1 y 10');
+            return String(v);
+        },
+    },
+    MANTENIMIENTO_DIAS_AVISO_DOMINIO: {
+        label: 'Días de aviso de vencimiento de dominio',
+        description: 'Con cuánta anticipación se avisa que un dominio está por vencer (1 a 180).',
+        default: '30',
+        parse: (raw) => {
+            const v = parseInt(raw, 10);
+            if (!Number.isFinite(v) || v < 1 || v > 180) throw new Error('Los días de aviso de dominio tienen que estar entre 1 y 180');
+            return String(v);
+        },
+    },
+    MANTENIMIENTO_DIAS_AVISO_TLS: {
+        label: 'Días de aviso de vencimiento de certificado',
+        description: 'Con cuánta anticipación se avisa que un certificado HTTPS está por vencer (1 a 90).',
+        default: '15',
+        parse: (raw) => {
+            const v = parseInt(raw, 10);
+            if (!Number.isFinite(v) || v < 1 || v > 90) throw new Error('Los días de aviso del certificado tienen que estar entre 1 y 90');
+            return String(v);
+        },
+    },
     TAREAS_DIAS_POR_VENCER: {
         label: 'Días de aviso de tareas por vencer',
         description: 'Con cuántos días de anticipación una tarea cuenta como "por vencer" (1 a 60).',

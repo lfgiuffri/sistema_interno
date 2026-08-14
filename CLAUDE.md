@@ -65,6 +65,7 @@ backend/src/
 │   └── index.js             # BARREL: superficie pública de infra para los módulos
 ├── modules/                 # PLUGGABLE — cada uno con module.manifest.js
 │   ├── abonos/ areas/ clientes/ dashboard/ documentacion/ empleados/ espacios/
+│   ├── mantenimiento/       # servidores (agente, métricas) + sitios web (uptime, dominio, TLS)
 │   ├── formas-facturacion/ proyectos/ servicios/ sueldos/ tareas/
 │   └── settings/            # infra (montado explícito en routes.js)
 ├── services/                # storage, webhooks, embeddings, ai, scheduler, push, sandbox,
@@ -327,12 +328,58 @@ recortes distintos a los tableros y sus accesos se administran aparte. Doc compl
 - **Menú**: Tareas y Documentación viven ahora en el grupo **Proyectos** (el grupo Tareas
   desapareció); «Espacios de documentación» está en Administración.
 
+## Módulo `mantenimiento` — Servidores y Sitios web (2026-08-14)
+
+Monitoreo de los VPS de la empresa. Doc completa en `docs/modules/mantenimiento.md`.
+- **Agente push, no SSH**: un script + timer de systemd en cada VPS reporta CPU/RAM/disco por
+  minuto con un token propio (guardado HASHEADO, mostrado una sola vez). La app no guarda
+  credenciales de acceso a los servidores ni abre puertos en ellos.
+- **El heartbeat es el reporte**: sin reporte por N minutos → `offline` (detecta el servidor
+  colgado, que un ping no ve). Los de terceros (`monitorea = false`) se prueban por TCP.
+- **`/agente/*` se monta FUERA de `verifyAccessToken`** (routes.js) porque quien llama es una
+  máquina: autentica el token del servidor, con rate limit propio.
+- **Anti-spam**: un incidente abierto por servidor y tipo; se avisa al abrir y al resolver.
+  Destinatarios = quienes tengan `servidores:read`; canales campana + email + push (los que
+  no estén configurados se saltean solos).
+- **Historial**: detalle por minuto 30 días + resumen diario permanente (rollup y purga en el
+  scheduler). Umbrales globales en Configuración con override por servidor.
+- **Chequeo externo de corroboración**: cuando un agente se calla, antes de abrir el incidente
+  se prueba el puerto por TCP → el aviso distingue «el servidor está caído» de «el servidor
+  responde pero el agente se detuvo».
+
+**Sitios web** (`sitios:*`, chequeo cada 5 minutos en `sitios.handler.js`):
+- **Tres estados, no dos**: `online` (2xx **y** el marcador `<div id="app-conn-id">` del
+  footer), `sin_marcador` (contesta pero lo que sirve no es nuestro sitio) y `offline`. Los
+  sitios de terceros van con `verificaMarcador = false` y ahí alcanza un 2xx — si no,
+  quedarían en `sin_marcador` para siempre.
+- **La alerta espera al 2º fallo seguido** (`MANTENIMIENTO_FALLOS_PARA_ALERTA`): un microcorte
+  no despierta a nadie. La recuperación avisa enseguida.
+- **Dominios por RDAP** (bootstrap de IANA, no rdap.org): `.com.ar` SÍ devuelve fecha
+  (verificado contra `rdap.nic.ar`); los TLD sin RDAP (.io, .uy, .cl) se cargan a mano y esa
+  fecha manual pone `dominioAuto = false` para que el refresco diario no la pise. Si RDAP
+  falla, la fecha existente NUNCA se borra.
+- **TLS** del mismo handshake del chequeo, con `rejectUnauthorized: false` a propósito: el
+  certificado vencido es justamente el caso a avisar y con validación estricta ni se leería.
+- El **estado** de los vencimientos (ok / por vencer / vencido) se DERIVA de la fecha en cada
+  consulta; no se persiste.
+- **Punto ciego resuelto**: el monitoreo vive dentro de este proceso, así que hay
+  `GET /api/health` **público** (200 solo si la base responde) para un watchdog EXTERNO —
+  runbook en `docs/deploy-vps-oracle.md` (§ Watchdog externo). El chequeo no debe apuntar a la
+  raíz del dominio: nginx sirve el frontend aunque el backend esté muerto.
+
 ## Panel vs Estadísticas (2026-08-12)
 
 El módulo `dashboard` expone DOS superficies, cada una con su pantalla:
 - `GET /dashboard` (`dashboard:read`) → **Panel** (`views/dashboard/HomePage.vue`, grupo
   Principal del menú): qué está pasando ahora — cotización, contadores y alertas de abonos,
-  facturación del mes, proyectos y tareas del equipo. NO calcula series anuales.
+  facturación del mes, proyectos, **infraestructura** y tareas del equipo. NO calcula series
+  anuales. El bloque `mantenimiento` (`modules/mantenimiento/services/resumen.service.js`) es
+  RESUMEN: solo conteos agregados y el pico de consumo (últimos 10 min, para no mostrar el
+  valor congelado de un agente muerto); cada mitad exige `servidores:read` / `sitios:read`.
+  El panel se **refresca solo cada minuto** (`composables/useAutoRefresh.ts`) para poder
+  dejarlo en un monitor: suspende con la pestaña oculta y al salir de la vista, refresca
+  al volver a mirar, no encima pedidos y NO muestra toasts de error (los cuenta y lo dice
+  el indicador del encabezado, que además pausa/reanuda y recuerda la preferencia).
 - `GET /dashboard/estadisticas?anio=` (**`estadisticas:read`**, capability propia desde
   2026-08-13 — migración `0002` se la dio a los roles que ya tenían `facturaciones:read`) →
   **Estadísticas** (`views/dashboard/EstadisticasPage.vue`, también en Principal): mensual

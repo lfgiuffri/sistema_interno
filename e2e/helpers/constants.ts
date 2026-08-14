@@ -65,6 +65,8 @@ export const APP_ENDPOINTS = {
   estadisticas: 'dashboard/estadisticas',
   documentacion: 'documentacion',
   docEspacios: 'documentacion/admin/espacios',
+  servidores: 'mantenimiento/servidores',
+  sitios: 'mantenimiento/sitios',
   settings: 'settings',
   users: 'users',
   roles: 'users/roles',

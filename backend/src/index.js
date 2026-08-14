@@ -9,6 +9,8 @@ import { setSchedulerIO, initSchedulerQueue, startScheduler } from './services/s
 import { registerSchedulerHandler } from './kernel/handlerRegistry.js';
 import { avisosHandler } from './services/avisos/avisos.handler.js';
 import { gcHandler } from './services/avisos/gc.handler.js';
+import { monitoreoHandler } from './modules/mantenimiento/services/monitoreo.handler.js';
+import { sitiosHandler } from './modules/mantenimiento/services/sitios.handler.js';
 import { setSandboxIO, initSandboxQueue } from './services/sandbox/services/sandboxQueue.service.js';
 import { registerSocketHandlers } from './socket/socketHandlers.js';
 import { mountFeatureModules } from './routes.js';
@@ -135,6 +137,11 @@ const startServer = async () => {
     registerSchedulerHandler(avisosHandler);
     // GC diario de archivos huérfanos de tareas — mejora PRD §6.6.
     registerSchedulerHandler(gcHandler);
+    // Monitoreo de servidores: caídas por heartbeat, chequeo TCP de los de terceros y
+    // consolidación diaria de métricas. Corre siempre, haya o no gente usando la app.
+    registerSchedulerHandler(monitoreoHandler);
+    // Monitoreo de sitios web: disponibilidad cada 5 minutos, dominios y certificados.
+    registerSchedulerHandler(sitiosHandler);
 
     // Arrancar el scheduler de la app (tick por minuto; corre los handlers de los módulos).
     await startScheduler();

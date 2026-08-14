@@ -3,7 +3,8 @@
  * Panel — qué está pasando ahora, en bloques según capabilities (los calcula el backend,
  * PRD §6.9): cotización del dólar (editable con permiso), contadores de abonos (activos,
  * vencidos y próximos a actualizar), facturación del mes (abonos + proyectos combinados),
- * entregas de proyectos (ventana 5 días) y tareas del equipo.
+ * entregas de proyectos (ventana 5 días), estado de la infraestructura (resumen agregado:
+ * el detalle vive en el módulo Mantenimiento) y tareas del equipo.
  *
  * Los gráficos anuales de facturación NO viven acá: tienen su propia pantalla
  * (`EstadisticasPage.vue` → GET /dashboard/estadisticas).
@@ -11,14 +12,16 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  onIonViewWillEnter, IonPage, IonContent, IonHeader, IonToolbar, IonButtons,
-  IonMenuButton, IonIcon,
+  onIonViewWillEnter, onIonViewWillLeave, IonPage, IonContent, IonHeader, IonToolbar,
+  IonButtons, IonMenuButton, IonIcon,
 } from '@ionic/vue'
 import {
   createOutline, alertCircleOutline, timeOutline, walletOutline, trendingUpOutline,
-  folderOpenOutline, flagOutline, peopleOutline,
+  folderOpenOutline, flagOutline, peopleOutline, pulseOutline, serverOutline, globeOutline,
+  refreshOutline,
 } from 'ionicons/icons'
 import BanderaPrioridad from '@/components/tareas/BanderaPrioridad.vue'
+import { useAutoRefresh } from '@/composables/useAutoRefresh'
 import { useEscapeToClose } from '@/composables/useEscapeToClose'
 import { duracion, fechaHora } from '@/composables/useFormato'
 import api, { apiErrorMessage } from '@/services/api'
@@ -75,6 +78,16 @@ interface TareasEquipo {
   porUsuario: FilaUsuario[]
   dias: number
 }
+interface ResumenServidores {
+  total: number; online: number; offline: number; sinDatos: number; incidentes: number
+  picoCpu: number | null; picoRam: number | null; picoDisco: number | null
+}
+interface ResumenSitios {
+  total: number; online: number; sinMarcador: number; offline: number; sinChequear: number
+  dominioPorVencer: number; dominioVencido: number
+  tlsPorVencer: number; tlsVencido: number
+  incidentes: number
+}
 interface DashboardData {
   cotizacion: number
   abonos: { activos: number; totalPesos: number; vencidos: AlertaAbono[]; proximos: AlertaAbono[] } | null
@@ -85,6 +98,7 @@ interface DashboardData {
   } | null
   proyectos: { abiertos: number; vencidos: AlertaProyecto[]; proximos: AlertaProyecto[] } | null
   tareasEquipo: TareasEquipo | null
+  mantenimiento: { servidores: ResumenServidores | null; sitios: ResumenSitios | null } | null
 }
 
 const meStore = useMeStore()
@@ -116,17 +130,66 @@ const alertasProyectos = computed(() =>
   data.value?.proyectos ? [...data.value.proyectos.vencidos, ...data.value.proyectos.proximos] : []
 )
 
-async function load(): Promise<void> {
-  loading.value = true
+/** Un problema del resumen de infraestructura: `grave` pinta en rojo, si no en ámbar. */
+interface Problema { texto: string; grave: boolean }
+
+/** Consumo a partir del cual el pico se muestra como problema. */
+const PICO_ALTO = 90
+
+/**
+ * Qué anda mal en los servidores. Lista vacía = todo en orden (es lo que el panel quiere
+ * responder: no interesa el detalle de cada servidor, eso está en su pantalla).
+ */
+const problemasServidores = computed<Problema[]>(() => {
+  const s = data.value?.mantenimiento?.servidores
+  if (!s) return []
+  const p: Problema[] = []
+  if (s.offline) p.push({ texto: `${s.offline} sin responder`, grave: true })
+  if (s.incidentes) p.push({ texto: `${s.incidentes} alerta(s) abierta(s)`, grave: true })
+  if (s.sinDatos) p.push({ texto: `${s.sinDatos} sin datos todavía`, grave: false })
+  if ((s.picoDisco ?? 0) >= PICO_ALTO) p.push({ texto: `disco al ${Math.round(s.picoDisco!)}%`, grave: false })
+  if ((s.picoRam ?? 0) >= PICO_ALTO) p.push({ texto: `memoria al ${Math.round(s.picoRam!)}%`, grave: false })
+  if ((s.picoCpu ?? 0) >= PICO_ALTO) p.push({ texto: `CPU al ${Math.round(s.picoCpu!)}%`, grave: false })
+  return p
+})
+
+/** Qué anda mal en los sitios web (disponibilidad + vencimientos). */
+const problemasSitios = computed<Problema[]>(() => {
+  const s = data.value?.mantenimiento?.sitios
+  if (!s) return []
+  const p: Problema[] = []
+  if (s.offline) p.push({ texto: `${s.offline} caído(s)`, grave: true })
+  if (s.sinMarcador) p.push({ texto: `${s.sinMarcador} sin el marcador`, grave: true })
+  if (s.dominioVencido) p.push({ texto: `${s.dominioVencido} dominio(s) vencido(s)`, grave: true })
+  if (s.tlsVencido) p.push({ texto: `${s.tlsVencido} certificado(s) vencido(s)`, grave: true })
+  if (s.dominioPorVencer) p.push({ texto: `${s.dominioPorVencer} dominio(s) por vencer`, grave: false })
+  if (s.tlsPorVencer) p.push({ texto: `${s.tlsPorVencer} certificado(s) por vencer`, grave: false })
+  if (s.sinChequear) p.push({ texto: `${s.sinChequear} sin chequear todavía`, grave: false })
+  return p
+})
+
+/**
+ * Trae los datos del panel.
+ * @param silencioso - Refresco automático: sin skeleton (la pantalla ya tiene datos) y sin
+ *   toast de error — de eso se encarga el contador de fallos del auto-refresh.
+ */
+async function load(silencioso = false): Promise<void> {
+  if (!silencioso) loading.value = true
   try {
     const res = await api.get('/dashboard')
     if (res.data.success) data.value = res.data.data
   } catch (e) {
-    toast.error(apiErrorMessage(e))
+    if (!silencioso) toast.error(apiErrorMessage(e))
+    else throw e
   } finally {
-    loading.value = false
+    if (!silencioso) loading.value = false
   }
 }
+
+// Refresco automático: el panel está pensado para quedar abierto en un monitor. Un minuto
+// coincide con el ritmo del monitoreo (los agentes reportan cada minuto; los sitios se
+// chequean cada 5), así que bajar más solo agregaría consultas sin datos nuevos.
+const auto = useAutoRefresh(() => load(true), { intervaloMs: 60_000, clave: 'panelAutoRefresh' })
 
 /** Abre el modal de cotización: valor editable (con permiso) + histórico (mejora §10.10). */
 async function abrirCotizacion(): Promise<void> {
@@ -151,8 +214,17 @@ async function guardarCotizacion(): Promise<void> {
 }
 
 let loadedOnce = false
-onMounted(() => { loadedOnce = true; if (!meStore.loaded) void meStore.loadContext(); void load() })
-onIonViewWillEnter(() => { if (loadedOnce) void load() })
+onMounted(async () => {
+  loadedOnce = true
+  if (!meStore.loaded) void meStore.loadContext()
+  await load()
+  auto.marcarCargado()   // la carga inicial cuenta como actualización: si no, pediría de nuevo enseguida
+  auto.arrancar()
+})
+// Al volver al panel ya hay datos en pantalla: se refresca en silencio, sin skeleton.
+onIonViewWillEnter(() => { if (loadedOnce) { void auto.refrescarAhora(); auto.arrancar() } })
+// Fuera del panel no se refresca nada: el reloj se apaga al salir de la vista.
+onIonViewWillLeave(() => auto.parar())
 </script>
 
 <template>
@@ -170,15 +242,48 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
             <h1 class="text-xl font-semibold tracking-tight text-ink">Hola{{ firstName ? `, ${firstName}` : '' }}</h1>
             <p class="mt-0.5 text-sm text-ink-soft">El estado del negocio, de un vistazo.</p>
           </div>
-          <button
-            v-if="data"
-            class="flex items-center gap-2 px-3 h-9 rounded-md border border-line bg-surface text-sm hover:bg-surface-2 transition-colors"
-            @click="abrirCotizacion()"
-          >
-            <span class="text-ink-faint text-xs">Dólar</span>
-            <span class="tnum font-semibold text-ink">{{ fmtMoneda(data.cotizacion) }}</span>
-            <IonIcon v-if="meStore.can('configuracion:update')" :icon="createOutline" class="text-[13px] text-ink-faint" />
-          </button>
+          <div class="flex items-center gap-2">
+            <!-- Estado del refresco automático: pensado para dejar el panel en un monitor -->
+            <div
+              v-if="data"
+              class="flex items-center gap-1.5 px-2.5 h-9 rounded-md border border-line bg-surface text-2xs"
+              :title="auto.activo.value
+                ? 'Se actualiza solo cada minuto. Clic para pausar.'
+                : 'Actualización automática pausada. Clic para reanudar.'"
+            >
+              <button
+                class="flex items-center gap-1.5"
+                :aria-label="auto.activo.value ? 'Pausar la actualización automática' : 'Reanudar la actualización automática'"
+                @click="auto.alternar()"
+              >
+                <span
+                  class="w-1.5 h-1.5 rounded-full shrink-0"
+                  :class="!auto.activo.value ? 'bg-ink-faint'
+                    : auto.fallos.value ? 'bg-danger' : 'bg-ok animate-pulse'"
+                ></span>
+                <span class="text-ink-faint tnum">
+                  {{ !auto.activo.value ? 'pausado' : (auto.fallos.value ? 'sin conexión' : auto.hace.value) }}
+                </span>
+              </button>
+              <button
+                class="grid place-items-center w-5 h-5 rounded text-ink-faint hover:text-ink hover:bg-surface-2 transition-colors"
+                title="Actualizar ahora" aria-label="Actualizar ahora"
+                @click="auto.refrescarAhora()"
+              >
+                <IonIcon :icon="refreshOutline" class="text-[13px]" />
+              </button>
+            </div>
+
+            <button
+              v-if="data"
+              class="flex items-center gap-2 px-3 h-9 rounded-md border border-line bg-surface text-sm hover:bg-surface-2 transition-colors"
+              @click="abrirCotizacion()"
+            >
+              <span class="text-ink-faint text-xs">Dólar</span>
+              <span class="tnum font-semibold text-ink">{{ fmtMoneda(data.cotizacion) }}</span>
+              <IonIcon v-if="meStore.can('configuracion:update')" :icon="createOutline" class="text-[13px] text-ink-faint" />
+            </button>
+          </div>
         </header>
 
         <!-- Cargando -->
@@ -285,6 +390,85 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
             </div>
           </section>
 
+          <!-- Infraestructura: resumen, no el detalle (eso vive en el módulo Mantenimiento) -->
+          <section v-if="data.mantenimiento" class="mb-6">
+            <h2 class="text-sm font-semibold text-ink mb-2 flex items-center gap-1.5">
+              <IonIcon :icon="pulseOutline" class="text-[15px] text-ink-faint" />
+              Infraestructura
+            </h2>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+
+              <button
+                v-if="data.mantenimiento.servidores"
+                class="ds-card px-4 py-3 text-left hover:bg-surface-2/50 transition-colors"
+                @click="router.push('/mantenimiento/servidores')"
+              >
+                <div class="flex items-center justify-between gap-2">
+                  <div class="flex items-center gap-1.5 text-2xs uppercase tracking-wide text-ink-faint">
+                    <IonIcon :icon="serverOutline" class="text-[13px]" /> Servidores
+                  </div>
+                  <span
+                    class="w-2 h-2 rounded-full shrink-0"
+                    :class="!data.mantenimiento.servidores.total ? 'bg-ink-faint'
+                      : problemasServidores.some(p => p.grave) ? 'bg-danger'
+                      : problemasServidores.length ? 'bg-warn' : 'bg-ok'"
+                  ></span>
+                </div>
+                <p class="mt-1 text-lg font-semibold tnum text-ink">
+                  {{ data.mantenimiento.servidores.online }} / {{ data.mantenimiento.servidores.total }}
+                  <span class="text-xs font-normal text-ink-faint">en línea</span>
+                </p>
+                <p v-if="!data.mantenimiento.servidores.total" class="text-2xs text-ink-faint">
+                  Todavía no hay servidores cargados.
+                </p>
+                <p v-else-if="!problemasServidores.length" class="text-2xs text-ok">
+                  Todo en orden.
+                </p>
+                <div v-else class="flex flex-wrap gap-1 mt-1">
+                  <span
+                    v-for="p in problemasServidores" :key="p.texto"
+                    :class="p.grave ? 'ds-badge-danger' : 'ds-badge-warn'"
+                  >{{ p.texto }}</span>
+                </div>
+              </button>
+
+              <button
+                v-if="data.mantenimiento.sitios"
+                class="ds-card px-4 py-3 text-left hover:bg-surface-2/50 transition-colors"
+                @click="router.push('/mantenimiento/sitios')"
+              >
+                <div class="flex items-center justify-between gap-2">
+                  <div class="flex items-center gap-1.5 text-2xs uppercase tracking-wide text-ink-faint">
+                    <IonIcon :icon="globeOutline" class="text-[13px]" /> Sitios web
+                  </div>
+                  <span
+                    class="w-2 h-2 rounded-full shrink-0"
+                    :class="!data.mantenimiento.sitios.total ? 'bg-ink-faint'
+                      : problemasSitios.some(p => p.grave) ? 'bg-danger'
+                      : problemasSitios.length ? 'bg-warn' : 'bg-ok'"
+                  ></span>
+                </div>
+                <p class="mt-1 text-lg font-semibold tnum text-ink">
+                  {{ data.mantenimiento.sitios.online }} / {{ data.mantenimiento.sitios.total }}
+                  <span class="text-xs font-normal text-ink-faint">en línea</span>
+                </p>
+                <p v-if="!data.mantenimiento.sitios.total" class="text-2xs text-ink-faint">
+                  Todavía no hay sitios cargados.
+                </p>
+                <p v-else-if="!problemasSitios.length" class="text-2xs text-ok">
+                  Todo en orden.
+                </p>
+                <div v-else class="flex flex-wrap gap-1 mt-1">
+                  <span
+                    v-for="p in problemasSitios" :key="p.texto"
+                    :class="p.grave ? 'ds-badge-danger' : 'ds-badge-warn'"
+                  >{{ p.texto }}</span>
+                </div>
+              </button>
+
+            </div>
+          </section>
+
           <!-- Tareas del equipo -->
           <section v-if="data.tareasEquipo?.tarjetas" class="mb-6">
             <h2 class="text-sm font-semibold text-ink mb-2 flex items-center gap-1.5">
@@ -361,7 +545,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
           </section>
 
           <!-- Sin permisos de ningún bloque -->
-          <div v-if="!data.abonos && !data.facturacionMes && !data.proyectos" class="ds-card px-6 py-10 text-center">
+          <div v-if="!data.abonos && !data.facturacionMes && !data.proyectos && !data.mantenimiento" class="ds-card px-6 py-10 text-center">
             <p class="text-sm font-medium text-ink">El panel no tiene nada para mostrarte con los permisos de tu rol.</p>
             <p class="text-xs text-ink-faint mt-1">Elegí una opción del menú para empezar.</p>
           </div>

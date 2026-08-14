@@ -60,15 +60,42 @@ sudo apt update
 sudo apt install -y nginx certbot python3-certbot-nginx
 ```
 
+> 📁 **La ruta `/opt/sistema-interno` de este runbook es un EJEMPLO.** Si instalás en otro
+> lado (ej. `/srv/miapp/sistema_interno`), hay que cambiarla en los CUATRO lugares que la
+> referencian, o el deploy queda a medias: el `root` del server block de nginx, el
+> `WorkingDirectory`/`ExecStart` del servicio systemd, `backup.sh` y `deploy.sh`.
+> Para verificarlo: `grep -rn "/opt/sistema-interno" /etc/nginx/sites-available/ /etc/systemd/system/sistema-interno.service`.
+
 ## 4. MySQL: base y usuario dedicado
+
+⚠️ **El usuario va creado para `127.0.0.1`, no solo para `localhost`.** Para MySQL son hosts
+DISTINTOS: `localhost` matchea conexiones por socket unix (o por TCP si el server resuelve el
+nombre), y el driver de Node **siempre conecta por TCP a 127.0.0.1**. Si solo existe
+`'sistema'@'localhost'`, el arranque falla con:
+
+```
+Error inicializando la base de datos: (conn:-1, no: 1130, SQLState: HY000)
+Host '127.0.0.1' is not allowed to connect to this MySQL server
+```
+
+Se crea para los dos hosts y listo (el de socket sirve para entrar con el cliente `mysql`):
 
 ```sql
 -- sudo mysql
 CREATE DATABASE IF NOT EXISTS sistema_interno CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER 'sistema'@'localhost' IDENTIFIED BY '<password fuerte>';
+
+CREATE USER IF NOT EXISTS 'sistema'@'127.0.0.1' IDENTIFIED BY '<password fuerte>';
+CREATE USER IF NOT EXISTS 'sistema'@'localhost' IDENTIFIED BY '<password fuerte>';
+GRANT ALL PRIVILEGES ON sistema_interno.* TO 'sistema'@'127.0.0.1';
 GRANT ALL PRIVILEGES ON sistema_interno.* TO 'sistema'@'localhost';
 FLUSH PRIVILEGES;
+
+-- Verificación: tienen que aparecer las dos filas.
+SELECT user, host FROM mysql.user WHERE user = 'sistema';
 ```
+
+Nunca `'sistema'@'%'`: abriría el usuario a cualquier origen. El puerto 3306 igual no se
+expone (ver Security List), pero el grant es la última línea de defensa.
 
 ## 5. Backend
 
@@ -254,6 +281,7 @@ directorios del camino).
 
 ```bash
 curl https://sys.positivemedia.com.ar/api          # → { "success": true, ... }
+curl https://sys.positivemedia.com.ar/api/health   # → { "ok": true, "baseMs": 2, ... }
 ```
 
 - App: `https://sys.positivemedia.com.ar` → login con `ADMINUSER`/`ADMINPASS` →
@@ -261,6 +289,68 @@ curl https://sys.positivemedia.com.ar/api          # → { "success": true, ... 
 - Docs API: `https://sys.positivemedia.com.ar/api/docs`.
 - PWA: desde el browser, "Instalar app".
 - Realtime: la campana de notificaciones conecta (consola del browser sin errores de socket).
+
+### Si el backend no arranca
+
+| Síntoma en `journalctl -u sistema-interno -n 50` | Causa y arreglo |
+|---|---|
+| `no: 1130 ... Host '127.0.0.1' is not allowed to connect` | El usuario MySQL existe solo para otro host (típicamente `'sistema'@'localhost'`). Crear el grant para `127.0.0.1` (paso 4). Diagnóstico: `sudo mysql -e "SELECT user,host FROM mysql.user WHERE user='sistema'"`. |
+| `no: 1045 ... Access denied for user 'sistema'@'127.0.0.1'` | El host SÍ está permitido pero la contraseña no coincide: `ALTER USER 'sistema'@'127.0.0.1' IDENTIFIED BY '<password>'` y revisar `DB_PASS` del `.env`. |
+| `no: 1049 ... Unknown database` | Falta crear la base (paso 4) o `DB_NAME` no coincide. |
+| `ECONNREFUSED 127.0.0.1:3306` | MySQL no está corriendo (`systemctl status mysql`) o escucha en otra interfaz (`bind-address` en `/etc/mysql/mysql.conf.d/mysqld.cnf` debe incluir `127.0.0.1`). |
+| `JWT_SECRET` | En producción el backend NO arranca sin `JWT_SECRET` en el `.env`. |
+
+Después de tocar grants: `FLUSH PRIVILEGES` y `sudo systemctl restart sistema-interno`.
+
+### Si la app da 403 / 404 en el navegador
+
+El log de nginx dice exactamente cuál de los dos casos es:
+`sudo tail -20 /var/log/nginx/error.log`.
+
+| Línea en el error.log | Causa y arreglo |
+|---|---|
+| `directory index of "/opt/sistema-interno/frontend/dist/" is forbidden` | La carpeta existe pero **no tiene `index.html`**: falta compilar el frontend (paso 6) o el build falló. `ls /opt/sistema-interno/frontend/dist/index.html` y re-correr el build. |
+| `Permission denied` / `open() ... failed (13)` | nginx (usuario `www-data`) no puede leer el `dist/`. Necesita **`x` en todo el camino** y `r` en los archivos: `sudo chmod o+X /opt /opt/sistema-interno /opt/sistema-interno/frontend /opt/sistema-interno/frontend/dist && sudo chmod -R o+rX /opt/sistema-interno/frontend/dist`. |
+| `No such file or directory` (404 en vez de 403) | El `root` del server block no apunta a la carpeta real del build. |
+
+Ojo con el ORDEN del runbook: nginx (paso 7) asume que el frontend ya está compilado
+(paso 6). Si se configura nginx antes de compilar, la raíz da 403.
+
+## Watchdog externo
+
+El módulo de Mantenimiento vigila los servidores y los sitios **desde adentro** de esta app. Falta lo obvio: **quién vigila a esta app**. Si el VPS se cae, se cae el monitoreo con él y nadie avisa.
+
+Para eso está el endpoint público de salud, que responde **200** solo si el backend y su base están vivos, y **503** si la base no responde:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' https://sys.positivemedia.com.ar/api/health
+```
+
+Elegí **una** de estas dos opciones (no hacen falta las dos):
+
+**A. Servicio de uptime (recomendado).** UptimeRobot, BetterStack o similar, plan gratis: monitor HTTP cada 5 minutos contra `/api/health`, alerta por mail y/o Telegram cuando el status no sea 200. Es **infraestructura ajena**: sigue avisando aunque se caiga todo lo nuestro, incluida la conexión del VPS. Cinco minutos de configuración y cero mantenimiento.
+
+**B. Cron en otra máquina** (otro VPS, una PC de la oficina que quede prendida). Sirve si preferís no depender de un tercero, pero **la máquina que corre el cron pasa a ser el punto ciego**:
+
+```bash
+#!/bin/bash
+# /usr/local/bin/watchdog-sistema-interno.sh — cron: */5 * * * *
+URL="https://sys.positivemedia.com.ar/api/health"
+MARCA="/tmp/.watchdog-sistema-interno"
+
+codigo=$(curl -s -o /dev/null -m 15 -w '%{http_code}' "$URL")
+if [ "$codigo" = "200" ]; then
+  # Se recuperó: avisar una sola vez y limpiar la marca.
+  [ -f "$MARCA" ] && echo "Sistema Interno volvió a responder" | mail -s "OK: Sistema Interno" vos@positivemedia.com.ar
+  rm -f "$MARCA"
+else
+  # Anti-spam: se avisa al detectarlo, no en cada corrida.
+  [ -f "$MARCA" ] || echo "Sistema Interno no responde (HTTP $codigo)" | mail -s "ALERTA: Sistema Interno caído" vos@positivemedia.com.ar
+  touch "$MARCA"
+fi
+```
+
+> El chequeo **no** debe apuntar a `https://sys.positivemedia.com.ar/` a secas: eso es el frontend estático, que nginx sigue sirviendo aunque el backend esté muerto. Un 200 ahí no prueba nada.
 
 ## 9. Backups
 

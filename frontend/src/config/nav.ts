@@ -13,7 +13,8 @@ import {
   settingsOutline, briefcaseOutline, layersOutline, gitBranchOutline, receiptOutline,
   walletOutline, documentTextOutline, folderOpenOutline, calendarOutline,
   checkboxOutline, albumsOutline, personOutline, cashOutline, trendingUpOutline,
-  calendarNumberOutline, cardOutline, statsChartOutline, libraryOutline,
+  calendarNumberOutline, cardOutline, statsChartOutline, libraryOutline, serverOutline,
+  globeOutline,
 } from 'ionicons/icons'
 
 export interface NavItem {
@@ -61,6 +62,13 @@ export const NAV: NavGroup[] = [
       { label: 'Grilla de cobranzas', path: '/grilla-cobranzas', icon: calendarOutline, module: 'cobranzas' },
       { label: 'Tareas', path: '/tareas', icon: checkboxOutline, module: 'tareas' },
       { label: 'Documentación', path: '/documentacion', icon: libraryOutline, module: 'documentacion' },
+    ],
+  },
+  {
+    label: 'Mantenimiento',
+    items: [
+      { label: 'Servidores', path: '/mantenimiento/servidores', icon: serverOutline, module: 'servidores' },
+      { label: 'Sitios web', path: '/mantenimiento/sitios', icon: globeOutline, module: 'sitios' },
     ],
   },
   {
