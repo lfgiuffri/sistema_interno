@@ -1,6 +1,6 @@
 # Issue tracker: GitHub
 
-Issues and PRDs for this repo (`santigiuf/zero`) live as GitHub issues. Use the `gh` CLI for all operations.
+Issues and PRDs for this repo (`lfgiuffri/sistema_interno`) live as GitHub issues. Use the `gh` CLI for all operations.
 
 ## Conventions
 

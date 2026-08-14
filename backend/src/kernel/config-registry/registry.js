@@ -1,7 +1,7 @@
 /**
- * Zero 2.0 — Config registry tipado (inspirado en el config.toml de Supabase).
+ * Sistema Interno — Config registry tipado (inspirado en el config.toml de Supabase).
  *
- * Un único lugar que declara TODO lo configurable de Zero por secciones (app, auth, storage,
+ * Un único lugar que declara TODO lo configurable de la app por secciones (app, auth, storage,
  * realtime, webhooks, vault, ai), con tipo, default, variable de entorno y si es secreto.
  * Resuelve el valor efectivo (env → default) con coerción de tipo y enmascara secretos al exponer.
  *
@@ -19,10 +19,10 @@
  * @property {string} desc - Descripción.
  */
 
-/** Esquema de configuración por secciones. Agregar acá = declarar nueva config de Zero. */
+/** Esquema de configuración por secciones. Agregar acá = declarar nueva config de la app. */
 export const CONFIG_SCHEMA = {
     app: {
-        name: { type: 'string', default: 'Zero', env: 'APP_NAME', desc: 'Nombre de la app' },
+        name: { type: 'string', default: 'Sistema Interno', env: 'APP_NAME', desc: 'Nombre de la app' },
         publicApiUrl: { type: 'string', default: '', env: 'PUBLIC_API_URL', desc: 'URL pública del API' },
         frontendUrl: { type: 'string', default: 'http://localhost:8100', env: 'FRONTEND_URL', desc: 'URL del frontend' }
     },

@@ -1,7 +1,7 @@
 /**
  * Sistema Interno — Auto-discovery de modelos y asociaciones (single-tenant).
  *
- * Reemplaza a tenantAssociations.js de Zero 2.0. Escanea las tres ubicaciones de modelos
+ * Reemplaza a tenantAssociations.js de la base multi-tenant original. Escanea las tres ubicaciones de modelos
  * (kernel/, modules/, services/) buscando factories `define<Nombre>Model(db)`, las instancia
  * sobre la conexión única y ejecuta sus `associate(models)`. No hay registro central:
  * agregar un modelo = crear el archivo en una carpeta `models/`.

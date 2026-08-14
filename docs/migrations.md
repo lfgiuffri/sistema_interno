@@ -1,98 +1,77 @@
-# Migraciones + Deploy — Zero 2.0
+# Migraciones — Sistema Interno
 
-> ⚠️ **Keep in sync.** Runner en `kernel/migrations/migrationRunner.js`; migraciones en `src/migrations/{master,tenant}/`; controller/rutas en `services/migrations/`; deploy en `services/migrations/services/deploy.service.js`. Panel super-admin en `frontend/src/views/admin/AdminMigrationsPage.vue` + `stores/migrations.ts`.
+> ⚠️ **Keep in sync.** Runner en `backend/src/kernel/migrations/migrationRunner.js`; migraciones en `backend/src/migrations/`.
 
-Sistema de migraciones **versionadas** para la base maestra y para **cada** DB de tenant, más un **deploy de código** disparable desde el panel super-admin. Resuelve el problema de *schema drift*: tenants creados antes de un cambio de modelo quedan sin las columnas/índices nuevos.
+Hay **dos caminos** para llegar al schema, y no se pisan:
 
-## Dos mecanismos complementarios — no confundir
+| Camino | Cuándo | Qué hace |
+|---|---|---|
+| **`npm run init_db`** | Instalación **nueva** | Crea la base + `sync()` desde los modelos (schema al día) + seeds condicionales (rol Administrador, usuario admin, áreas, formas de facturación, cuentas). |
+| **Migraciones** (este doc) | Base **existente**, con datos | Aplica **deltas versionados**: una migración = un cambio, idempotente y registrado. |
 
-| Mecanismo | Cuándo | Qué hace |
-|-----------|--------|----------|
-| **Sync de provisión** (`tenants.controller.js`) | Al **crear** un tenant nuevo | Crea el schema **actual** completo desde los modelos. |
-| **Migraciones** (este doc) | Sobre DBs **existentes** | Aplica **deltas versionados** (una migración = un cambio), idempotentes, registrados. |
-
-Un tenant nuevo nace con el schema al día (sync) **y** con las migraciones marcadas como aplicadas recién cuando se corren — por eso las migraciones deben ser idempotentes (si la columna ya existe, no rompen).
+**Regla dura**: todo cambio de schema sobre una base con datos va por migración. Nunca `sync({ alter })` — te reescribe columnas y se lleva datos puestos.
 
 ## Estructura
 
+Una sola carpeta, sin master ni tenants (la app es single-tenant):
+
 ```
 backend/src/migrations/
-├── master/        # se aplican a la DB maestra (zero2_master)
-│   └── 0001-tenants-status-index.js
-└── tenant/        # se aplican a CADA DB de tenant
-    └── 0001-roles-isSystem.js
+├── 0001-documentacion.js
+├── 0002-estadisticas-capability.js
+├── 0003-mantenimiento-servidores.js
+└── 0004-mantenimiento-sitios.js
 ```
 
-Cada archivo se nombra `NNNN-descripcion.js` (el orden lexicográfico **es** el orden de aplicación) y exporta:
+El nombre es `NNNN-descripcion.js` y **el orden lexicográfico es el orden de aplicación**. Cada archivo exporta:
 
 ```js
-/** @param {import('sequelize').Sequelize} sequelize @param {typeof import('sequelize')} Sequelize */
+/**
+ * @param {import('sequelize').Sequelize} sequelize - Conexión.
+ * @param {object} Sequelize - Namespace de Sequelize (tipos, Op, …).
+ * @returns {Promise<void>}
+ */
 export const up = async (sequelize, Sequelize) => { /* aplica el cambio */ };
-export const down = async (sequelize) => { /* opcional: revierte */ };
 ```
 
-## Cómo escribir una migración (idempotente — obligatorio)
+No hay `down`: revertir en producción es más peligroso que arreglar hacia adelante con otra migración.
 
-En MariaDB/MySQL el **DDL hace COMMIT implícito**: la transacción del runner NO revierte un `ALTER TABLE`. Por eso toda migración debe chequear el estado **antes** de alterar, así un reintento es seguro. Plantillas vivas: copiá [`0001-roles-isSystem.js`](../backend/src/migrations/tenant/0001-roles-isSystem.js) (columna) o [`0001-tenants-status-index.js`](../backend/src/migrations/master/0001-tenants-status-index.js) (índice).
+## Cuándo corren
+
+Al **boot** del backend, antes de escuchar (`AUTO_MIGRATE` distinto de `false`). El runner:
+
+1. Crea `schema_migrations (name PK, appliedAt)` si falta.
+2. Lee los nombres ya aplicados.
+3. Corre las pendientes **en orden**, cada una en su transacción, y registra el nombre.
+
+Una migración que falla corta el arranque: es la señal correcta — mejor no levantar que servir con el schema a medias.
+
+## Idempotencia (no es opcional)
+
+MariaDB hace **COMMIT implícito en cada DDL**: si una migración crea dos tablas y explota en la segunda, la primera **ya quedó** y la transacción no la revierte. Por eso cada migración tiene que poder re-correrse: preguntá antes de crear.
 
 ```js
-// Agregar columna — idempotente vía describeTable
-export const up = async (sequelize, Sequelize) => {
-  const qi = sequelize.getQueryInterface();
-  const table = await qi.describeTable('roles');
-  if (!table.isSystem) {
-    await qi.addColumn('roles', 'isSystem', { type: Sequelize.BOOLEAN, allowNull: false, defaultValue: false });
-  }
+export const up = async (sequelize) => {
+    const q = sequelize.getQueryInterface();
+    // ⚠️ showAllTables() devuelve OBJETOS ({ tableName, schema }) en MariaDB, no strings:
+    // con String() quedaría "[object Object]" y el guard NUNCA cortaría.
+    const existentes = (await q.showAllTables()).map(t => String(t?.tableName ?? t).toLowerCase());
+    const hay = (t) => existentes.includes(t);
+
+    if (!hay('mi_tabla')) {
+        await sequelize.query(`CREATE TABLE mi_tabla (...) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`);
+    }
 };
 ```
 
-Para crear un índice usá `showIndex` + `addIndex`. Para data migrations puras (DML), también escribilas idempotentes (`INSERT ... ON DUPLICATE KEY`, `UPDATE` con `WHERE` acotado).
+Para columnas, el equivalente es `describeTable('tabla')` y chequear la clave; para índices, `showIndex`.
 
-## Aplicar migraciones
+## Actualizar una base ya en producción
 
-**Al boot**: las migraciones **master** se aplican automáticamente al arrancar el backend (idempotentes). Se desactiva con `AUTO_MIGRATE=false`. Las **tenant** NO se corren al boot (iterar todos los tenants sería lento) → se disparan desde el panel.
+Lo normal es desplegar el código y reiniciar: el runner aplica lo pendiente solo. Si preferís tocar la base a mano (o el deploy y la migración van separados), en [`sql/`](sql/) hay scripts SQL equivalentes, re-ejecutables, que además registran la migración en `schema_migrations` para que el runner no la repita.
 
-**Desde el panel super-admin** (`/admin/migrations`): ver estado (pendientes por scope), aplicar a master / a todos los tenants / a un tenant puntual, y disparar el deploy.
-
-**Por API** (super_admin, `x-access-token`):
-
-| Método | Ruta | Qué hace |
-|--------|------|----------|
-| GET | `/api/master/migrations/status` | Estado: disponibles + pendientes en master y por tenant + `deployConfigured`. |
-| POST | `/api/master/migrations/run` | Body `{ scope: 'master'\|'tenants'\|'all', dryRun?: boolean }`. |
-| POST | `/api/master/migrations/run/tenant/:id` | Aplica las migraciones tenant a un tenant puntual. |
-| POST | `/api/master/migrations/deploy` | Ejecuta `DEPLOY_COMMAND`; body `{ migrate?: boolean }` corre migraciones después. |
-
-Todas pasan por `verifyAdmin` (solo `super_admin`). `dryRun: true` lista pendientes sin aplicar.
-
-## Registro: `schema_migrations`
-
-Cada DB (master y cada tenant) lleva su propia tabla `schema_migrations (name PK, appliedAt)`. El runner aplica solo lo que no figura ahí, en orden, y registra cada éxito en una transacción. Si una migración falla, aborta y propaga (no la marca como aplicada); `runAllTenants` no corta ante el fallo de un tenant: registra el error por tenant y sigue.
-
-## Deploy de código
-
-`POST /master/migrations/deploy` ejecuta el comando **preconfigurado** en `DEPLOY_COMMAND` (nunca un comando provisto por el request → sin superficie de inyección). Si no está seteado → `400`.
+Antes de cualquiera de los dos caminos: **backup**.
 
 ```bash
-# bare-metal
-DEPLOY_COMMAND="git pull && npm --prefix backend ci && npm --prefix backend run build && pm2 reload zero"
-# Docker
-DEPLOY_COMMAND="docker compose pull && docker compose up -d --build"
-DEPLOY_TIMEOUT_MS=600000   # opcional, default 10 min
-DEPLOY_CWD=                 # opcional, default cwd del proceso
+mysqldump -u sistema -p sistema_interno > backup-$(date +%F).sql
 ```
-
-El endpoint devuelve `{ stdout, stderr, success, exitCode }`. Con `{ migrate: true }` y deploy exitoso, corre las migraciones master + tenants a continuación (útil cuando el deploy trae migraciones nuevas).
-
-## Env
-
-```bash
-AUTO_MIGRATE=true            # aplica migraciones master al boot (idempotentes)
-# DEPLOY_COMMAND=            # vacío = deploy deshabilitado (endpoint responde 400)
-# DEPLOY_TIMEOUT_MS=600000
-# DEPLOY_CWD=
-```
-
-## Tests
-
-`e2e/tests/api/m10-migrations.spec.ts` — estado, run idempotente, dry-run, scope por tenant, 404 tenant inexistente, 422 validación, 400 deploy no configurado, 403 sin super_admin.

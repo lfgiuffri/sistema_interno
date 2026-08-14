@@ -52,7 +52,7 @@ async function show(type: ToastType, message: string, opts: ToastOptions = {}) {
 }
 
 /**
- * Helper unificado de toasts para Zero (web + APK).
+ * Helper unificado de toasts (web + APK).
  * Usar en lugar de `toastController.create()` directo.
  *
  * Estilos definidos en theme/global.css (clases `.ls-toast-*`).

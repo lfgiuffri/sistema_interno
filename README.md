@@ -1,7 +1,7 @@
 # Sistema Interno · Positive Media
 
 Sistema de administración interna de la empresa (clientes, abonos, proyectos, empleados,
-sueldos, tareas), construido sobre la base **Zero 2.0 adaptada a single-tenant**.
+sueldos, tareas).
 Reemplaza al sistema PHP legado (documentado en `../analisis_app_php/`); el plan de
 producto vive en [`../PRD.md`](../PRD.md).
 

@@ -1,5 +1,5 @@
 /**
- * Zero 2.0 — Servicio genérico de embeddings + búsqueda semántica.
+ * Sistema Interno — Servicio genérico de embeddings + búsqueda semántica.
  *
  * Generaliza la "semantic memory": cualquier feature puede indexar texto (con un dueño
  * lógico ownerType/ownerId) y luego buscarlo por similitud semántica. Toda la lógica y el
@@ -149,6 +149,6 @@ export const searchEmbeddings = async (models, userId, query, k = 5) => {
  */
 export const removeEmbeddingsByOwner = async (models, userId, ownerType, ownerId) => {
     const { EmbeddingItem } = models;
-    // destroy soft-deletea (paranoid:true) → nunca borrado físico (convención Zero).
+    // destroy soft-deletea (paranoid:true) → nunca borrado físico (convención del proyecto).
     return EmbeddingItem.destroy({ where: { userId, ownerType, ownerId } });
 };

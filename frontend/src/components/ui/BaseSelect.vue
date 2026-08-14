@@ -48,7 +48,7 @@
 
 <script setup lang="ts">
 /**
- * Select propio de Zero: dropdown accesible con teclado (flechas, Home/End,
+ * Select propio del design system: dropdown accesible con teclado (flechas, Home/End,
  * Enter/Espacio, Escape), focus ring, opciones estilizadas y check en la
  * seleccionada. Reemplaza al <select> nativo en toda la app. El listado se
  * teleporta al body para no quedar recortado por contenedores con overflow.

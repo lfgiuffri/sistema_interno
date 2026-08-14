@@ -1,6 +1,12 @@
 # ADR-005 — Billing vendor-agnóstico
 
-- **Status**: Aceptado
+> ⚠️ **Histórico.** Este ADR describe la base **Zero 2.0** (el starter SaaS multi-tenant
+> del que nace el Sistema Interno), no la app actual: acá no hay tenants, planes ni
+> billing. Se conserva como registro de por qué la base era así. Ver
+> [ADR-015](ADR-015-single-tenant-conversion.md).
+
+
+- **Status**: Supersedido por ADR-015
 - **Date**: 2026-06-30
 
 ## Context

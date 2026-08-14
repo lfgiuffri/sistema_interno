@@ -27,7 +27,7 @@ export const defineTenantSecretModel = (tenantDb) => {
         authTag: { type: DataTypes.STRING, allowNull: false }
     }, {
         timestamps: true,
-        paranoid: true, // soft-delete: nunca se borra físico (convención Zero).
+        paranoid: true, // soft-delete: nunca se borra físico (convención del proyecto).
         // Ocultamos valueEncrypted en cualquier serialización por defecto (defensa en profundidad:
         // si algún controller devolviera la instancia entera por error, el ciphertext no se filtra).
         defaultScope: {

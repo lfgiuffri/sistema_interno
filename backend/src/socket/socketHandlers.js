@@ -1,5 +1,5 @@
 /**
- * Zero 2.0 — Registro de handlers de Socket.IO por conexión (genérico, sin dominio).
+ * Sistema Interno — Registro de handlers de Socket.IO por conexión (genérico, sin dominio).
  *
  * El core solo se ocupa de la conexión, la autenticación (en index.js) y el join al
  * room personal. Cualquier evento de aplicación (chat, presencia, etc.) lo aporta un

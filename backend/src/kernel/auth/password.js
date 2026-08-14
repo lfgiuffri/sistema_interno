@@ -1,5 +1,5 @@
 /**
- * Zero 2.0 — Hashing de passwords (argon2id, con back-compat bcrypt).
+ * Sistema Interno — Hashing de passwords (argon2id, con back-compat bcrypt).
  *
  * Best-practice (skill de seguridad): argon2id para nuevos hashes. Para no romper usuarios
  * existentes con hashes bcrypt, verifyPassword detecta el formato y compara con el algoritmo

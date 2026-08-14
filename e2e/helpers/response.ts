@@ -1,7 +1,7 @@
 import { expect, type APIResponse } from '@playwright/test';
 
 /**
- * Validates a successful Zero 2.0 API response structure.
+ * Validates a successful Sistema Interno API response structure.
  * All backend responses follow: { success, code, message, timestamp, data?, meta? }
  */
 export async function expectSuccess(response: APIResponse, expectedCode = 200) {

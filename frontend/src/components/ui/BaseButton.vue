@@ -13,7 +13,7 @@
 
 <script setup lang="ts">
 /**
- * Botón propio de Zero. Variantes: primary (acento sólido), ghost (outline),
+ * Botón propio del design system. Variantes: primary (acento sólido), ghost (outline),
  * danger (destructivo), soft (fondo tenue del acento), subtle (neutro).
  * Estados hover/active/focus/disabled/loading unificados vía tokens.
  */

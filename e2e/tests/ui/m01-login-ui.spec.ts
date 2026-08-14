@@ -3,7 +3,7 @@ import { ROUTES } from '../../helpers/constants';
 import { SEL } from '../../helpers/selectors';
 
 /**
- * M1 (UI) — Login del shell Zero 2.0.
+ * M1 (UI) — Login del shell del Sistema Interno.
  *
  * Mínimo y resiliente: el shell es plan-aware y su markup puede variar, así que nos apoyamos en
  * locators accesibles (rol/label) del mapa `SEL` (helpers/selectors.ts), sin acoplar a clases CSS.

@@ -1,8 +1,8 @@
-# Modularidad — Zero 2.0
+# Modularidad — Sistema Interno
 
 > ⚠️ **Keep in sync.** Loader en `kernel/moduleLoader.js`, capabilities en `kernel/capability.js`, handlers en `kernel/handlerRegistry.js`.
 
-La modularidad de Zero descansa en cuatro piezas del kernel que trabajan juntas. Para **crear** un módulo, ver [docs/modules/](modules/README.md). Este doc explica los **puntos de extensión**.
+La modularidad descansa en cuatro piezas del kernel que trabajan juntas. Para **crear** un módulo, ver [docs/modules/](modules/README.md). Este doc explica los **puntos de extensión**.
 
 ## 1. Manifest + module loader (`kernel/moduleLoader.js`)
 

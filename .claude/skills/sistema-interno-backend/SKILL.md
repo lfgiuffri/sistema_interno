@@ -1,54 +1,53 @@
 ---
-name: zero-backend
-description: Build backend features on the Zero 2.0 base (Node ESM + Express 5 + Sequelize multi-tenant). Use when adding/modifying a backend module, model, service, controller, route, capability, scheduler/socket/notification handler, or anything under backend/src. Covers the manifest module system, kernel barrel, capabilities, plan-gating, billing, auth, storage/webhooks/embeddings/vault, and the controller-helper + JSDoc conventions.
+name: sistema-interno-backend
+description: Build backend features in the Sistema Interno (Node ESM + Express 5 + Sequelize, single-tenant). Use when adding/modifying a backend module, model, service, controller, route, capability, scheduler/socket/notification handler, or anything under backend/src. Covers the manifest module system, the kernel barrel, capabilities, auth, migrations, and the controller-helper + JSDoc conventions.
 ---
 
-# Zero 2.0 — Backend
+# Sistema Interno — Backend
 
-Zero 2.0 is a multi-tenant base: a **master DB** (tenants, masterUsers, configs, subscriptions) + **one DB per tenant** (lazy, cached). Backend is **plain JS ESM** (no TypeScript), Express 5, Sequelize 6, Socket.IO, BullMQ/Redis.
+Administration app for Positive Media. **Single-tenant**: one database, no tenants, no plans, no billing, no public signup — an administrator creates the users. Backend is **plain JS ESM** (no TypeScript), Express 5, Sequelize 6, Socket.IO, BullMQ/Redis (Redis optional — everything degrades to `setInterval`).
 
 ## Architecture (read first)
-- `backend/src/kernel/` = **infra** (never app-specific): `master/`, `users/`, `registry/`, `handlerRegistry.js`, `moduleLoader.js`, `capability.js`, `moduleGate.js`, `vault/`, `config-registry/`, and the **barrel `kernel/index.js`**.
-- `backend/src/modules/` = **pluggable features**, each self-contained with a `module.manifest.js`. Auto-discovered at boot and mounted behind `verifyAccessToken → planGate(plan) → requireCapability(per route)`.
-- `backend/src/services/` = infra services (ai, push, scheduler, sandbox, notifications, billing, storage, webhooks, embeddings, me, openapi).
-- Full reference: `docs/architecture/README.md`, `docs/modules/README.md`, `docs/best-practices-guidelines.md`.
+- `backend/src/kernel/` = **infra** (never business-specific): `users/` (User, Role, RoleCapability + auth/roles/users), `auth/` (argon2id, TOTP, session, lockout), `registry/`, `realtime/`, `config-registry/`, `vault/`, `mail/`, `migrations/`, `capability.js`, `moduleLoader.js`, `handlerRegistry.js`, and the **barrel `kernel/index.js`**.
+- `backend/src/modules/` = **pluggable features**, each self-contained with a `module.manifest.js`. Auto-discovered at boot and mounted behind `verifyAccessToken → requireCapability(per route)`. **There is no plan gating.**
+- `backend/src/services/` = platform services (ai, archivos, avisos, embeddings, html, me, notificaciones, notifications, openapi, push, sandbox, scheduler, storage, webhooks).
+- One connection in `database.js`; models auto-discovered by `associations.js` (factories `define<X>Model(db)`); `middlewares/dbContext.js` injects `req.db` / `req.models`.
+- Full reference: `CLAUDE.md`, `docs/architecture/README.md`, `docs/modules/README.md`.
 
-## To add a feature module: COPY `backend/src/modules/items/`
-`items/` is the canonical template. Mirror it exactly:
-1. `models/<Name>.js` — factory `export const define<Name>Model = (tenantDb) => { const M = tenantDb.define('snake_table', {...}, { timestamps:true, paranoid:true, indexes:[...] }); M.associate = (models)=>{ if(models.User) M.belongsTo(models.User,{foreignKey:'userId'}); }; return M; }`. Auto-discovered (no central registration). Always include `userId` + filter every query by it (tenant-isolation / anti-IDOR).
-2. `services/<name>.service.js` — **all business logic + data access** (controller-helper pattern). No `req`/`res`. Receives `(models, userId, ...)`.
-3. `controllers/<name>.controller.js` — **thin**: extract input, call service, respond with `responseManager`. Emit socket events on mutations.
-4. `validators/<name>.validator.js` — express-validator per endpoint + the `validator` middleware (from the kernel barrel). Validation failures → 422.
-5. `routes/<name>.routes.js` — each route declares `requireCapability('<key>:<action>')` before the validator + controller.
-6. `module.manifest.js` — `export default { key, name, version, basePath, models:[...], capabilities:['<key>:read', ...], minPlan, dependsOn:[], router }`.
+## To add a feature module: COPY `backend/src/modules/areas/`
+`areas/` is the smallest complete module — mirror it:
+1. `models/<Name>.js` — factory `export const define<Name>Model = (db) => {...}` + `associate`, `paranoid: true`. Auto-discovered, no central registration.
+2. `services/<name>.service.js` — **all business logic + data access**. No `req`/`res`. Receives `(models, ...)`.
+   ⚠️ **The data is the company's, not the user's**: never filter business queries by `userId`. `userId` is authorship only.
+3. `controllers/<name>.controller.js` — **thin**: `matchedData(req)` → service → `responseManager`. Emit socket events on mutations.
+4. `validators/<name>.validator.js` — express-validator per endpoint + the `validator` middleware (from the barrel). Failures → 422.
+5. `routes/<name>.routes.js` — every route declares `requireCapability('<key>:<action>')`.
+6. `module.manifest.js` — `export default { key, name, version, basePath, models:[...], capabilities:[...], dependsOn:[], router }`.
 
-Then: nothing else. The loader discovers it, registers capabilities, and mounts it. Add the module key to the relevant plans in `config/plans.js` so `planGate` enables it.
+Then nothing else: **do not touch `routes.js`** — the loader discovers the module, registers its capabilities and mounts it.
 
 ## Conventions (non-negotiable)
-- **Import infra ONLY from the kernel barrel**: `import { responseManager, Paginate, validator, requireCapability, enforceLimit, putFile, dispatchWebhook, vaultGet, ... } from '../../../kernel/index.js'`. Never deep-import infra into a module (keeps modules portable between Zero apps).
-- **Always `responseManager(code, data, req, res, sendNotification, options)`** — never `res.json()` directly. Envelope: `{ success, code, message, timestamp, data, meta }`.
-- **JSDoc on EVERY function** (description, `@param`, `@returns`) + inline comments for non-obvious *why*.
-- **`paranoid: true`** (soft delete) on models. Never `destroy({ force:true })`.
-- Capabilities: `modulo:accion` (e.g. `items:create`). Admin role has `*`. Seed/assign via `setRoleCapabilities` / the admin.
-- Plan gating: feature modules gated by `planGate` (from `config/plans.js`). Quotas via `enforceLimit`/usage metering.
-- Pluggable handlers: a module can add scheduler tasks (`registerSchedulerHandler`), socket handlers (`registerSocketHandler`), or notification actions (`registerNotificationAction`) — register them from the manifest/boot.
-- **Resolve filesystem paths relative to the module** (`path.dirname(fileURLToPath(import.meta.url))`), NEVER cwd-relative (`./src/...`) — cwd-relative breaks in Docker/prod where the process runs from `build/`. Seeds/data are shipped to `build/` via `babel --copy-files`; `npm run build` does `rm -rf build` first (no stale artifacts).
-- **Never persist a plaintext password**, even transiently: hash BEFORE `create()` (`await User.prototype.encryptPassword(pw)`), not after. Rehash legacy hashes on login via `rehashIfNeeded`.
-- **External webhooks verify signatures fail-CLOSED**: if the signing secret is missing, throw/reject — never accept unverified (see Stripe/MercadoPago providers).
+- **Import infra ONLY from the kernel barrel**: `import { responseManager, Paginate, validator, requireCapability, getAppConfigNumber, crearNotificacion, putFile, ... } from '../../../kernel/index.js'`. Never deep-import infra into a module.
+- **Always `responseManager`** — never `res.json()` directly. Envelope: `{ success, code, message, timestamp, data, meta }`. Pagination in `meta` (helper `Paginate`).
+- **JSDoc on EVERY function** (description, `@param`, `@returns`) + inline comments explaining the *why*, in Spanish (es-AR), like the surrounding code.
+- **`paranoid: true`** (soft delete). Never `destroy({ force: true })` outside documented, settled ledgers.
+- Capabilities: `modulo:accion` (e.g. `abonos:create`), deny-by-default. The seeded `Administrador` role is `isSystem` with the `*` wildcard: it can't be edited or deleted, and `*` is not assignable to other roles.
+- Pluggable handlers: `registerSchedulerHandler` (one-minute tick), `registerSocketHandler`, `registerNotificationAction`.
+- **Resolve filesystem paths relative to the module** (`path.dirname(fileURLToPath(import.meta.url))`), NEVER cwd-relative — that breaks in production, where the process runs from `build/`.
+- **Never persist a plaintext password**: hash BEFORE `create()`.
+- Legacy business rules (frozen amounts, append-only histories, delete guards, rounding) are preserved from the PHP system — see `../analisis_app_php/` and PRD §6.
 
-## Master / platform
-- Roles: `super_admin` (platform, MasterUser, NOT a tenant role), `admin` (tenant owner, `*`), `user` (member). Custom roles per tenant.
-- Auth for `/master/*`: `verifyAdmin` checks the **super_admin JWT** (`x-access-token`) — the frontend never ships `x-master-key`. `masterOnly` (`x-master-key`) is a separate platform key for a few config endpoints only.
-- Tenant provisioning: `provisionTenant(data)` in `kernel/master/controllers/tenants.controller.js` (reused by admin createTenant AND self-signup).
-- Billing: vendor-agnostic `PaymentProvider` (Stripe/MercadoPago). Webhooks verify signature + idempotency; they sync `Tenant.plan`.
-- **Schema changes → write a migration**, never rely on `sync({alter})`. Add `src/migrations/{master,tenant}/NNNN-desc.js` (idempotent: check `describeTable`/`showIndex` first — MariaDB DDL auto-commits). Master migrations auto-run at boot; tenant ones run from the super-admin panel (`/admin/migrations`) or `POST /master/migrations/run`. See `docs/migrations.md`.
+## Migrations
+**Any schema change on a database with data → a migration**, never `sync({ alter })`. Add `backend/src/migrations/NNNN-desc.js` (`export const up = async (sequelize, Sequelize)`), idempotent — MariaDB auto-commits DDL, so a half-applied migration must be safe to re-run. They run at boot unless `AUTO_MIGRATE=false`. A fresh install uses `npm run init_db`.
+⚠️ `showAllTables()` returns objects (`{ tableName, schema }`) in MariaDB, not strings — normalize before comparing or the guard never fires.
 
 ## Verify
-`cd backend && npm run build`. For runtime: `npm run init_master_db` then `npm run dev`; smoke-test `POST /api/master/auth/signin`. Add e2e in `e2e/tests/api/` (see the `zero-tests` skill).
+`cd backend && npm run build`. Runtime: `npm run init_db` then `npm run dev`; smoke-test `POST /api/auth/signin`. Add e2e in `e2e/tests/api/` (see the `sistema-interno-tests` skill).
 
 ## ⚠️ SYNC RULE (mandatory)
-When you add/change an endpoint, model (incl. **any schema change → migration**), middleware, capability, plan, manifest, or event:
-1. Update `docs/` (architecture/modules/api + the relevant guide) **in the same change**.
-2. Update/add the e2e test in `e2e/`.
-3. If a convention changes, update THIS skill and the other `zero-*` skills.
+When you add/change an endpoint, model (**schema change → migration**), middleware, capability, manifest, socket event, service or config:
+1. Update `docs/` **in the same change**.
+2. Update/add the e2e test in `e2e/` (+ helpers).
+3. Update the OpenAPI spec (`services/openapi/openapi.service.js`).
+4. If a convention changes, update THIS skill and the other `sistema-interno-*` skills.
 Stale docs/skills are worse than none — keep them in lockstep with the code.

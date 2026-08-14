@@ -4,7 +4,7 @@ import path from 'path';
 
 dotenv.config({ path: path.resolve(__dirname, '../backend/.env') });
 
-// Zero 2.0 backend runs on PORT (default 3010); frontend shell on 8100.
+// El backend del Sistema Interno corre en PORT (default 3010); frontend shell on 8100.
 const BACKEND_URL = process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 3010}`;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:8100';
 

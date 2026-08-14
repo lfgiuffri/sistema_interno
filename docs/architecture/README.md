@@ -1,7 +1,7 @@
 # Arquitectura — Sistema Interno (single-tenant)
 
 > ⚠️ **Keep in sync.** Cableado en `backend/src/{database,associations,app,routes,index}.js`.
-> La conversión desde Zero 2.0 multi-tenant está documentada en
+> La conversión desde la base Zero 2.0 multi-tenant (el starter del que nace esta app) está documentada en
 > [ADR-015](../decisions/ADR-015-single-tenant-conversion.md).
 
 ## Vista general

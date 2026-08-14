@@ -2,7 +2,7 @@
   "name": "sistema-interno-backend",
   "version": "2.0.0",
   "type": "module",
-  "description": "Sistema Interno — backend Node/Express/Sequelize (single-tenant, base Zero 2.0).",
+  "description": "Sistema Interno — backend Node/Express/Sequelize (single-tenant).",
   "main": "index.js",
   "scripts": {
     "build": "rm -rf build && babel src --out-dir build --copy-files",

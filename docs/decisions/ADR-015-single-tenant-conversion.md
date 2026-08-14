@@ -4,7 +4,7 @@
 
 ## Contexto
 
-Zero 2.0 nació como base SaaS multi-tenant (base maestra + una DB por tenant, planes,
+El Sistema Interno nace de **Zero 2.0**, una base SaaS multi-tenant (base maestra + una DB por tenant, planes,
 billing, self-signup). El Sistema Interno de Positive Media es una app de UNA sola empresa:
 el peso del multi-tenant (resolución de tenant por request, pool de conexiones por tenant,
 gating por plan, billing) no aporta nada y complica cada feature.

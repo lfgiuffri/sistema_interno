@@ -1,16 +1,18 @@
-# Zero 2.0 — Best-Practices Guidelines (North Star)
+# Sistema Interno — Best-Practices Guidelines (North Star)
 
 > **Origen.** Este documento consolida los hallazgos de skills de mejores prácticas instaladas vía [find-skills](https://skills.sh) y verificadas por reputación/instalaciones: **antfu/vue**, **antfu/pinia**, **cap-go/capacitor-best-practices**, **capawesome/ionic-expert**, **mcollina/node**, **mindrally/express-typescript**, **mindrally/sequelize**, **getsentry/security-review**, **currents-dev/playwright-best-practices**, **addyosmani/documentation-and-adrs**, **stripe/stripe-best-practices**, **better-auth/two-factor-authentication-best-practices**.
 >
-> **Cómo usarlo.** Es la guía que rige TODO el build de Zero 2.0 (M1→M13). Cada milestone debe respetar estas reglas. La sección final clasifica las decisiones contenciosas como **ADOPTAR / ADAPTAR / DIFERIR** para no romper lo que ya funciona en el modelo multi-tenant.
+> **Cómo usarlo.** Es la guía que rige el build. La sección final clasifica las decisiones contenciosas como **ADOPTAR / ADAPTAR / DIFERIR**.
+>
+> ⚠️ **Ojo con el contexto.** El documento se escribió para la base **Zero 2.0** (el starter SaaS del que nace esta app), así que menciona tenants, planes, billing y milestones M1→M13 que **acá no existen**: el Sistema Interno es single-tenant (ver [ADR-015](decisions/ADR-015-single-tenant-conversion.md)). Lo que sigue vigente palabra por palabra son los **estándares de código** (§11): comentarios y JSDoc obligatorios, controller-helper, y OpenAPI + Playwright como testing.
 
 ---
 
-## 0. Decisiones para Zero 2.0 (resolución de tensiones)
+## 0. Decisiones de base (resolución de tensiones)
 
 Algunas recomendaciones de las skills chocan con convenciones heredadas (JS puro, `sync()` para provisión de tenants, express-validator, bcryptjs, morgan). Resolución explícita:
 
-| Tema | Recomendación skill | Decisión Zero 2.0 | Cuándo |
+| Tema | Recomendación skill | Decisión tomada | Cuándo |
 |---|---|---|---|
 | Lenguaje backend | TypeScript | **ADAPTAR**: seguir en JS ESM puro; usar JSDoc `@typedef`/`@param` + validación runtime para suplir tipos | — |
 | Validación input | Zod | **ADAPTAR**: mantener `express-validator` como estándar de rutas (ya cableado); Zod opcional solo en servicios con schemas complejos | — |
@@ -114,7 +116,7 @@ Algunas recomendaciones de las skills chocan con convenciones heredadas (JS puro
 - **Versiones sincronizadas** (`core`/`cli`/`ios`/`android`); `npx cap sync` tras instalar plugins.
 - **`capacitor.config.ts`** con `server.url` de dev gateado por `NODE_ENV` (nunca commitear dev URL a prod).
 - **Imports dinámicos de plugins** (`const { Camera } = await import('@capacitor/camera')`); chequear disponibilidad/permeisos antes de usar con fallback web.
-- **Auth0 deep-links**: `scheme` en config + `App.addListener('appUrlOpen')` para parsear el callback (`zero://auth/callback?...`) y rutear a la acción del auth store.
+- **Deep-links**: `scheme` en config + `App.addListener('appUrlOpen')` para parsear el callback y rutear a la acción del auth store.
 - **`CapacitorHttp`** en nativo (SSL pinning, evita CORS); `fetch` en web.
 
 ### 6.6 TypeScript & performance (front)
@@ -161,10 +163,10 @@ Algunas recomendaciones de las skills chocan con convenciones heredadas (JS puro
 
 ---
 
-## 11. Estándares de código Zero 2.0 (decisiones del usuario)
+## 11. Estándares de código (decisiones del usuario) — VIGENTES
 
 ### 11.1 Comentarios — OBLIGATORIO en TODO el código
-Esto **sobre-escribe** la regla minimalista de la skill de docs. En Zero 2.0:
+Esto **sobre-escribe** la regla minimalista de la skill de docs. En este proyecto:
 - **Toda función** (exportada o interna) lleva un bloque **JSDoc**: descripción de qué hace, `@param {tipo} nombre - …` por cada parámetro, `@returns {tipo} …`. En async: documentar qué resuelve la Promise.
 - **Comentarios inline** dentro de cada función explicando el *por qué* de los pasos no triviales (no narrar lo obvio, sí la intención y los gotchas).
 - Backend en JS: usar JSDoc con `@typedef` para shapes complejos (suple la falta de TS).
@@ -193,7 +195,7 @@ Es el patrón idiomático de Sequelize (equivalente al clásico `models/index.js
 - El **manifest** (M3) declara los modelos del módulo → el loader valida disco-vs-manifest.
 
 ### 12.2 `routes.js` → HÍBRIDO (infra explícita + módulos por manifest)
-Un `routes.js` central estático es válido y da control de middlewares, pero choca con el objetivo de Zero (módulos drop-in/out gateados por plan). Resolución:
+Un `routes.js` central estático es válido y da control de middlewares, pero choca con el objetivo de módulos drop-in/out. Resolución:
 - **Infra explícita** (master auth/tenants/global-configs/notification-actions, core, users): se mantienen en un bootstrap chico (always-on, orden importa).
 - **Módulos feature auto-discovery** vía `module.manifest.js`: un **module loader** los monta aplicando la cadena estándar (`tenantIdentification → authAndPerms → capability check → plan gate`) de forma declarativa y uniforme. Se conserva el control de middlewares; se gana gating por plan y cero edición central por módulo.
 - El loader sincroniza los manifests con el registry en DB existente (`modules/core`: Module/Controller/View/Route) en vez de inventar uno paralelo.
@@ -203,7 +205,7 @@ Un `routes.js` central estático es válido y da control de middlewares, pero ch
 Para poder **mover módulos entre apps**, la separación es física:
 ```
 backend/src/
-├── kernel/                 # INFRA (el motor de Zero; NO se mueve entre apps)
+├── kernel/                 # INFRA (el motor; NO se mueve entre apps)
 │   ├── master/             # Tenant, GlobalConfig, MasterUser (base maestra)
 │   ├── users/              # User, Role, Permission, RoleCapability, auth
 │   ├── registry/           # Module/Controller/View/Route/Config (registro en DB)  [ex modules/core]
@@ -215,8 +217,8 @@ backend/src/
 └── masterDatabase.js  tenant/masterAssociations.js  app.js  routes.js  index.js
 ```
 Reglas:
-- Un módulo de `modules/` **solo importa infra desde `kernel/index.js`** (el barrel), nunca rutas profundas. Así, copiar la carpeta del módulo a otra app Zero "just works".
-- Para mover un módulo entre apps: copiar `modules/<nombre>/`. Su único acoplamiento externo es el barrel del kernel (misma API en toda app Zero).
+- Un módulo de `modules/` **solo importa infra desde `kernel/index.js`** (el barrel), nunca rutas profundas. Así, copiar la carpeta del módulo a otra app con este kernel "just works".
+- Para mover un módulo entre apps: copiar `modules/<nombre>/`. Su único acoplamiento externo es el barrel del kernel (misma API en todas).
 - `masterAssociations` escanea `kernel/master/models`; `tenantAssociations` escanea `kernel/` (excluye master) + `modules/` + `services/`.
 - Si una pieza de infra se reubica internamente, se actualiza solo el barrel.
 - (Futuro) Con ESM nativo (sin babel) el barrel puede exponerse como subpath import `#kernel`. Con babel se evita por el riesgo de duplicar singletons (registries) entre `src/` y `build/`.
@@ -227,7 +229,7 @@ Jerarquía RBAC multi-tenant canónica. **Lo crítico es DÓNDE vive cada nivel*
 
 | Nivel | Quién | Scope | Cómo se enforce |
 |---|---|---|---|
-| **super_admin** | Zero + la empresa que desarrolla | **Plataforma (master DB)** | `MasterUser` + `masterOnly` + `x-master-key`. **NO es un rol de tenant.** Gestiona tenants, planes, billing, config global. |
+| **super_admin** | La empresa que desarrolla la plataforma | **Plataforma (master DB)** | `MasterUser` + `masterOnly` + `x-master-key`. **NO es un rol de tenant.** Gestiona tenants, planes, billing, config global. |
 | **admin** | El cliente que paga el tenant | **Tenant** (rol de sistema, `*`) | RoleCapability `['*']`. Gestiona su tenant: settings, usuarios, **crea roles custom**, asigna capabilities, su suscripción. |
 | **user** | Usuario final del cliente | **Tenant** (rol de sistema, mínimo) | RoleCapability subset, deny-by-default. |
 | *(custom roles)* | Creados por el admin del tenant | **Tenant** | Capabilities subset, **acotadas a las del plan**. |

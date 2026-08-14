@@ -3,7 +3,7 @@
  *
  * Login por username/email + password (argon2id, back-compat bcrypt con rehash-on-login),
  * lockout por fuerza bruta, MFA/TOTP opcional con backup codes, refresh de tokens y
- * cambio de contraseña con step-up. Reemplaza al login centralizado de master de Zero 2.0.
+ * cambio de contraseña con step-up. Reemplaza al login centralizado de la base multi-tenant original.
  */
 
 import jwt from 'jsonwebtoken';

@@ -13,7 +13,9 @@
     <link rel="icon" type="image/png" sizes="16x16" href="/icons/icon-16.png" />
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
-    <link rel="manifest" href="/manifest.json" />
+    <!-- El manifest lo inyecta vite-plugin-pwa (nombre, colores e iconos en vite.config.ts).
+         No agregar un <link rel="manifest"> a mano: le gana al generado y la app instalada
+         queda con el nombre viejo. -->
   </head>
   <body>
     <div id="app"></div>

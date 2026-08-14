@@ -1,7 +1,7 @@
 {
-  "name": "zero2-e2e",
+  "name": "sistema-interno-e2e",
   "version": "2.0.0",
-  "description": "E2E tests for Zero 2.0 backend API using Playwright",
+  "description": "E2E tests for the Sistema Interno backend API using Playwright",
   "private": true,
   "scripts": {
     "test": "npx playwright test",

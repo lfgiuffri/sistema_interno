@@ -35,7 +35,7 @@ export const defineEmbeddingItemModel = (tenantDb) => {
         vector: { type: DataTypes.JSON, allowNull: true }
     }, {
         timestamps: true,
-        paranoid: true, // soft-delete: nunca se borra físico (convención Zero).
+        paranoid: true, // soft-delete: nunca se borra físico (convención del proyecto).
         indexes: [
             // Acelera el acceso más común: traer los embeddings de un usuario filtrando por tipo de dueño.
             { fields: ['userId', 'ownerType'] }

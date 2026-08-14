@@ -1,4 +1,4 @@
-# Vault de secretos — Zero 2.0
+# Vault de secretos — Sistema Interno
 
 > ⚠️ **Keep in sync.** Servicio en `kernel/vault/vault.service.js`; modelo `TenantSecret`.
 
@@ -19,7 +19,7 @@ Contrato: `vaultSet`/`vaultList` **nunca** devuelven el valor ni el ciphertext. 
 
 ## Derivación de clave
 
-La clave AES-256 se **deriva** (no se usa cruda) con `scrypt` a partir de `VAULT_KEY` (preferida) o, como fallback, `JWT_SECRET`. La salt es fija a propósito (`zero-vault`): el objetivo es estirar el material a 32 bytes de forma **determinística** (el mismo `VAULT_KEY` produce siempre la misma clave, condición necesaria para descifrar después), no resistir rainbow tables sobre un secreto de entorno.
+La clave AES-256 se **deriva** (no se usa cruda) con `scrypt` a partir de `VAULT_KEY` (preferida) o, como fallback, `JWT_SECRET`. La salt es fija a propósito (`zero-vault`, heredada del nombre viejo del proyecto y **sin renombrar**: su valor es parte del formato en disco y cambiarla haría indescifrable lo ya guardado): el objetivo es estirar el material a 32 bytes de forma **determinística** (el mismo `VAULT_KEY` produce siempre la misma clave, condición necesaria para descifrar después), no resistir rainbow tables sobre un secreto de entorno.
 
 Degradación: si no hay ni `VAULT_KEY` ni `JWT_SECRET`, el proceso **arranca igual** (no se valida al importar); recién al **usar** el vault se tira un error claro.
 

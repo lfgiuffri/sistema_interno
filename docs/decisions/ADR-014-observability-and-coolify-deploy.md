@@ -10,10 +10,10 @@
 
 ## Context
 
-Zero es un starter que **otros despliegan** de formas distintas: en un VPS pelado, con un PaaS, o
+La base es un starter que **otros despliegan** de formas distintas: en un VPS pelado, con un PaaS, o
 sumando la app a una plataforma que ya tienen. Además, algunos van a querer error tracking y otros no.
-Hasta ahora Zero no tenía instrumentación de errores ni una guía de deploy más allá de Docker Compose.
-Necesitábamos: (a) observabilidad **sin acoplar** Zero a ninguna herramienta ni infra concreta, y
+Hasta ahora no había instrumentación de errores ni una guía de deploy más allá de Docker Compose.
+Necesitábamos: (a) observabilidad **sin acoplar** la app a ninguna herramienta ni infra concreta, y
 (b) documentar el deploy con Coolify como camino de "plataforma".
 
 ## Decision
@@ -30,8 +30,8 @@ Necesitábamos: (a) observabilidad **sin acoplar** Zero a ninguna herramienta ni
      GlitchTip". Como GlitchTip habla el **protocolo de Sentry**, el mismo DSN sirve para ambos.
 
 2. **Deploy agnóstico, elegible en el setup.** `npm run setup` pregunta el modo:
-   `standalone` (compose/bare-metal, sin Coolify) · `coolify-new` (instalar Coolify + Zero) ·
-   `coolify-existing` (sumar Zero a un Coolify existente). El `.env` generado incluye `SENTRY_DSN`.
+   `standalone` (compose/bare-metal, sin Coolify) · `coolify-new` (instalar Coolify + la app) ·
+   `coolify-existing` (sumar la app a un Coolify existente). El `.env` generado incluye `SENTRY_DSN`.
    El patrón Coolify (managed MariaDB/Redis + 2 apps Dockerfile) y sus gotchas quedan en
    `deploy-coolify.md` (eliminado — ver nota al tope).
 
@@ -40,7 +40,7 @@ Necesitábamos: (a) observabilidad **sin acoplar** Zero a ninguna herramienta ni
 
 ## Consequences
 
-- Zero queda observable en cualquier destino sin dependencia dura de GlitchTip ni Coolify; quien no
+- La app queda observable en cualquier destino sin dependencia dura de GlitchTip ni Coolify; quien no
   quiere error tracking no paga nada (SDK no-op).
 - Nuevas deps de producción: `@sentry/node` (backend), `@sentry/vue` (frontend). Presentes siempre,
   inertes sin DSN.

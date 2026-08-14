@@ -1,4 +1,4 @@
-# Webhooks salientes — Zero 2.0
+# Webhooks salientes — Sistema Interno
 
 > ⚠️ **Keep in sync.** Servicio en `services/webhooks/services/webhooks.service.js`; rutas en `services/webhooks/routes/webhooks.routes.js`; modelos `WebhookSubscription`/`WebhookDelivery`.
 
@@ -22,14 +22,14 @@ Cada POST se firma con **HMAC-SHA256** del body usando el secreto de la suscripc
 
 | Header | Contenido |
 |--------|-----------|
-| `X-Zero-Signature` | `sha256=<hex>` del body |
-| `X-Zero-Event` | nombre del evento |
-| `X-Zero-Delivery` | id de la entrega (para deduplicar reintentos del lado del receptor) |
+| `X-Sistema-Interno-Signature` | `sha256=<hex>` del body |
+| `X-Sistema-Interno-Event` | nombre del evento |
+| `X-Sistema-Interno-Delivery` | id de la entrega (para deduplicar reintentos del lado del receptor) |
 
 ## Entrega: reintentos y transporte
 
 - Hasta `WEBHOOKS_MAX_ATTEMPTS` (default 5, clamp 1..10) con **backoff exponencial** (1s, 2s, 4s... tope 30s). Cualquier 2xx = éxito; timeout por intento 10s.
-- **Con Redis**: se encola en BullMQ (`zero-webhooks-<suffix>`) → no bloquea el request.
+- **Con Redis**: se encola en BullMQ (`sistema-interno-webhooks-<suffix>`) → no bloquea el request.
 - **Sin Redis**: entrega inline async (fire-and-forget) con el mismo backoff. El feature degrada con gracia.
 - El resultado final se persiste en `WebhookDelivery` (`status`, `attempts`, `responseStatus`, `lastError`).
 

@@ -1,5 +1,5 @@
 /**
- * Zero 2.0 — Module loader (auto-discovery de módulos feature por manifest).
+ * Sistema Interno — Module loader (auto-discovery de módulos feature por manifest).
  *
  * Escanea `src/modules/*\/module.manifest.js`, valida cada manifest, registra sus
  * capabilities y handlers (scheduler/socket) en el handlerRegistry, y monta sus routers

@@ -1,11 +1,11 @@
 /**
- * Selectores para la UI del shell de Zero 2.0.
+ * Selectores para la UI del shell del Sistema Interno.
  *
  * Preferimos selectores accesibles (roles + accessible name) sobre clases CSS,
  * por lo que muchas entradas son *patrones de búsqueda* que las specs combinan con
  * locators basados en roles: `page.getByRole(...)`, `page.getByLabel(...)`, etc.
  *
- * El shell de Zero 2.0 es plan-aware (menú dinámico armado desde GET /me), así que
+ * El shell es permission-aware (menú dinámico armado desde GET /me), así que
  * evitamos acoplar los tests a clases concretas: nos apoyamos en texto/rol.
  */
 export const SEL = {

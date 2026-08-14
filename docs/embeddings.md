@@ -1,4 +1,4 @@
-# Embeddings y búsqueda semántica — Zero 2.0
+# Embeddings y búsqueda semántica — Sistema Interno
 
 > ⚠️ **Keep in sync.** Servicio en `services/embeddings/embeddings.service.js`; modelo `EmbeddingItem`; embeddings de IA en `services/ai/services/ai.service.js#embedText`.
 

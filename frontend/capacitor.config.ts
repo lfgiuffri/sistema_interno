@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli'
 
 /**
- * Configuración de Capacitor para Zero.
+ * Configuración de Capacitor para el Sistema Interno.
  * El `server.url` de dev se gatea por NODE_ENV para nunca commitear una URL de
  * desarrollo a un build de producción (best-practices §6.5).
  */

@@ -29,14 +29,14 @@ export const defineWebhookSubscriptionModel = (tenantDb) => {
             // Por defecto, suscribirse a todo: el comodín "*" matchea cualquier evento.
             defaultValue: ['*']
         },
-        // Secreto HMAC por suscripción: con él se firma cada entrega (header X-Zero-Signature).
+        // Secreto HMAC por suscripción: con él se firma cada entrega (header X-Sistema-Interno-Signature).
         // Lo genera el server al crear la suscripción; el receptor lo usa para verificar autenticidad.
         secret: { type: DataTypes.STRING(128), allowNull: false },
         // Permite pausar la suscripción sin borrarla. Solo se entregan eventos a suscripciones activas.
         active: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true }
     }, {
         timestamps: true,
-        paranoid: true, // soft-delete: nunca se borra físico (convención Zero).
+        paranoid: true, // soft-delete: nunca se borra físico (convención del proyecto).
         indexes: [
             // Acelera el listado por dueño.
             { fields: ['userId'] },

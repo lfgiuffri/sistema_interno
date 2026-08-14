@@ -1,9 +1,9 @@
 /**
- * Zero 2.0 — Barrel del KERNEL: superficie pública de infra para los módulos pluggable.
+ * Sistema Interno — Barrel del KERNEL: superficie pública de infra para los módulos pluggable.
  *
  * Un módulo de `modules/` debe importar la infra SOLO desde acá (no desde rutas profundas
- * tipo `../../../libs/...`). Eso lo vuelve portable: para mover un módulo a otra app Zero,
- * se copia su carpeta y sigue importando `kernel` (que toda app Zero expone con la misma API).
+ * tipo `../../../libs/...`). Eso lo vuelve portable: para mover un módulo a otra app
+ * con este kernel, se copia su carpeta y sigue importando `kernel` (misma API en todas).
  *
  * Si una pieza de infra cambia de lugar internamente, solo se actualiza este barrel,
  * no cada módulo. Mantener esta superficie CHICA y estable a propósito.

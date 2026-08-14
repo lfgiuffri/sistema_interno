@@ -5,7 +5,7 @@ import { runSandbox } from '../services/sandbox/services/sandbox.service.js';
 
 /**
  * Worker del sandbox — corre en VM-Sandbox (host aislado).
- * Consume jobs de la cola (Redis de VM-Zero), ejecuta el repo bajo gVisor y
+ * Consume jobs de la cola (Redis), ejecuta el repo bajo gVisor y
  * DEVUELVE el resultado. NO accede a la base de datos ni a secrets (el backend persiste).
  *
  * Arranque: pm2 start src/exec/sandboxWorker.js --name sandbox-worker
@@ -20,7 +20,7 @@ process.env.PATH = `/usr/bin:/usr/local/bin:${process.env.PATH || ''}`;
 const getQueueName = () => {
     const source = process.env.SANDBOX_QUEUE_SUFFIX || process.env.MASTER_DBNAME || 'default';
     const suffix = String(source).toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'default';
-    return `zero-sandbox-${suffix}`;
+    return `sistema-interno-sandbox-${suffix}`;
 };
 
 const connection = getRedisConfig();

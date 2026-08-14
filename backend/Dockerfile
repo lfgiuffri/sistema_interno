@@ -1,4 +1,4 @@
-# Zero 2.0 — Backend (Node ESM · Express 5 · Sequelize · BullMQ).
+# Sistema Interno — Backend (Node ESM · Express 5 · Sequelize · BullMQ).
 # Multi-stage: la imagen final solo lleva el código compilado + deps de producción.
 
 # ── Stage 1: build (compila src/ → build/ con Babel) ──────────────────────────

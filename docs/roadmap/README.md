@@ -1,4 +1,8 @@
-# Roadmap de Zero 2.0
+# Roadmap de Zero 2.0 · OBSOLETO
+
+> ⚠️ **Documento histórico.** Es el roadmap del starter **Zero 2.0** (billing, tenants,
+> sitio de marketing), no del Sistema Interno. El estado real de esta app está en
+> [`CLAUDE.md`](../../CLAUDE.md) § Estado del proyecto y el plan de producto en `../PRD.md`.
 
 > Estado del proyecto + qué falta + recomendaciones para seguir (incluido desde otra PC).
 > Última actualización: 2026-07-02.

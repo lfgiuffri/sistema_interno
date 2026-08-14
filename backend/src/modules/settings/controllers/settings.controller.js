@@ -1,5 +1,5 @@
 /**
- * Zero 2.0 — Controller de UserSettings (preferencias del usuario).
+ * Sistema Interno — Controller de UserSettings (preferencias del usuario).
  *
  * Patrón controller-helper: estos controllers son finos (extraen input de `req`,
  * llaman a los modelos y responden con responseManager). UserSettings guarda
@@ -17,7 +17,7 @@ import {
 } from '../services/settings.service.js';
 
 /** Nombre de la app para títulos de notificación (configurable por entorno). */
-const APP_NAME = process.env.APP_NAME || 'Zero';
+const APP_NAME = process.env.APP_NAME || 'Sistema Interno';
 
 /**
  * Devuelve las preferencias del usuario; las crea con defaults si no existen.

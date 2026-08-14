@@ -1,5 +1,5 @@
 /**
- * Zero 2.0 — Registro central de handlers pluggable.
+ * Sistema Interno — Registro central de handlers pluggable.
  *
  * Los frameworks genéricos del core (scheduler, sockets, notification-actions,
  * sandbox) NO conocen ningún dominio: iteran sobre handlers que los módulos

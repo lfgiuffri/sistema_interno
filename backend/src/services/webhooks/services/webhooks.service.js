@@ -6,11 +6,11 @@
  * (WebhookDelivery) y hacer POST a la URL del receptor con reintentos y backoff exponencial.
  *
  * Cada request se firma con HMAC-SHA256 del body usando el secreto de la suscripción
- * (header `X-Zero-Signature: sha256=<hex>`), de modo que el receptor pueda verificar
- * autenticidad e integridad. Se incluyen también `X-Zero-Event` y `X-Zero-Delivery`.
+ * (header `X-Sistema-Interno-Signature: sha256=<hex>`), de modo que el receptor pueda verificar
+ * autenticidad e integridad. Se incluyen también `X-Sistema-Interno-Event` y `X-Sistema-Interno-Delivery`.
  *
  * Transporte:
- *  - Si hay Redis (getRedis()), se encola el trabajo en una cola BullMQ (`zero-webhooks-<suffix>`),
+ *  - Si hay Redis (getRedis()), se encola el trabajo en una cola BullMQ (`sistema-interno-webhooks-<suffix>`),
  *    que reintenta con backoff fuera del request → no bloquea al caller.
  *  - Si NO hay Redis, se entrega INLINE de forma async (fire-and-forget) con el mismo backoff,
  *    para que el feature degrade con gracia sin Redis.
@@ -51,7 +51,7 @@ export const generateSecret = () => crypto.randomBytes(32).toString('hex');
 /**
  * Calcula la firma HMAC-SHA256 de un body en formato `sha256=<hex>`.
  * Es el mismo esquema que usan GitHub/Supabase: el receptor recomputa el HMAC con su copia
- * del secreto y compara para validar que el evento vino realmente de Zero y no se alteró.
+ * del secreto y compara para validar que el evento vino realmente del Sistema Interno y no se alteró.
  * @param {string} body - Cuerpo crudo (JSON serializado) que se va a enviar.
  * @param {string} secret - Secreto HMAC de la suscripción.
  * @returns {string} Firma con prefijo, ej. "sha256=ab12...".
@@ -64,7 +64,7 @@ export const signPayload = (body, secret) => {
 /**
  * Deriva el nombre de la cola BullMQ desde el entorno (aísla colas entre despliegues),
  * igual que hace el servicio de sandbox para no pisar colas de otros entornos.
- * @returns {string} Nombre de la cola (ej. "zero-webhooks-mydb").
+ * @returns {string} Nombre de la cola (ej. "sistema-interno-webhooks-mydb").
  */
 const getQueueName = () => {
     const source = process.env.WEBHOOKS_QUEUE_SUFFIX || process.env.DB_NAME || 'default';
@@ -73,7 +73,7 @@ const getQueueName = () => {
         .replace(/[^a-z0-9_-]+/g, '-')
         .replace(/^-+|-+$/g, '')
         .slice(0, 80) || 'default';
-    return `zero-webhooks-${suffix}`;
+    return `sistema-interno-webhooks-${suffix}`;
 };
 
 /**
@@ -94,8 +94,8 @@ export const eventMatches = (subscribedEvents, event) => {
  * @param {object} params - Parámetros del intento.
  * @param {string} params.url - URL de destino.
  * @param {string} params.secret - Secreto HMAC de la suscripción.
- * @param {string} params.event - Nombre del evento (header X-Zero-Event).
- * @param {number|string} params.deliveryId - ID de la entrega (header X-Zero-Delivery).
+ * @param {string} params.event - Nombre del evento (header X-Sistema-Interno-Event).
+ * @param {number|string} params.deliveryId - ID de la entrega (header X-Sistema-Interno-Delivery).
  * @param {string} params.body - Body JSON ya serializado (se firma tal cual).
  * @returns {Promise<{ok: boolean, status: number|null, error: string|null}>} Resultado del intento.
  */
@@ -110,12 +110,12 @@ const attemptDelivery = async ({ url, secret, event, deliveryId, body }) => {
             headers: {
                 'Content-Type': 'application/json',
                 // Firma HMAC del body: permite al receptor verificar origen e integridad.
-                'X-Zero-Signature': signPayload(body, secret),
+                'X-Sistema-Interno-Signature': signPayload(body, secret),
                 // Nombre del evento, para que el receptor enrute sin parsear el body.
-                'X-Zero-Event': event,
+                'X-Sistema-Interno-Event': event,
                 // ID de la entrega: permite deduplicar reintentos del lado del receptor.
-                'X-Zero-Delivery': String(deliveryId),
-                'User-Agent': 'Zero-Webhooks/1.0'
+                'X-Sistema-Interno-Delivery': String(deliveryId),
+                'User-Agent': 'SistemaInterno-Webhooks/1.0'
             },
             body
         });

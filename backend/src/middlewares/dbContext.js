@@ -1,7 +1,7 @@
 /**
  * Sistema Interno — Contexto de base de datos por request (single-tenant).
  *
- * Reemplaza a tenantIdentification de Zero 2.0: no hay tenant que resolver — la conexión
+ * Reemplaza a tenantIdentification de la base multi-tenant original: no hay tenant que resolver — la conexión
  * y los modelos son singletons inicializados al boot. Este middleware los inyecta en el
  * request para conservar el contrato que ya usan controllers y services (`req.models`,
  * `req.db`), de modo que los módulos sigan siendo portables.

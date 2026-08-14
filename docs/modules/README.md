@@ -1,4 +1,4 @@
-# Cómo crear un módulo — Zero 2.0
+# Cómo crear un módulo — Sistema Interno
 
 > ⚠️ **Keep in sync.** La plantilla canónica es `backend/src/modules/items/`. Si cambia el contrato del manifest o la cadena de montaje, actualizá este doc.
 
@@ -73,7 +73,7 @@ export const defineItemModel = (tenantDb) => {
     userId: { type: DataTypes.INTEGER, allowNull: false }
   }, {
     timestamps: true,
-    paranoid: true,                  // soft-delete (convención Zero)
+    paranoid: true,                  // soft-delete (convención del proyecto)
     indexes: [{ fields: ['userId'] }]
   });
 

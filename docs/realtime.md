@@ -1,4 +1,4 @@
-# Realtime — Zero 2.0
+# Realtime — Sistema Interno
 
 > ⚠️ **Keep in sync.** Bootstrap de Socket.IO en `index.js`; presencia/broadcast en `kernel/realtime/presence.js`; registro de handlers en `socket/socketHandlers.js` + `kernel/handlerRegistry.js`.
 

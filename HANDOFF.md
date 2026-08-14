@@ -1,4 +1,10 @@
-# HANDOFF — Continuación de sesión (Coolify + Zero + GlitchTip)
+# HANDOFF — Continuación de sesión (Coolify + GlitchTip) · OBSOLETO
+
+> ⚠️ **Documento histórico.** Es el traspaso de una sesión de julio de 2026 sobre la infra
+> local del starter **Zero 2.0** (Coolify + WSL2 + GlitchTip), anterior a que este repo
+> pasara a ser el **Sistema Interno**. Para esta app, Coolify y Docker quedaron descartados:
+> el deploy real está en [`docs/deploy-vps-oracle.md`](docs/deploy-vps-oracle.md).
+> No sigas los pasos de acá.
 
 > Documento de traspaso para continuar el trabajo en otra máquina/cuenta de Claude.
 > Generado el 2026-07-02 al cierre de la sesión que montó la infra local y la observabilidad.

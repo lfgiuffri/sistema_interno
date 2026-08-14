@@ -7,9 +7,9 @@
 ## Qué es
 
 **Sistema Interno de Positive Media**: app de administración de la empresa (clientes, abonos,
-proyectos, empleados, sueldos, tareas) construida sobre la base **Zero 2.0 adaptada a
-SINGLE-TENANT**. Una sola base de datos, sin planes ni billing, sin signup público: los
-usuarios los crea un administrador. Permisos por **capabilities granulares** (`modulo:accion`).
+proyectos, empleados, sueldos, tareas). Arquitectura **SINGLE-TENANT**: una sola base de
+datos, sin planes ni billing, sin signup público — los usuarios los crea un administrador.
+Permisos por **capabilities granulares** (`modulo:accion`).
 
 ## Stack
 
@@ -49,7 +49,7 @@ Login inicial: `admin` / `ADMINPASS` (default admin123).
 - `backend/src/associations.js` — auto-discovery de modelos (factories `define<X>Model(db)`
   en carpetas `models/` de `kernel/`, `modules/` y `services/`). No hay registro central.
 - `middlewares/dbContext.js` inyecta `req.db` / `req.models` en cada request (los services
-  siguen recibiendo `models` — el contrato de los módulos no cambió respecto de Zero).
+  siguen recibiendo `models`: el contrato de los módulos no cambió al pasar a single-tenant).
 - **NO existe** base maestra, tenants, planes, billing, signup, Auth0 ni passwordless.
 
 ### kernel/ (infra) vs modules/ (pluggable)
@@ -128,6 +128,8 @@ Paginación en `meta` (helper `Paginate`). Validación: express-validator → 42
 ### Migraciones
 - Carpeta única `backend/src/migrations/*.js` (`export const up = async (sequelize, Sequelize)`),
   idempotentes (MariaDB hace COMMIT implícito en DDL). Corren al boot (`AUTO_MIGRATE!=false`).
+  ⚠️ `showAllTables()` devuelve OBJETOS (`{ tableName, schema }`), no strings: normalizá con
+  `String(t?.tableName ?? t)` o el guard de idempotencia nunca corta.
 - Instalación nueva: `npm run init_db` (CREATE DATABASE + `sync()` + seeds condicionales).
 - **Todo cambio de schema sobre una base con datos → migración**, nunca `sync({alter})`.
 

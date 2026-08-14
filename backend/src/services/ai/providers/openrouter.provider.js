@@ -15,8 +15,8 @@ const makeRequest = async (endpoint, body) => {
         headers: {
             'Authorization': `Bearer ${getApiKey()}`,
             'Content-Type': 'application/json',
-            'HTTP-Referer': 'https://zeroapp.dev',
-            'X-Title': 'Zero'
+            'HTTP-Referer': 'https://sys.positivemedia.com.ar',
+            'X-Title': 'Sistema Interno'
         },
         body: JSON.stringify(body)
     });

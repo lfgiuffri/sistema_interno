@@ -1,8 +1,8 @@
-# Config registry — Zero 2.0
+# Config registry — Sistema Interno
 
 > ⚠️ **Keep in sync.** Schema y resolución en `kernel/config-registry/registry.js`.
 
-Un único lugar que declara **todo lo configurable** de Zero, por secciones (app, auth, storage, realtime, billing, webhooks, vault, ai), con tipo, default, variable de entorno y si es secreto. Inspirado en el `config.toml` de Supabase. Resuelve el valor efectivo (env → default) con coerción de tipo y **enmascara secretos** al exponerlos.
+Un único lugar que declara **todo lo configurable** de la app, por secciones (app, auth, storage, realtime, billing, webhooks, vault, ai), con tipo, default, variable de entorno y si es secreto. Inspirado en el `config.toml` de Supabase. Resuelve el valor efectivo (env → default) con coerción de tipo y **enmascara secretos** al exponerlos.
 
 ## Uso (vía el barrel)
 

@@ -21,7 +21,7 @@
 
 <script setup lang="ts">
 /**
- * Input propio de Zero. Un solo estilo de campo (fondo hundido, focus ring del
+ * Input propio del design system. Un solo estilo de campo (fondo hundido, focus ring del
  * acento) reutilizado en formularios y settings. Emite number si type=number.
  */
 const props = withDefaults(

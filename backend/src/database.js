@@ -1,7 +1,7 @@
 /**
  * Sistema Interno — Conexión única a la base de datos (single-tenant).
  *
- * Reemplaza al par masterDatabase/getTenantConnection de Zero 2.0: acá hay UNA sola base
+ * Reemplaza al par masterDatabase/getTenantConnection de la base multi-tenant original: acá hay UNA sola base
  * (la de la empresa), una sola conexión Sequelize y un solo set de modelos, inicializados
  * al boot. Los requests reciben `req.db` / `req.models` desde el middleware dbContext,
  * así el contrato de los módulos (services que reciben `models`) no cambia.
@@ -49,7 +49,7 @@ const toDbTimezone = (tz) => {
     return OFFSET_RE.test(tz) ? tz : ianaToOffset(tz);
 };
 
-// Variables nuevas (DB_*) con fallback a las históricas de Zero (MASTER_DB*) para que un
+// Variables nuevas (DB_*) con fallback a las históricas (MASTER_DB*) para que un
 // .env existente siga funcionando durante la transición.
 const DB_NAME = process.env.DB_NAME || process.env.MASTER_DBNAME || 'sistema_interno';
 const DB_USER = process.env.DB_USER || process.env.MASTER_DBUSER;

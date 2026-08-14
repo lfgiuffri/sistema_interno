@@ -1,4 +1,4 @@
-# Deployment (Docker) — Zero 2.0
+# Deployment (Docker) — Sistema Interno
 
 > ⚠️ **Keep in sync.** `docker-compose.yml` (raíz), `backend/Dockerfile` + `backend/docker-entrypoint.sh`, `frontend/Dockerfile` + `frontend/nginx.conf`, `.env.docker.example`. Migraciones/deploy desde el panel: ver [migrations.md](migrations.md).
 
@@ -7,7 +7,7 @@
 > Este doc (compose) queda como alternativa/entorno de prueba. La observabilidad
 > (Sentry/GlitchTip) es opt-in: ver [ADR-014](decisions/ADR-014-observability-and-coolify-deploy.md).
 
-Zero 2.0 se despliega completo con **un comando**. El compose levanta cuatro servicios y los conecta entre sí.
+El Sistema Interno se despliega completo con **un comando**. El compose levanta cuatro servicios y los conecta entre sí.
 
 ```bash
 cp .env.docker.example .env      # opcional — los defaults ya funcionan

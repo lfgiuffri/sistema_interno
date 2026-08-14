@@ -34,7 +34,7 @@ export const setSandboxIO = (io) => { ioInstance = io; };
 const getQueueName = () => {
     const source = process.env.SANDBOX_QUEUE_SUFFIX || process.env.DB_NAME || 'default';
     const suffix = String(source).toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'default';
-    return `zero-sandbox-${suffix}`;
+    return `sistema-interno-sandbox-${suffix}`;
 };
 
 /**

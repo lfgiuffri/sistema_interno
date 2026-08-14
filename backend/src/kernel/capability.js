@@ -1,5 +1,5 @@
 /**
- * Zero 2.0 — Micro-permisos por capability.
+ * Sistema Interno — Micro-permisos por capability.
  *
  * Cada ruta de un módulo declara la capability que requiere (ej. `items:create`).
  * `requireCapability(cap)` corre DESPUÉS de verifyAccessToken (ya hay req.user) y

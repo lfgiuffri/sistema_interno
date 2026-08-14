@@ -1,5 +1,5 @@
 [
-  { "name": "APP_NAME", "value": "Zero", "type": "string", "description": "Nombre de la aplicación", "category": "general", "isEditable": true, "isPublic": true },
+  { "name": "APP_NAME", "value": "Sistema Interno", "type": "string", "description": "Nombre de la aplicación", "category": "general", "isEditable": true, "isPublic": true },
   { "name": "SYSTEM_TIMEZONE", "value": "-03:00", "type": "string", "description": "Zona horaria por defecto de nuevos tenants", "category": "general", "isEditable": true, "isPublic": false },
   { "name": "TRIAL_DAYS", "value": "30", "type": "number", "description": "Días de trial al crear un tenant", "category": "plans", "isEditable": true, "isPublic": false },
   { "name": "FEATURES_ADVANCED_REPORTS_ENABLED", "value": "false", "type": "boolean", "description": "Reportes avanzados (solo enterprise)", "category": "features", "isEditable": true, "isPublic": false },

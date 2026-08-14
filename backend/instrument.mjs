@@ -1,5 +1,5 @@
 /**
- * Zero 2.0 — Instrumentación de observabilidad (compatible con Sentry Cloud o GlitchTip self-hosted).
+ * Sistema Interno — Instrumentación de observabilidad (compatible con Sentry Cloud o GlitchTip self-hosted).
  *
  * OPT-IN: si `SENTRY_DSN` está vacío no se inicializa nada y el SDK queda no-op — dev/e2e y los
  * despliegues sin observabilidad (o "sin GlitchTip") no se ven afectados en absoluto.

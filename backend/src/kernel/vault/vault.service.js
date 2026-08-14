@@ -1,5 +1,5 @@
 /**
- * Zero 2.0 — Vault de secretos cifrados por tenant (AES-256-GCM).
+ * Sistema Interno — Vault de secretos cifrados (AES-256-GCM).
  *
  * Guarda secretos sensibles (API keys de terceros, tokens, credenciales) cifrados en la
  * tabla `tenant_secrets` del tenant. Usa AES-256-GCM, que además de confidencialidad
@@ -10,9 +10,13 @@
  * `process.env.VAULT_KEY` (preferida) o, como fallback, `process.env.JWT_SECRET`. Derivar
  * con scrypt + salt fija nos da una clave de 32 bytes (256 bits) determinística: el mismo
  * VAULT_KEY siempre produce la misma clave, condición necesaria para poder descifrar más
- * tarde. La salt es fija a propósito ('zero-vault'): no buscamos resistencia a rainbow
- * tables sobre la clave (que es un secreto de entorno, no una password de usuario), sino
- * estirar el material de clave a 32 bytes de forma estable.
+ * tarde. La salt es fija a propósito: no buscamos resistencia a rainbow tables sobre la
+ * clave (que es un secreto de entorno, no una password de usuario), sino estirar el
+ * material de clave a 32 bytes de forma estable.
+ *
+ * ⚠️ El VALOR de la salt es parte del formato en disco, no un nombre: si se cambia, todo lo
+ * ya cifrado deja de poder descifrarse. Por eso quedó `'zero-vault'` aunque la app se llame
+ * Sistema Interno. Para rotarla habría que descifrar con la vieja y volver a cifrar.
  *
  * Degradación: si NO hay ni VAULT_KEY ni JWT_SECRET, no rompemos el arranque del proceso
  * (no se valida al importar). Recién al USAR el vault se tira un error claro, porque sin
@@ -27,7 +31,7 @@ const ALGORITHM = 'aes-256-gcm';
 /** Largo del IV recomendado para GCM (12 bytes). Aleatorio y único por cada cifrado. */
 const IV_LENGTH = 12;
 
-/** Salt fija para la derivación scrypt. Constante a propósito (ver doc del archivo). */
+/** Salt fija de la derivación scrypt. NO se toca: cambiarla invalida lo ya cifrado. */
 const KEY_SALT = 'zero-vault';
 
 /** Largo de la clave derivada en bytes: 32 = AES-256. */

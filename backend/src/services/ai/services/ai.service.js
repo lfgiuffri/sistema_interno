@@ -1,5 +1,5 @@
 /**
- * Zero 2.0 — Servicio de IA multi-proveedor (genérico, sin dominio).
+ * Sistema Interno — Servicio de IA multi-proveedor (genérico, sin dominio).
  *
  * Orquesta tres proveedores con fallback automático:
  *   1. Groq (Llama 3.3 70B)  → primario: texto/JSON, rapidísimo y barato.

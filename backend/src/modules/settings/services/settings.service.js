@@ -1,5 +1,5 @@
 /**
- * Zero 2.0 — Lógica de UserSettings (preferencias del usuario).
+ * Sistema Interno — Lógica de UserSettings (preferencias del usuario).
  *
  * Service layer del módulo settings (patrón controller-helper): el controller queda fino y la
  * lógica de datos vive acá, testeable sin req/res. `settings` es INFRA — siempre disponible, no

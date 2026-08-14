@@ -5,7 +5,7 @@
 
 ## Context
 
-El objetivo de Zero es que agregar/quitar un feature sea drop-in/out, gateado por plan, sin editar archivos centrales por cada módulo. Un `routes.js` estático que se edita por módulo choca con eso (cada alta toca un archivo compartido, propenso a conflictos y a olvidar la cadena de middlewares).
+El objetivo es que agregar/quitar un feature sea drop-in/out, sin editar archivos centrales por cada módulo. Un `routes.js` estático que se edita por módulo choca con eso (cada alta toca un archivo compartido, propenso a conflictos y a olvidar la cadena de middlewares).
 
 ## Decision
 

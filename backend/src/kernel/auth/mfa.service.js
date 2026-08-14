@@ -1,5 +1,5 @@
 /**
- * Zero 2.0 — MFA / 2FA por TOTP (otplib) + backup codes.
+ * Sistema Interno — MFA / 2FA por TOTP (otplib) + backup codes.
  *
  * Best-practice (skill 2FA): TOTP 6 dígitos / 30s; 10 backup codes de un solo uso; secret y
  * backup codes guardados de forma protegida; verificación con ventana ±1 para tolerar drift.
@@ -16,7 +16,7 @@ const { authenticator } = otplib;
 authenticator.options = { window: 1 };
 
 /** Nombre de la app que aparece en la app de autenticación. */
-const ISSUER = process.env.APP_NAME || 'Zero';
+const ISSUER = process.env.APP_NAME || 'Sistema Interno';
 
 /**
  * Genera un secreto TOTP nuevo.

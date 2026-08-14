@@ -1,5 +1,5 @@
 /**
- * Zero 2.0 — Rutas del feature `webhooks` (tenant-facing).
+ * Sistema Interno — Rutas del feature `webhooks`.
  *
  * Se montan en `/webhooks` detrás de verifyAccessToken (igual que billing): son
  * capability-based, NO usan verifyPermissions. Cada ruta exige `webhooks:manage`.

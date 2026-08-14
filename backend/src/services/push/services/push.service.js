@@ -95,7 +95,7 @@ export const sendPushNotification = async (token, title, body, data = {}) => {
                     _title: title,
                     _body: body,
                     _nativeActions: 'true',
-                    _actionEndpoint: process.env.NOTIFICATION_ACTION_ENDPOINT || `${(process.env.PUBLIC_API_URL || 'https://zeroapp.dev/api').replace(/\/$/, '')}/notification-actions/execute`,
+                    _actionEndpoint: process.env.NOTIFICATION_ACTION_ENDPOINT || `${(process.env.PUBLIC_API_URL || 'http://localhost:3010/api').replace(/\/$/, '')}/notification-actions/execute`,
                 },
                 android: {
                     priority: 'high',
@@ -123,7 +123,7 @@ export const sendPushNotification = async (token, title, body, data = {}) => {
                         sound: 'default',
                         icon: 'ic_stat_notify',
                         color: '#6366f1',
-                        tag: data?.type || 'zero',
+                        tag: data?.type || 'sistema-interno',
                     },
                 },
                 apns: {

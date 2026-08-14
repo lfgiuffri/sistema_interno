@@ -1,5 +1,5 @@
 /**
- * Zero 2.0 — Mailer pluggable.
+ * Sistema Interno — Mailer pluggable.
  *
  * Si hay SMTP configurado (SMTP_HOST/PORT/USER/PASS), envía con nodemailer; si no, loguea
  * el mail por consola (modo dev, como el "local_smtp" de Supabase). Así passwordless/OTP/
@@ -30,7 +30,7 @@ const getTransport = async () => {
  * @returns {Promise<{sent: boolean, dev?: boolean}>} Resultado del envío.
  */
 export const sendMail = async ({ to, subject, text, html }) => {
-    const from = process.env.MAIL_FROM || `${process.env.APP_NAME || 'Zero'} <no-reply@localhost>`;
+    const from = process.env.MAIL_FROM || `${process.env.APP_NAME || 'Sistema Interno'} <no-reply@localhost>`;
     const transport = await getTransport();
     if (!transport) {
         // Modo dev: no enviamos de verdad, mostramos el contenido para poder testear flujos.

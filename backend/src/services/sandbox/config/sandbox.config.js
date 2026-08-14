@@ -13,7 +13,7 @@ export const SANDBOX = {
     enabled: process.env.SANDBOX_ENABLED === 'true',
     dockerBin: process.env.SANDBOX_DOCKER_BIN || 'docker',
     runtime: process.env.SANDBOX_RUNTIME || 'runsc', // gVisor
-    workRoot: process.env.SANDBOX_WORK_ROOT || '/tmp/zero-sandbox',
+    workRoot: process.env.SANDBOX_WORK_ROOT || '/tmp/sistema-interno-sandbox',
     nodeImage: process.env.SANDBOX_NODE_IMAGE || 'node:20-bookworm-slim',
     pythonImage: process.env.SANDBOX_PYTHON_IMAGE || 'python:3.12-slim',
     goImage: process.env.SANDBOX_GO_IMAGE || 'golang:1.22-bookworm',

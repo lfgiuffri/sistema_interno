@@ -1,4 +1,4 @@
-# Zero 2.0 — Frontend (Vue 3 · Ionic · Vite). Build estático servido por nginx.
+# Sistema Interno — Frontend (Vue 3 · Ionic · Vite). Build estático servido por nginx.
 # Las URLs del backend se inyectan en BUILD time (Vite inlinea import.meta.env.VITE_*),
 # por eso van como ARG: el browser del usuario las usa para hablar con el backend.
 

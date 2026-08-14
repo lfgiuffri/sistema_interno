@@ -1,5 +1,5 @@
 /**
- * Zero 2.0 — Validadores del feature `webhooks` (express-validator).
+ * Sistema Interno — Validadores del feature `webhooks` (express-validator).
  *
  * Cada endpoint declara su validación; el middleware genérico `validator` corta con 422 si
  * algo no cumple. matchedData() en el controller solo expone los campos whitelisteados.
