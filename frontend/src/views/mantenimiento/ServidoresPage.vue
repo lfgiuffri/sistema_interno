@@ -9,13 +9,15 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  onIonViewWillEnter, IonPage, IonContent, IonHeader, IonToolbar, IonButtons,
-  IonMenuButton, IonIcon,
+  onIonViewWillEnter, onIonViewWillLeave, IonPage, IonContent, IonHeader, IonToolbar,
+  IonButtons, IonMenuButton, IonIcon,
 } from '@ionic/vue'
 import {
   addOutline, createOutline, trashOutline, powerOutline, serverOutline,
   copyOutline, keyOutline, alertCircleOutline,
 } from 'ionicons/icons'
+import IndicadorAutoRefresh from '@/components/shared/IndicadorAutoRefresh.vue'
+import { useAutoRefresh } from '@/composables/useAutoRefresh'
 import { useMantenimientoStore, type Servidor, type ServidorInput } from '@/stores/mantenimiento'
 import { useMeStore } from '@/stores/me'
 import { useToast } from '@/composables/useToast'
@@ -117,9 +119,24 @@ async function copiar(texto: string): Promise<void> {
   }
 }
 
+// Refresco automático: el agente de cada servidor reporta UNA VEZ POR MINUTO (timer de
+// systemd), así que ese es el ritmo al que aparecen datos nuevos. Pedir más seguido solo
+// traería lo mismo. Mismas reglas que el panel: se suspende con la pestaña oculta y al salir
+// de la vista, y los errores se cuentan en vez de gritar.
+const auto = useAutoRefresh(() => store.fetchServidores(), {
+  intervaloMs: 60_000,
+  clave: 'servidoresAutoRefresh',
+})
+
 let loadedOnce = false
-onMounted(() => { loadedOnce = true; void store.fetchServidores() })
-onIonViewWillEnter(() => { if (loadedOnce) void store.fetchServidores() })
+onMounted(async () => {
+  loadedOnce = true
+  await store.fetchServidores()
+  auto.marcarCargado()   // la carga inicial cuenta como actualización
+  auto.arrancar()
+})
+onIonViewWillEnter(() => { if (loadedOnce) { void auto.refrescarAhora(); auto.arrancar() } })
+onIonViewWillLeave(() => auto.parar())
 </script>
 
 <template>
@@ -139,9 +156,12 @@ onIonViewWillEnter(() => { if (loadedOnce) void store.fetchServidores() })
               Estado y consumo de los VPS.
             </p>
           </div>
-          <button v-if="meStore.can('servidores:create')" class="ds-btn-primary flex items-center gap-1.5" @click="abrirForm()">
-            <IonIcon :icon="addOutline" class="text-[16px]" /> Nuevo servidor
-          </button>
+          <div class="flex items-center gap-2">
+            <IndicadorAutoRefresh :auto="auto" />
+            <button v-if="meStore.can('servidores:create')" class="ds-btn-primary flex items-center gap-1.5" @click="abrirForm()">
+              <IonIcon :icon="addOutline" class="text-[16px]" /> Nuevo servidor
+            </button>
+          </div>
         </header>
 
         <div v-if="store.loading && !store.servidores.length" class="space-y-2">

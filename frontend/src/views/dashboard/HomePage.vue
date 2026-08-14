@@ -18,9 +18,9 @@ import {
 import {
   createOutline, alertCircleOutline, timeOutline, walletOutline, trendingUpOutline,
   folderOpenOutline, flagOutline, peopleOutline, pulseOutline, serverOutline, globeOutline,
-  refreshOutline,
 } from 'ionicons/icons'
 import BanderaPrioridad from '@/components/tareas/BanderaPrioridad.vue'
+import IndicadorAutoRefresh from '@/components/shared/IndicadorAutoRefresh.vue'
 import { useAutoRefresh } from '@/composables/useAutoRefresh'
 import { useEscapeToClose } from '@/composables/useEscapeToClose'
 import { duracion, fechaHora } from '@/composables/useFormato'
@@ -244,35 +244,7 @@ onIonViewWillLeave(() => auto.parar())
           </div>
           <div class="flex items-center gap-2">
             <!-- Estado del refresco automático: pensado para dejar el panel en un monitor -->
-            <div
-              v-if="data"
-              class="flex items-center gap-1.5 px-2.5 h-9 rounded-md border border-line bg-surface text-2xs"
-              :title="auto.activo.value
-                ? 'Se actualiza solo cada minuto. Clic para pausar.'
-                : 'Actualización automática pausada. Clic para reanudar.'"
-            >
-              <button
-                class="flex items-center gap-1.5"
-                :aria-label="auto.activo.value ? 'Pausar la actualización automática' : 'Reanudar la actualización automática'"
-                @click="auto.alternar()"
-              >
-                <span
-                  class="w-1.5 h-1.5 rounded-full shrink-0"
-                  :class="!auto.activo.value ? 'bg-ink-faint'
-                    : auto.fallos.value ? 'bg-danger' : 'bg-ok animate-pulse'"
-                ></span>
-                <span class="text-ink-faint tnum">
-                  {{ !auto.activo.value ? 'pausado' : (auto.fallos.value ? 'sin conexión' : auto.hace.value) }}
-                </span>
-              </button>
-              <button
-                class="grid place-items-center w-5 h-5 rounded text-ink-faint hover:text-ink hover:bg-surface-2 transition-colors"
-                title="Actualizar ahora" aria-label="Actualizar ahora"
-                @click="auto.refrescarAhora()"
-              >
-                <IonIcon :icon="refreshOutline" class="text-[13px]" />
-              </button>
-            </div>
+            <IndicadorAutoRefresh v-if="data" :auto="auto" />
 
             <button
               v-if="data"

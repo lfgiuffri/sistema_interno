@@ -8,11 +8,13 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  onIonViewWillEnter, IonPage, IonContent, IonHeader, IonToolbar, IonButtons,
-  IonMenuButton, IonIcon,
+  onIonViewWillEnter, onIonViewWillLeave, IonPage, IonContent, IonHeader, IonToolbar,
+  IonButtons, IonMenuButton, IonIcon,
 } from '@ionic/vue'
 import { arrowBackOutline, serverOutline, alertCircleOutline, checkmarkCircleOutline } from 'ionicons/icons'
 import GraficoLinea, { type Serie } from '@/components/dashboard/GraficoLinea.vue'
+import IndicadorAutoRefresh from '@/components/shared/IndicadorAutoRefresh.vue'
+import { useAutoRefresh } from '@/composables/useAutoRefresh'
 import { useMantenimientoStore, type ServidorDetalle } from '@/stores/mantenimiento'
 import { fechaHora, fecha as fmtFecha } from '@/composables/useFormato'
 
@@ -25,11 +27,28 @@ const servidor = ref<ServidorDetalle | null>(null)
 const cargando = ref(false)
 const vista = ref<'fino' | 'diario'>('fino')
 
-async function cargar(): Promise<void> {
-  cargando.value = true
-  servidor.value = await store.fetchServidor(id)
-  cargando.value = false
+/**
+ * Trae la ficha.
+ * @param silencioso - Refresco automático: sin skeleton, porque la pantalla ya tiene datos.
+ */
+async function cargar(silencioso = false): Promise<void> {
+  if (!silencioso) cargando.value = true
+  try {
+    const datos = await store.fetchServidor(id)
+    // Solo se pisa si vino algo: un error de red no puede vaciar la pantalla.
+    if (datos) servidor.value = datos
+    else if (silencioso) throw new Error('sin respuesta')
+  } finally {
+    if (!silencioso) cargando.value = false
+  }
 }
+
+// Refresco automático al ritmo del agente: reporta una vez por minuto (timer de systemd),
+// que es cada cuánto aparece una muestra nueva en el gráfico fino.
+const auto = useAutoRefresh(() => cargar(true), {
+  intervaloMs: 60_000,
+  clave: 'servidorFichaAutoRefresh',
+})
 
 /** Etiquetas del eje X según la vista elegida. */
 const etiquetas = computed<string[]>(() => {
@@ -67,8 +86,14 @@ function duracion(desde: string, hasta: string | null): string {
 }
 
 let loadedOnce = false
-onMounted(() => { loadedOnce = true; void cargar() })
-onIonViewWillEnter(() => { if (loadedOnce) void cargar() })
+onMounted(async () => {
+  loadedOnce = true
+  await cargar()
+  auto.marcarCargado()   // la carga inicial cuenta como actualización
+  auto.arrancar()
+})
+onIonViewWillEnter(() => { if (loadedOnce) { void auto.refrescarAhora(); auto.arrancar() } })
+onIonViewWillLeave(() => auto.parar())
 </script>
 
 <template>
@@ -104,9 +129,12 @@ onIonViewWillEnter(() => { if (loadedOnce) void cargar() })
                 {{ servidor.ip }}<span v-if="servidor.so"> · {{ servidor.so }}</span>
               </p>
             </div>
-            <p class="text-2xs text-ink-faint tnum">
-              Último contacto: {{ servidor.ultimoContactoAt ? fechaHora(servidor.ultimoContactoAt) : 'nunca' }}
-            </p>
+            <div class="flex items-center gap-2">
+              <p class="text-2xs text-ink-faint tnum">
+                Último contacto: {{ servidor.ultimoContactoAt ? fechaHora(servidor.ultimoContactoAt) : 'nunca' }}
+              </p>
+              <IndicadorAutoRefresh :auto="auto" />
+            </div>
           </header>
 
           <!-- Métricas actuales -->

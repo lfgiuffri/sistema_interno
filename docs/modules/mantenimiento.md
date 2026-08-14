@@ -209,6 +209,12 @@ Las marcas de «ya corrió hoy» van directo contra `Config` (`MANTENIMIENTO_ULT
 | Servidor: métricas, discos, gráfico e incidentes | `/mantenimiento/servidores/:id` | `views/mantenimiento/ServidorFichaPage.vue` |
 | Sitios: listado, chequeo y consulta de dominio a demanda, detalle en modal | `/mantenimiento/sitios` | `views/mantenimiento/SitiosPage.vue` |
 
+### Refresco automático
+
+Las dos pantallas de servidores se actualizan solas **cada minuto**, igual que el panel y con las mismas reglas (`composables/useAutoRefresh.ts` + `components/shared/IndicadorAutoRefresh.vue`): se suspenden con la pestaña oculta y **al salir de la vista**, refrescan al volver, no encima pedidos y los errores se cuentan en el indicador del encabezado en vez de tirar toasts. Se pueden pausar desde ese mismo indicador y la preferencia queda guardada.
+
+El minuto **no es arbitrario**: es el ritmo al que el agente reporta (timer de systemd), o sea cada cuánto puede haber un dato nuevo. Pedir más seguido devolvería exactamente lo mismo. Si algún día el agente cambia de cadencia, hay que mover `intervaloMs` en las dos pantallas.
+
 ## Resumen en el Panel
 
 `GET /dashboard` trae un bloque `mantenimiento` con **conteos agregados**, nunca el detalle de cada servidor o sitio: el panel responde «¿está todo bien?» y, si no lo está, cuántos y de qué tipo. El detalle es el módulo.

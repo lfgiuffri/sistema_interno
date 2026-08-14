@@ -378,10 +378,13 @@ El módulo `dashboard` expone DOS superficies, cada una con su pantalla:
   anuales. El bloque `mantenimiento` (`modules/mantenimiento/services/resumen.service.js`) es
   RESUMEN: solo conteos agregados y el pico de consumo (últimos 10 min, para no mostrar el
   valor congelado de un agente muerto); cada mitad exige `servidores:read` / `sitios:read`.
-  El panel se **refresca solo cada minuto** (`composables/useAutoRefresh.ts`) para poder
-  dejarlo en un monitor: suspende con la pestaña oculta y al salir de la vista, refresca
-  al volver a mirar, no encima pedidos y NO muestra toasts de error (los cuenta y lo dice
-  el indicador del encabezado, que además pausa/reanuda y recuerda la preferencia).
+  El panel se **refresca solo cada minuto** (`composables/useAutoRefresh.ts` +
+  `components/shared/IndicadorAutoRefresh.vue`) para poder dejarlo en un monitor: suspende
+  con la pestaña oculta y al salir de la vista, refresca al volver a mirar, no encima
+  pedidos y NO muestra toasts de error (los cuenta y lo dice el indicador del encabezado,
+  que además pausa/reanuda y recuerda la preferencia). Las dos pantallas de **servidores**
+  usan lo mismo, con el mismo minuto: es el ritmo al que reporta el agente, así que pedir
+  más seguido traería lo mismo.
 - `GET /dashboard/estadisticas?anio=` (**`estadisticas:read`**, capability propia desde
   2026-08-13 — migración `0002` se la dio a los roles que ya tenían `facturaciones:read`) →
   **Estadísticas** (`views/dashboard/EstadisticasPage.vue`, también en Principal): mensual
