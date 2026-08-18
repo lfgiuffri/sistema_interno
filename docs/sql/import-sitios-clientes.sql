@@ -24,6 +24,14 @@
 
 -- Los datos del CSV viven en una tabla temporal: existe solo durante esta sesión y
 -- desaparece al terminar. Así el INSERT real es UNO solo, con JOINs, en vez de 62 statements.
+--
+-- ⚠️ COLACIONES. Comparar dos columnas de tablas distintas falla con «Illegal mix of
+-- collations» si cada una declara una colación diferente, y eso es lo que pasa acá: en
+-- MySQL 8 una tabla `utf8mb4` nace `utf8mb4_0900_ai_ci`, mientras que las tablas de la app
+-- son `utf8mb4_general_ci`. Por eso cada comparación entre esta tabla y las reales lleva
+-- `COLLATE utf8mb4_bin` en LOS DOS lados: fija la comparación sin depender de cómo quedó
+-- declarada cada columna, y funciona igual en MySQL y en MariaDB. Es comparación exacta
+-- (distingue mayúsculas y acentos), que es justo lo que queremos para casar por nombre e IP.
 CREATE TEMPORARY TABLE _imp_sitios (
   nombre     VARCHAR(150) NOT NULL,
   url        VARCHAR(255) NOT NULL,
@@ -104,7 +112,8 @@ INSERT INTO _imp_sitios (nombre, url, dominio, servicio, ip, verifica) VALUES
 -- ----------------------------------------------------------------------------
 SELECT DISTINCT i.servicio AS 'SERVICIO QUE NO EXISTE EN EL CATALOGO'
   FROM _imp_sitios i
-  LEFT JOIN servicios s ON s.nombre = i.servicio AND s.deletedAt IS NULL
+  LEFT JOIN servicios s ON s.nombre COLLATE utf8mb4_bin = i.servicio COLLATE utf8mb4_bin
+                        AND s.deletedAt IS NULL
  WHERE s.id IS NULL;
 
 -- ----------------------------------------------------------------------------
@@ -155,12 +164,19 @@ INSERT INTO sitios_web
    fallosSeguidos, dominio, dominioAuto, createdAt, updatedAt)
 SELECT
   i.nombre, i.url,
-  (SELECT s.id FROM servicios  s WHERE s.nombre = i.servicio AND s.deletedAt IS NULL LIMIT 1),
-  (SELECT v.id FROM servidores v WHERE v.ip     = i.ip       AND v.deletedAt IS NULL LIMIT 1),
+  (SELECT s.id FROM servicios  s
+    WHERE s.nombre COLLATE utf8mb4_bin = i.servicio COLLATE utf8mb4_bin
+      AND s.deletedAt IS NULL LIMIT 1),
+  (SELECT v.id FROM servidores v
+    WHERE v.ip     COLLATE utf8mb4_bin = i.ip       COLLATE utf8mb4_bin
+      AND v.deletedAt IS NULL LIMIT 1),
   1, i.verifica, 'desconocido',
   0, i.dominio, 0, NOW(), NOW()
   FROM _imp_sitios i
- WHERE NOT EXISTS (SELECT 1 FROM sitios_web w WHERE w.url = i.url AND w.deletedAt IS NULL);
+ WHERE NOT EXISTS (
+   SELECT 1 FROM sitios_web w
+    WHERE w.url COLLATE utf8mb4_bin = i.url COLLATE utf8mb4_bin
+      AND w.deletedAt IS NULL);
 
 -- ----------------------------------------------------------------------------
 -- 3. Resultado
