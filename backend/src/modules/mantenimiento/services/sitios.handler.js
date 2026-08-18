@@ -157,8 +157,13 @@ const revisarDominios = async (models, io) => {
     const diasAviso = await getAppConfigNumber(models, 'MANTENIMIENTO_DIAS_AVISO_DOMINIO');
 
     for (const sitio of sitios) {
-        // Si la fecha se cargó a mano, RDAP no la pisa.
-        if (sitio.dominio && sitio.dominioAuto !== false) {
+        // RDAP no pisa una fecha cargada A MANO. Ojo con la condición: `dominioAuto = false`
+        // significa dos cosas distintas —«la puso una persona» y «todavía nunca se consultó»—
+        // y solo la primera debe frenar el refresco. Distinguirlas por la fecha: sin fecha,
+        // no hay nada que respetar. (Antes se miraba solo `dominioAuto` y un sitio nuevo, que
+        // nace en false, no se consultaba NUNCA.)
+        const fechaManual = !!sitio.dominioVenceAt && sitio.dominioAuto === false;
+        if (sitio.dominio && !fechaManual) {
             const r = await vencimientoDominio(sitio.dominio);
             if (r.ok && r.venceAt) {
                 // Se guarda el dominio REGISTRABLE que resolvió RDAP: es el que vence.

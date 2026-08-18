@@ -14,7 +14,10 @@ import {
   documentTextOutline, downloadOutline, arrowUndoOutline,
 } from 'ionicons/icons'
 import DescripcionEditor from '@/components/tareas/DescripcionEditor.vue'
-import { useDocumentacionStore, type Documento, type DocumentoVersion } from '@/stores/documentacion'
+import {
+  useDocumentacionStore,
+  type Documento, type DocumentoVersion, type DocumentoArchivo,
+} from '@/stores/documentacion'
 import { useMeStore } from '@/stores/me'
 import { useToast } from '@/composables/useToast'
 import { useEscapeToClose } from '@/composables/useEscapeToClose'
@@ -48,6 +51,19 @@ const versiones = ref<DocumentoVersion[]>([])
 const verVersiones = ref(false)
 const cuerpoHtml = ref('')
 
+/**
+ * Adjuntos cargados DURANTE el alta, cuando el documento todavía no tiene id.
+ *
+ * Se suben igual (quedan con `documentoId` null) y al guardar se mandan sus ids para que el
+ * backend los ligue. Si se cancela el alta, quedan huérfanos y los borra el GC diario.
+ */
+const adjuntosPendientes = ref<DocumentoArchivo[]>([])
+
+/** Los adjuntos que se muestran: los del documento, o los pendientes si es un alta. */
+const adjuntos = computed<DocumentoArchivo[]>(() =>
+  (props.documentoId ? doc.value?.archivos : adjuntosPendientes.value) ?? [],
+)
+
 /** ¿Se puede escribir? Capability + permiso del espacio. */
 const puedeEscribir = computed(() =>
   props.puedeEditar && meStore.can(props.documentoId ? 'documentacion:update' : 'documentacion:create'),
@@ -74,6 +90,7 @@ async function cargar(): Promise<void> {
     // Alta: arranca directamente en edición.
     doc.value = null
     form.value = { titulo: '', contenido: '' }
+    adjuntosPendientes.value = []
     modoEdicion.value = true
     return
   }
@@ -97,6 +114,8 @@ async function guardar(): Promise<void> {
       docListaId: props.docListaId,
       titulo: form.value.titulo,
       contenido: form.value.contenido || null,
+      // Solo en el alta: liga los adjuntos que se subieron antes de que el documento existiera.
+      ...(props.documentoId ? {} : { archivoIds: adjuntosPendientes.value.map(a => a.id) }),
     },
     props.documentoId ?? undefined,
   )
@@ -122,22 +141,39 @@ async function eliminar(): Promise<void> {
 
 // ── Adjuntos ──
 
+/**
+ * Adjunta un archivo. Funciona igual creando que editando: si el documento todavía no existe,
+ * el archivo se sube suelto y queda pendiente de ligar al guardar.
+ * @param e - Evento change del input file.
+ */
 async function adjuntar(e: Event): Promise<void> {
   const input = e.target as HTMLInputElement
   const file = input.files?.[0]
-  if (!file || !props.documentoId) return
-  const r = await store.subirArchivo(file, props.documentoId)
+  if (!file) return
+
+  const r = await store.subirArchivo(file, props.documentoId ?? undefined)
   input.value = ''
   if (!r.ok) { toast.error(r.message); return }
+
+  // Una imagen se guarda como CONTENIDO del cuerpo, no como adjunto (así no se duplica con
+  // las que se pegan en el editor), y por eso no aparece en esta lista. Se dice, en vez de
+  // festejar un "adjuntado" que después no se ve por ningún lado.
+  if (r.archivo?.tipo === 'imagen') {
+    toast.info('Las imágenes se insertan en el cuerpo: usá el botón de imagen del editor.')
+    return
+  }
+
   toast.success('Archivo adjuntado')
-  await cargar()
+  if (props.documentoId) await cargar()
+  else if (r.archivo) adjuntosPendientes.value.push(r.archivo)
 }
 
 async function quitarAdjunto(id: number): Promise<void> {
   if (!confirm('¿Quitar este archivo?')) return
   const r = await store.eliminarArchivo(id)
   if (!r.ok) { toast.error(r.message); return }
-  await cargar()
+  if (props.documentoId) await cargar()
+  else adjuntosPendientes.value = adjuntosPendientes.value.filter(a => a.id !== id)
 }
 
 /** Descarga un adjunto (se sirve con auth → se resuelve a blob y se dispara el click). */
@@ -237,12 +273,13 @@ function editar(): void {
             </p>
           </div>
 
-          <!-- Adjuntos -->
-          <section v-if="documentoId" class="mt-4 border-t border-line-soft pt-3">
+          <!-- Adjuntos. Se muestran también en el alta: los archivos van sueltos y se ligan
+               al guardar (mismo comportamiento que el modal de tareas). -->
+          <section class="mt-4 border-t border-line-soft pt-3">
             <div class="flex items-center justify-between mb-2">
               <h3 class="text-xs font-semibold text-ink flex items-center gap-1.5">
                 <IonIcon :icon="attachOutline" class="text-[14px] text-ink-faint" />
-                Archivos ({{ doc?.archivos.length ?? 0 }})
+                Archivos ({{ adjuntos.length }})
               </h3>
               <label v-if="puedeEscribir" class="ds-btn-secondary h-7 px-2.5 text-xs cursor-pointer">
                 Adjuntar
@@ -250,8 +287,8 @@ function editar(): void {
               </label>
             </div>
 
-            <div v-if="doc?.archivos.length" class="border border-line rounded-lg divide-y divide-line-soft">
-              <div v-for="a in doc.archivos" :key="a.id" class="flex items-center gap-2 px-3 h-10 text-xs">
+            <div v-if="adjuntos.length" class="border border-line rounded-lg divide-y divide-line-soft">
+              <div v-for="a in adjuntos" :key="a.id" class="flex items-center gap-2 px-3 h-10 text-xs">
                 <IonIcon :icon="documentTextOutline" class="text-[14px] text-ink-faint shrink-0" />
                 <span class="flex-1 truncate text-ink">{{ a.nombreOriginal }}</span>
                 <span class="text-ink-faint tnum shrink-0">{{ tam(a.size) }}</span>

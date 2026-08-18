@@ -320,7 +320,10 @@ recortes distintos a los tableros y sus accesos se administran aparte. Doc compl
   espacio), y capabilities separadas `doc-espacios:*` para el ABM y la matriz de accesos:
   repartir accesos no es lo mismo que escribir documentación.
 - **Un documento es texto Y/O adjuntos** (no una cosa o la otra), con **historial de versiones
-  append-only**: cada edición archiva el estado anterior y restaurar archiva el vigente.
+  append-only**: cada edición archiva el estado anterior y restaurar archiva el vigente. Se
+  puede adjuntar TAMBIÉN al crear: el archivo se sube suelto y el alta lo liga con
+  `archivoIds` filtrando por `documentoId: null` (mismo patrón que tareas); lo que quede
+  huérfano lo barre el GC diario, que ahora cubre tareas y documentación.
 - **Buscador** por título y contenido, acotado a los espacios visibles, y **orden manual**
   (drag & drop) de listas y documentos con `orden` en múltiplos de 10.
 - **Refactors para no duplicar**: las defensas de archivos subidos viven en

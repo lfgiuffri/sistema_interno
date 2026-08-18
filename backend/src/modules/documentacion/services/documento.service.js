@@ -339,7 +339,10 @@ export const getDocumento = async (models, user, id) => {
  * Crea un documento al final de su lista.
  * @param {object} models - Modelos de la app.
  * @param {object} user - Usuario del request.
- * @param {object} data - { docEspacioId, docListaId, titulo, contenido? }.
+ * @param {object} data - { docEspacioId, docListaId, titulo, contenido?, archivoIds? }.
+ *   `archivoIds` son adjuntos YA subidos que todavía no cuelgan de ningún documento: el alta
+ *   los liga al recién creado. Es lo que permite adjuntar mientras se crea, cuando el id del
+ *   documento todavía no existe.
  * @returns {Promise<object>} El documento creado (forma completa).
  */
 export const createDocumento = async (models, user, data) => {
@@ -364,6 +367,17 @@ export const createDocumento = async (models, user, data) => {
 
     // Las imágenes embebidas quedan ligadas al documento (para el GC de huérfanas).
     await ligarImagenes(models, doc.id, contenido);
+
+    // Adjuntos subidos ANTES de que el documento existiera: se ligan ahora. El filtro
+    // `documentoId: null` es la defensa: sin él, mandando el id de un adjunto ajeno se lo
+    // podría robar de otro documento.
+    const archivoIds = (data.archivoIds || []).map(Number).filter(Boolean);
+    if (archivoIds.length) {
+        await models.DocumentoArchivo.update(
+            { documentoId: doc.id },
+            { where: { id: archivoIds, documentoId: null } },
+        );
+    }
     return getDocumento(models, user, doc.id);
 };
 

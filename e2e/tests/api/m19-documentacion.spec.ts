@@ -75,6 +75,58 @@ test.describe('M19: Documentación', () => {
     await adminApi.delete(`${APP_ENDPOINTS.documentacion}/documentos/${doc.id}`);
   });
 
+  test('M19.3b - alta con adjuntos: los archivos subidos antes del documento se ligan al crearlo', async ({ adminApi, playwright, adminTokens }) => {
+    // Contexto aparte para la subida: `adminApi` fija `Content-Type: application/json`, que
+    // pisa el boundary del multipart y el backend se queda sin archivo.
+    const upload = await playwright.request.newContext({
+      baseURL: `${API_BASE}/`,
+      extraHTTPHeaders: { 'x-access-token': adminTokens.accessToken },
+    });
+
+    // Así trabaja el modal cuando se CREA: el documento todavía no tiene id, así que el
+    // archivo se sube suelto (documentoId null) y el alta lo liga con `archivoIds`.
+    const subida = await upload.post(`${APP_ENDPOINTS.documentacion}/archivos`, {
+      multipart: {
+        archivo: { name: 'manual.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\nprueba\n') },
+      },
+    });
+    const archivo = (await expectSuccess(subida, 201)).data;   // el body se lee ANTES de cerrar el contexto
+    await upload.dispose();
+    expect(archivo.documentoId).toBeNull();
+
+    const res = await adminApi.post(`${APP_ENDPOINTS.documentacion}/documentos`, {
+      data: {
+        docEspacioId: espacioId, docListaId: listaId,
+        titulo: 'Alta con adjunto', archivoIds: [archivo.id],
+      },
+    });
+    const doc = (await expectSuccess(res, 201)).data;
+    expect(doc.archivos.map((a: { id: number }) => a.id)).toContain(archivo.id);
+
+    // Un segundo documento NO puede quedarse con el adjunto del primero.
+    const ladron = await adminApi.post(`${APP_ENDPOINTS.documentacion}/documentos`, {
+      data: {
+        docEspacioId: espacioId, docListaId: listaId,
+        titulo: 'No roba adjuntos', archivoIds: [archivo.id],
+      },
+    });
+    const doc2 = (await expectSuccess(ladron, 201)).data;
+    expect(doc2.archivos).toHaveLength(0);
+
+    const relectura = await adminApi.get(`${APP_ENDPOINTS.documentacion}/documentos/${doc.id}`);
+    expect((await expectSuccess(relectura, 200)).data.archivos).toHaveLength(1);
+
+    await adminApi.delete(`${APP_ENDPOINTS.documentacion}/documentos/${doc.id}`);
+    await adminApi.delete(`${APP_ENDPOINTS.documentacion}/documentos/${doc2.id}`);
+  });
+
+  test('M19.3c - archivoIds inválido → 422', async ({ adminApi }) => {
+    const res = await adminApi.post(`${APP_ENDPOINTS.documentacion}/documentos`, {
+      data: { docEspacioId: espacioId, docListaId: listaId, titulo: 'Ids raros', archivoIds: ['x'] },
+    });
+    await expectError(res, 422);
+  });
+
   test('M19.4 - versiones: cada edición archiva la anterior y se puede restaurar', async ({ adminApi }) => {
     const alta = await adminApi.post(`${APP_ENDPOINTS.documentacion}/documentos`, {
       data: { docEspacioId: espacioId, docListaId: listaId, titulo: 'V1', contenido: '<p>uno</p>' },

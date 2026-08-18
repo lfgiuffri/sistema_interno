@@ -88,6 +88,9 @@ export const validateDocumentoCreate = [
     body('titulo').isString().trim().notEmpty().withMessage('El título es obligatorio').isLength({ max: 200 }),
     // El cuerpo llega como HTML del editor y se sanea en el service (no se valida su forma acá).
     body('contenido').optional({ nullable: true }).isString(),
+    // Adjuntos subidos antes de que el documento existiera (alta con archivos).
+    body('archivoIds').optional().isArray(),
+    body('archivoIds.*').isInt({ min: 1 }),
     validator
 ];
 

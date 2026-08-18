@@ -209,7 +209,9 @@ export const useDocumentacionStore = defineStore('documentacion', () => {
   }
 
   async function saveDocumento(
-    input: { docEspacioId: number; docListaId: number; titulo: string; contenido?: string | null },
+    // `archivoIds` solo se usa en el alta: son los adjuntos ya subidos que todavía no cuelgan
+    // de ningún documento y hay que ligar al que se está creando.
+    input: { docEspacioId: number; docListaId: number; titulo: string; contenido?: string | null; archivoIds?: number[] },
     id?: number,
   ): Promise<Result & { documento?: Documento }> {
     try {
