@@ -15,6 +15,7 @@ import {
 import {
   addOutline, createOutline, trashOutline, powerOutline, globeOutline,
   refreshOutline, openOutline, alertCircleOutline, calendarOutline, timeOutline,
+  searchOutline, closeOutline,
 } from 'ionicons/icons'
 import api from '@/services/api'
 import {
@@ -46,6 +47,34 @@ useEscapeToClose(modalDetalle, () => { modalDetalle.value = false })
 
 /** Sitio con un chequeo manual en curso (para deshabilitar el botón). */
 const chequeando = ref<number | null>(null)
+
+/**
+ * Buscador por nombre O URL.
+ *
+ * Filtra en el cliente y no en el servidor a propósito: el listado no está paginado (son
+ * decenas de sitios, no miles), así que ya están todos en memoria. Filtrar acá es instantáneo
+ * y no agrega un pedido por cada tecla.
+ */
+const busqueda = ref('')
+
+/**
+ * Normaliza para comparar: sin mayúsculas y sin acentos («araujo» encuentra «Araújo»).
+ * NFD separa la letra de su tilde, y el rango U+0300–U+036F (las tildes sueltas) se borra.
+ */
+const normalizar = (s: string): string =>
+  (s ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+
+const sitiosFiltrados = computed<SitioWeb[]>(() => {
+  const q = normalizar(busqueda.value.trim())
+  if (!q) return store.sitios
+  // Cada palabra tiene que aparecer en el nombre o en la URL: así «tio com» encuentra
+  // «Tio - Tom» sin depender del orden ni de los separadores.
+  const palabras = q.split(/\s+/)
+  return store.sitios.filter((s) => {
+    const texto = `${normalizar(s.nombre)} ${normalizar(s.url)}`
+    return palabras.every(p => texto.includes(p))
+  })
+})
 
 /** Etiqueta legible del estado de disponibilidad. */
 const ETIQUETA: Record<string, string> = {
@@ -171,16 +200,38 @@ onIonViewWillEnter(() => { if (loadedOnce) void store.fetchSitios() })
               Se chequean cada 5 minutos. Los dominios se consultan una vez por día.
             </p>
           </div>
-          <button v-if="meStore.can('sitios:create')" class="ds-btn-primary flex items-center gap-1.5" @click="abrirForm()">
-            <IonIcon :icon="addOutline" class="text-[16px]" /> Nuevo sitio
-          </button>
+          <div class="flex items-center gap-2">
+            <!-- Buscador: un solo campo que mira nombre y URL. -->
+            <div class="relative">
+              <IonIcon :icon="searchOutline" class="absolute left-2.5 top-1/2 -translate-y-1/2 text-[15px] text-ink-faint pointer-events-none" />
+              <input
+                v-model="busqueda"
+                class="ds-input h-9 w-56 pl-8 pr-8"
+                type="search"
+                placeholder="Buscar por nombre o URL"
+                aria-label="Buscar por nombre o URL"
+                @keydown.esc="busqueda = ''"
+              />
+              <button
+                v-if="busqueda"
+                class="absolute right-1.5 top-1/2 -translate-y-1/2 grid place-items-center w-5 h-5 rounded text-ink-faint hover:text-ink hover:bg-surface-2 transition-colors"
+                title="Limpiar" aria-label="Limpiar la búsqueda"
+                @click="busqueda = ''"
+              >
+                <IonIcon :icon="closeOutline" class="text-[14px]" />
+              </button>
+            </div>
+            <button v-if="meStore.can('sitios:create')" class="ds-btn-primary flex items-center gap-1.5 shrink-0" @click="abrirForm()">
+              <IonIcon :icon="addOutline" class="text-[16px]" /> Nuevo sitio
+            </button>
+          </div>
         </header>
 
         <div v-if="store.loadingSitios && !store.sitios.length" class="space-y-2">
           <div v-for="i in 3" :key="i" class="ds-skeleton h-16"></div>
         </div>
 
-        <div v-else-if="store.sitios.length" class="ds-card overflow-x-auto">
+        <div v-else-if="sitiosFiltrados.length" class="ds-card overflow-x-auto">
           <table class="ds-table">
             <thead>
               <tr>
@@ -193,7 +244,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void store.fetchSitios() })
               </tr>
             </thead>
             <tbody>
-              <tr v-for="s in store.sitios" :key="s.id" :class="{ 'opacity-50': !s.activo }">
+              <tr v-for="s in sitiosFiltrados" :key="s.id" :class="{ 'opacity-50': !s.activo }">
                 <td>
                   <button class="text-left group" @click="verDetalle(s)">
                     <div class="flex items-center gap-2">
@@ -256,6 +307,16 @@ onIonViewWillEnter(() => { if (loadedOnce) void store.fetchSitios() })
           </table>
         </div>
 
+        <!-- La búsqueda no encontró nada: es distinto de no tener sitios cargados. -->
+        <div v-else-if="busqueda" class="ds-card flex flex-col items-center py-14 text-center">
+          <div class="w-10 h-10 rounded-lg bg-surface-2 grid place-items-center mb-3">
+            <IonIcon :icon="searchOutline" class="text-[18px] text-ink-faint" />
+          </div>
+          <p class="text-sm font-medium text-ink">Ningún sitio coincide con «{{ busqueda }}»</p>
+          <p class="text-xs text-ink-faint mt-1">Se busca por nombre y por URL.</p>
+          <button class="ds-btn-secondary mt-4" @click="busqueda = ''">Limpiar la búsqueda</button>
+        </div>
+
         <div v-else class="ds-card flex flex-col items-center py-14 text-center">
           <div class="w-10 h-10 rounded-lg bg-surface-2 grid place-items-center mb-3">
             <IonIcon :icon="globeOutline" class="text-[18px] text-ink-faint" />
@@ -264,6 +325,10 @@ onIonViewWillEnter(() => { if (loadedOnce) void store.fetchSitios() })
           <p class="text-xs text-ink-faint mt-1">Cargá una URL y el sistema la chequea solo cada 5 minutos.</p>
           <button v-if="meStore.can('sitios:create')" class="ds-btn-primary mt-4" @click="abrirForm()">Agregar el primero</button>
         </div>
+
+        <p v-if="busqueda && sitiosFiltrados.length" class="text-2xs text-ink-faint mt-2">
+          {{ sitiosFiltrados.length }} de {{ store.sitios.length }} sitios.
+        </p>
 
         <p v-if="hayIncidentes" class="text-2xs text-ink-faint mt-2">
           Los sitios con alerta tienen un incidente abierto: se avisa una vez al detectarlo y otra al resolverse.
