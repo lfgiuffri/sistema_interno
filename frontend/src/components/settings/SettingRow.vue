@@ -36,4 +36,13 @@ const inputId = useId ? useId() : `set-${Math.random().toString(36).slice(2)}`
 .setting-label { font-size: 0.9rem; color: var(--z-text); font-weight: 500; }
 .setting-hint { font-size: 0.78rem; color: var(--z-text-mute); margin: 0; line-height: 1.4; }
 .setting-row-control { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+/* En un celular la fila en dos columnas no cierra: el control tiene `flex-shrink: 0` y el
+   texto `min-width: 0`, así que todo lo que falta de ancho se lo come la etiqueta — a 320px
+   quedaba con 0px y el título salía UNA LETRA POR RENGLÓN. Apilar es lo correcto: la etiqueta
+   y su explicación se leen completas y el control usa todo el ancho. */
+@media (max-width: 640px) {
+  .setting-row { flex-direction: column; align-items: stretch; gap: 9px; }
+  .setting-row-control { width: 100%; }
+}
 </style>

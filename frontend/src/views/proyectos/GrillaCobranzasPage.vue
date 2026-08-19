@@ -135,7 +135,9 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
           <div>
             <h1 class="text-xl font-semibold tracking-tight text-ink">Grilla de cobranzas</h1>
             <p class="mt-0.5 text-sm text-ink-soft">
-              Planificación anual por proyecto. Arrastrá una celda pendiente para moverla de mes.
+              Planificación anual por proyecto.
+              <span class="hidden lg:inline">Arrastrá una celda pendiente para moverla de mes.</span>
+              <span class="lg:hidden">Deslizá la tabla de costado para ver todos los meses.</span>
             </p>
           </div>
           <div class="flex items-center gap-1">
@@ -160,7 +162,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
                 <tr>
                   <th class="col-proyecto text-left">Proyecto</th>
                   <th class="col-presupuesto">Presupuesto</th>
-                  <th v-for="(m, i) in MESES" :key="i">{{ m.slice(0, 3) }}</th>
+                  <th v-for="(m, i) in MESES" :key="i" class="celda">{{ m.slice(0, 3) }}</th>
                   <th class="col-total">Total</th>
                 </tr>
               </thead>
@@ -215,7 +217,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
                 <tr>
                   <td class="col-proyecto text-2xs font-medium uppercase tracking-wide text-ink-faint">Total mes</td>
                   <td class="col-presupuesto"></td>
-                  <td v-for="mes in 12" :key="mes" class="text-xs">
+                  <td v-for="mes in 12" :key="mes" class="celda text-xs">
                     <template v-if="grilla.totalesMes[mes]?.pesos">
                       <span class="tnum font-medium text-ink block leading-tight">{{ fmtMoneda(grilla.totalesMes[mes].pesos) }}</span>
                       <span class="tnum text-2xs text-ink-faint block leading-tight">{{ fmtUsd(grilla.totalesMes[mes].usd) }}</span>
@@ -271,11 +273,40 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
 .grilla-table tbody tr:hover td { background: rgb(var(--s-surface-2) / 0.4); }
 .grilla-table tfoot td { border-bottom: none; border-top: 1px solid rgb(var(--s-line)); height: 40px; }
 .col-proyecto { width: 13%; text-align: left !important; padding-left: 12px !important; }
-.col-presupuesto { width: 7%; }
+/* 9% y no 7%: con 7% el encabezado «PRESUPUESTO» en mayúsculas no entra y se corta. */
+.col-presupuesto { width: 9%; }
 .col-total { width: 8%; }
-/* 12 meses repartiendo el resto (6% cada uno). */
-.celda { width: 6%; }
+/* 12 meses repartiendo el resto (~5.8% cada uno). */
+.celda { width: 5.8%; }
 .celda-drop { outline: 2px dashed rgb(var(--s-accent)); outline-offset: -3px; border-radius: 8px; background: rgb(var(--s-accent-soft)) !important; }
+
+/* ── Celular ────────────────────────────────────────────────────────────────────────
+   Meter 15 columnas en 390px no las hace chicas: las hace ilegibles. Cada mes queda en
+   ~21px, los encabezados se pisan entre sí («PROYEPRESUFEEBMOAR…») y los montos se parten
+   en cuatro renglones. Acá el ancho fijo NO sirve: la grilla pasa a tener un ancho mínimo y
+   se recorre de costado dentro del contenedor que ya tenía `overflow-x-auto`.
+
+   La columna del proyecto queda FIJA al desplazarse: sin eso, al llegar a Septiembre no
+   sabés de qué proyecto es la fila que estás mirando, y la grilla no sirve para nada. */
+@media (max-width: 1023px) {
+  .grilla-table { width: auto; min-width: 900px; table-layout: auto; }
+  /* Los porcentajes dejan de aplicar: cada columna pide lo que necesita. */
+  .col-proyecto { width: 150px; min-width: 150px; }
+  .col-presupuesto { width: 92px; }
+  .col-total { width: 104px; }
+  .celda { width: 62px; }
+
+  .grilla-table .col-proyecto {
+    position: sticky; left: 0; z-index: 2;
+    /* Fondo opaco obligatorio: si no, se ve pasar el contenido por debajo. */
+    background: rgb(var(--s-surface));
+    box-shadow: 1px 0 0 rgb(var(--s-line));
+  }
+  .grilla-table thead .col-proyecto { z-index: 3; background: rgb(var(--s-surface-2)); }
+  .grilla-table tfoot .col-proyecto { background: rgb(var(--s-surface)); }
+  /* El hover pinta la fila entera, así que la celda fija tiene que acompañar. */
+  .grilla-table tbody tr:hover .col-proyecto { background: rgb(var(--s-surface-2)); }
+}
 
 /* Los dos números NUNCA se parten: prefiero achicar la tipografía a que el monto quede
    cortado en dos renglones (el punto de la grilla es leerlo de un vistazo). */

@@ -154,6 +154,12 @@ Paginación en `meta` (helper `Paginate`). Validación: express-validator → 42
   `reset.ts` (limpieza al logout — registrá ahí todo store nuevo).
 - **Páginas**: root `<IonPage>`, datos en `onIonViewWillEnter`, acciones gateadas con
   `meStore.can(...)`, estados de carga (skeleton) + vacío + error SIEMPRE.
+- **Responsive**: el sistema se usa desde el celular a diario. Reglas y auditoría en
+  `docs/responsive.md` (`e2e/auditar-responsive.mjs` + `auditar-modales.mjs` MIDEN, no
+  miran: texto que no entra en su caja). Lo clave: una tabla ancha **se recorre, no se
+  comprime** (`min-width` + `overflow-x-auto` + primera columna `sticky` con fondo opaco);
+  una fila `label`+`control` se APILA en celular (si no, el control con `flex-shrink: 0`
+  deja la etiqueta en 0px y el texto sale una letra por renglón).
 - Español argentino. TypeScript estricto (`vue-tsc` debe quedar verde).
 
 ## Cómo agregar un MÓDULO feature (checklist)
