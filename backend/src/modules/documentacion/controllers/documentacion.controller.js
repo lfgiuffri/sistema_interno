@@ -464,7 +464,10 @@ export const subirArchivo = async (req, res) => {
             }
         }
 
-        const archivo = await archivoService.guardarArchivo(req.models, req.file, req.user.id, documentoId);
+        // `destino` lo manda el front: 'adjunto' desde el botón «Adjuntar», 'editor' (default)
+        // para las imágenes del cuerpo. Solo cambia la clasificación, no las defensas.
+        const destino = req.body?.destino === 'adjunto' ? 'adjunto' : 'editor';
+        const archivo = await archivoService.guardarArchivo(req.models, req.file, req.user.id, documentoId, destino);
         return await responseManager(201, archivo, req, res, false);
     } catch (e) { return bizCatch(e, req, res); }
 };

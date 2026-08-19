@@ -16,6 +16,7 @@ import {
 } from 'ionicons/icons'
 import { descargarCsv } from '@/composables/useCsv'
 import { useAbonosStore, type Abono, type AbonoFiltros } from '@/stores/abonos'
+import CotizacionDolar from '@/components/shared/CotizacionDolar.vue'
 import { useMeStore } from '@/stores/me'
 import { useToast } from '@/composables/useToast'
 import { moneda as fmtMoneda, fecha as fmtFecha } from '@/composables/useFormato'
@@ -131,12 +132,19 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
     <IonContent class="page-content">
       <div class="max-w-6xl mx-auto px-5 lg:px-8 py-6 ds-enter">
 
-        <header class="flex items-center justify-between gap-4 pb-5">
+        <header class="flex flex-wrap items-center justify-between gap-3 pb-5">
           <div>
             <h1 class="text-xl font-semibold tracking-tight text-ink">Abonos</h1>
             <p class="mt-0.5 text-sm text-ink-soft">Servicios recurrentes: precios, actualizaciones y facturación mensual.</p>
           </div>
-          <div class="flex gap-2">
+          <div class="flex flex-wrap items-center justify-end gap-2">
+          <!-- La cotización se edita acá mismo: es donde se nota que está vieja (los precios
+               USD se muestran convertidos a pesos con este valor). -->
+          <CotizacionDolar
+            v-if="abonosStore.resumen"
+            :valor="abonosStore.resumen.cotizacion"
+            @actualizada="load()"
+          />
           <button class="ds-btn-secondary" title="Exportar CSV" @click="exportarCsv">
             <IonIcon :icon="downloadOutline" class="text-[15px]" />
             CSV

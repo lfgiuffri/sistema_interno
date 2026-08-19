@@ -198,10 +198,18 @@ export const useTareasStore = defineStore('tareas', () => {
   }
 
   /** Sube un archivo (imagen del editor o adjunto). Devuelve el registro con su URL. */
-  async function subirArchivo(file: File, tareaId?: number): Promise<Result & { url?: string }> {
+  /**
+   * Sube un archivo.
+   * @param destino - 'adjunto' (botón «Adjuntar») o 'editor' (imagen del cuerpo). Define si
+   *   queda listado como adjunto o como contenido de la descripción.
+   */
+  async function subirArchivo(
+    file: File, tareaId?: number, destino: 'editor' | 'adjunto' = 'editor',
+  ): Promise<Result & { url?: string }> {
     try {
       const form = new FormData()
       form.append('archivo', file)
+      form.append('destino', destino)
       if (tareaId) form.append('tareaId', String(tareaId))
       const { data } = await api.post('/tareas/archivos', form, { headers: { 'Content-Type': 'multipart/form-data' } })
       return { ok: !!data.success, message: data.message, url: data.data?.url, data: data.data }

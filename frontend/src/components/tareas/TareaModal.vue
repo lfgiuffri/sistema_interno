@@ -25,6 +25,7 @@ import { useEscapeToClose } from '@/composables/useEscapeToClose'
 import { fecha as fmtFecha, fechaHora, duracion } from '@/composables/useFormato'
 import { hidratarImagenes, descargarArchivo } from '@/composables/useArchivosProtegidos'
 import DescripcionEditor from './DescripcionEditor.vue'
+import ZonaAdjuntos from '@/components/shared/ZonaAdjuntos.vue'
 
 const props = defineProps<{
   open: boolean
@@ -46,7 +47,6 @@ const detalle = ref<TareaDetalle | null>(null)
 const cargando = ref(false)
 const guardando = ref(false)
 const formError = ref('')
-const subiendoAdjunto = ref(false)
 const comentarioNuevo = ref('')
 const comentando = ref(false)
 /** Adjuntos subidos en un ALTA: viven acá hasta que el POST los liga. */
@@ -146,23 +146,27 @@ async function guardar(): Promise<void> {
   emit('close')
 }
 
-async function subirAdjunto(ev: Event): Promise<void> {
-  const input = ev.target as HTMLInputElement
-  const file = input.files?.[0]
-  input.value = ''
-  if (!file) return
-  subiendoAdjunto.value = true
-  // En el alta sube sin tareaId (queda huérfano hasta que se guarde la tarea).
-  const r = await tareasStore.subirArchivo(file, props.tareaId ?? undefined)
-  subiendoAdjunto.value = false
-  if (!r.ok) { toast.error(r.message); return }
+async function subirAdjunto(file: File): Promise<{ ok: boolean; message: string }> {
+  // `destino: 'adjunto'` es lo que hace que una IMAGEN quede listada como adjunto en vez de
+  // irse al cuerpo como contenido del editor. En el alta sube sin tareaId (queda huérfano
+  // hasta que se guarde la tarea, y si se cancela lo limpia el GC diario).
+  const r = await tareasStore.subirArchivo(file, props.tareaId ?? undefined, 'adjunto')
+  // Creando, el registro se guarda acá: todavía no hay tarea que releer.
+  if (r.ok && !esEdicion.value && r.data) adjuntosPendientes.value.push(r.data as unknown as AdjuntoVista)
+  return r
+}
 
-  toast.success('Adjunto subido')
-  if (esEdicion.value) {
-    detalle.value = await tareasStore.fetchTarea(props.tareaId as number)
-  } else if (r.data) {
-    adjuntosPendientes.value.push(r.data as unknown as AdjuntoVista)
+/**
+ * Terminó una tanda de subidas: refresca la lista y avisa lo que pasó.
+ * @param r - Cuántos entraron y qué falló.
+ */
+async function adjuntosListos(r: { subidos: number; errores: string[] }): Promise<void> {
+  if (r.subidos) {
+    toast.success(r.subidos === 1 ? 'Adjunto subido' : `${r.subidos} adjuntos subidos`)
+    if (esEdicion.value) detalle.value = await tareasStore.fetchTarea(props.tareaId as number)
   }
+  // Un archivo rechazado (tamaño, extensión) se dice con su nombre: si no, no se sabe cuál fue.
+  r.errores.forEach(e => toast.error(e))
 }
 
 // ── Autocompletado de menciones (@) en el comentario ──
@@ -356,14 +360,13 @@ async function borrarAdjunto(id: number): Promise<void> {
 
               <!-- Adjuntos: también en el alta (se ligan al guardar) -->
               <div>
-                <div class="flex items-center justify-between">
-                  <span class="ds-label !mb-0">Adjuntos</span>
-                  <label class="ds-btn-ghost h-7 px-2 text-xs cursor-pointer">
-                    <IonIcon :icon="attachOutline" class="text-[13px]" />
-                    {{ subiendoAdjunto ? 'Subiendo…' : 'Adjuntar archivo' }}
-                    <input type="file" class="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.zip" @change="subirAdjunto" />
-                  </label>
-                </div>
+                <span class="ds-label">Adjuntos</span>
+                <ZonaAdjuntos
+                  class="mb-2"
+                  :subir="subirAdjunto"
+                  ayuda="Imágenes, PDF, Office, CSV, TXT y ZIP. Hasta 5 MB las imágenes y 15 MB el resto."
+                  @listo="adjuntosListos"
+                />
                 <div v-if="adjuntos.length" class="mt-1 divide-y divide-line-soft border border-line rounded-lg">
                   <div v-for="a in adjuntos" :key="a.id" class="flex items-center gap-2 px-3 h-9">
                     <IonIcon :icon="attachOutline" class="text-[13px] text-ink-faint shrink-0" />
@@ -377,7 +380,7 @@ async function borrarAdjunto(id: number): Promise<void> {
                     </button>
                   </div>
                 </div>
-                <p v-else class="text-2xs text-ink-faint mt-1">Sin adjuntos. Acepta PDF, Office, CSV, TXT y ZIP (máx. 15 MB).</p>
+                <p v-else class="text-2xs text-ink-faint mt-1">Sin adjuntos todavía.</p>
                 <p v-if="!esEdicion && adjuntos.length" class="text-2xs text-ink-faint mt-1">
                   Se van a asociar a la tarea cuando la crees.
                 </p>

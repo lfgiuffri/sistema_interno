@@ -109,8 +109,10 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
         </div>
 
         <template v-if="data">
+          <!-- `min-w-0` en las tarjetas: son items de grid y sin eso no bajan del ancho de su
+               contenido (título + monto van sin cortar), así que se salen en pantallas angostas. -->
           <div class="grid lg:grid-cols-2 gap-3 mb-3">
-            <div v-if="data.mensual" class="ds-card p-4">
+            <div v-if="data.mensual" class="ds-card min-w-0 p-4">
               <div class="flex items-baseline justify-between mb-2">
                 <h2 class="text-xs font-semibold text-ink">Mensual: abonos vs proyectos</h2>
                 <span class="text-2xs text-ink-faint tnum">{{ fmtMoneda(data.mensual.totalAbonos + data.mensual.totalProyectos) }}</span>
@@ -121,14 +123,14 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
               <GraficoLinea v-else :series="serieMensual" :alto="200" />
             </div>
 
-            <div v-if="data.servicios" class="ds-card p-4">
+            <div v-if="data.servicios" class="ds-card min-w-0 p-4">
               <h2 class="text-xs font-semibold text-ink mb-2">Abonos por servicio</h2>
               <p v-if="!serieServicios.length" class="text-xs text-ink-faint py-8 text-center">Sin facturación de abonos en {{ data.anio }}.</p>
               <GraficoLinea v-else :series="serieServicios" :alto="200" />
             </div>
           </div>
 
-          <div v-if="data.areas" class="ds-card p-4">
+          <div v-if="data.areas" class="ds-card min-w-0 p-4">
             <h2 class="text-xs font-semibold text-ink mb-2">Facturación por área</h2>
             <p v-if="!serieAreas.length" class="text-xs text-ink-faint py-6 text-center">Sin movimientos en {{ data.anio }}.</p>
             <template v-else>

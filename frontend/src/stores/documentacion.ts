@@ -261,10 +261,18 @@ export const useDocumentacionStore = defineStore('documentacion', () => {
 
   // ── Adjuntos ──
 
-  async function subirArchivo(file: File, documentoId?: number): Promise<Result & { archivo?: DocumentoArchivo }> {
+  /**
+   * Sube un archivo.
+   * @param destino - 'adjunto' (botón «Adjuntar») o 'editor' (imagen del cuerpo). Define si
+   *   queda listado como adjunto o como contenido del documento.
+   */
+  async function subirArchivo(
+    file: File, documentoId?: number, destino: 'editor' | 'adjunto' = 'editor',
+  ): Promise<Result & { archivo?: DocumentoArchivo }> {
     try {
       const form = new FormData()
       form.append('archivo', file)
+      form.append('destino', destino)
       if (documentoId) form.append('documentoId', String(documentoId))
       const { data } = await api.post('/documentacion/archivos', form)
       return { ok: !!data.success, message: data.message, archivo: data.data }

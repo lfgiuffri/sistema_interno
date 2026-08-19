@@ -112,9 +112,11 @@ onIonViewWillEnter(() => { if (loadedOnce) void sueldosStore.fetchAll() })
         </header>
 
         <template v-if="paso === 'form'">
+          <!-- `min-w-0` en las dos columnas: sin eso el item de grid no baja del ancho de su
+               contenido (nombres y montos van sin cortar) y la tarjeta se sale en el celular. -->
           <div class="grid lg:grid-cols-2 gap-5">
             <!-- Empleados -->
-            <section class="ds-card p-4">
+            <section class="ds-card min-w-0 p-4">
               <div class="flex items-center justify-between mb-2">
                 <h2 class="text-sm font-semibold text-ink">Empleados</h2>
                 <button class="ds-btn-ghost h-7 px-2 text-xs" @click="toggleTodos">
@@ -132,7 +134,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void sueldosStore.fetchAll() })
             </section>
 
             <!-- Líneas -->
-            <section class="ds-card p-4">
+            <section class="ds-card min-w-0 p-4">
               <h2 class="text-sm font-semibold text-ink mb-2">Aumentos</h2>
 
               <div v-if="hayPct" class="flex items-end gap-2 mb-3 pb-3 border-b border-line-soft">
@@ -146,7 +148,9 @@ onIonViewWillEnter(() => { if (loadedOnce) void sueldosStore.fetchAll() })
               </div>
 
               <div class="space-y-2">
-                <div v-for="(l, i) in lineas" :key="i" class="flex items-center gap-2">
+                <!-- Cuatro controles en una fila no entran en un celular angosto: envuelven.
+                     El valor lleva `min-w-[120px]` para que al bajar de renglón siga siendo usable. -->
+                <div v-for="(l, i) in lineas" :key="i" class="flex flex-wrap items-center gap-2">
                   <select v-model.number="l.mes" class="ds-input h-8 w-32" :aria-label="`Mes de la línea ${i + 1}`">
                     <option v-for="(m, mi) in MESES" :key="mi" :value="mi + 1">{{ m }}</option>
                   </select>
@@ -155,7 +159,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void sueldosStore.fetchAll() })
                     <option value="pct">%</option>
                     <option value="fijo">Fijo $</option>
                   </select>
-                  <input v-model="l.valor" class="ds-input h-8 flex-1 font-mono text-right" type="text" inputmode="decimal" :placeholder="l.tipo === 'pct' ? 'Ej: 10' : 'Ej: 1500000'" :aria-label="`Valor de la línea ${i + 1}`" />
+                  <input v-model="l.valor" class="ds-input h-8 flex-1 min-w-[120px] font-mono text-right" type="text" inputmode="decimal" :placeholder="l.tipo === 'pct' ? 'Ej: 10' : 'Ej: 1500000'" :aria-label="`Valor de la línea ${i + 1}`" />
                   <button v-if="lineas.length > 1" class="row-action hover:!text-danger" title="Quitar línea" aria-label="Quitar línea" @click="quitarLinea(i)">
                     <IonIcon :icon="trashOutline" class="text-[14px]" />
                   </button>

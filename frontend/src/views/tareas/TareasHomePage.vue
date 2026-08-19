@@ -94,11 +94,15 @@ onIonViewWillEnter(() => { if (loadedOnce) void tareasStore.fetchHome() })
           <section>
             <h2 class="text-sm font-semibold text-ink mb-2">Espacios de trabajo</h2>
 
+            <!-- `min-w-0` en cada tarjeta: un item de grid tiene `min-width: auto`, así que NO
+                 baja del ancho de su contenido. Con un nombre largo (va con `truncate`, o sea
+                 `nowrap`) el min-content es el texto entero: la tarjeta se sale de la pantalla
+                 y arrastra a todas las de su columna. -->
             <div v-if="tareasStore.homeEspacios.length" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <button
                 v-for="e in tareasStore.homeEspacios"
                 :key="e.id"
-                class="ds-card px-4 py-4 text-left hover:bg-surface-2/50 transition-colors group"
+                class="ds-card min-w-0 px-4 py-4 text-left hover:bg-surface-2/50 transition-colors group"
                 @click="router.push(`/tareas/espacios/${e.id}`)"
               >
                 <div class="flex items-center gap-2">

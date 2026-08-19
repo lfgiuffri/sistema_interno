@@ -333,7 +333,11 @@ export const subirArchivo = async (req, res) => {
             return await responseManager(403, 'No tenés permiso para editar tareas', req, res, false);
         }
 
-        const archivo = await archivoService.guardarArchivo(req.models, req.file, req.user.id, tareaId);
+        // `destino` lo manda el front: 'adjunto' desde el botón «Adjuntar», 'editor' (default)
+        // para las imágenes que se pegan en la descripción. Solo cambia la clasificación; las
+        // defensas sobre el contenido son las mismas en los dos casos.
+        const destino = req.body.destino === 'adjunto' ? 'adjunto' : 'editor';
+        const archivo = await archivoService.guardarArchivo(req.models, req.file, req.user.id, tareaId, destino);
         return await responseManager(201, archivo, req, res, false);
     } catch (e) { return bizCatch(e, req, res); }
 };

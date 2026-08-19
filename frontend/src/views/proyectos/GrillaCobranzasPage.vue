@@ -12,6 +12,7 @@ import {
 } from '@ionic/vue'
 import { chevronBackOutline, chevronForwardOutline, gridOutline } from 'ionicons/icons'
 import { useProyectosStore, ESTADOS_PROYECTO } from '@/stores/proyectos'
+import CotizacionDolar from '@/components/shared/CotizacionDolar.vue'
 import { useMeStore } from '@/stores/me'
 import { useToast } from '@/composables/useToast'
 import { moneda as fmtMoneda, MESES } from '@/composables/useFormato'
@@ -140,7 +141,9 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
               <span class="lg:hidden">Deslizá la tabla de costado para ver todos los meses.</span>
             </p>
           </div>
-          <div class="flex items-center gap-1">
+          <div class="flex flex-wrap items-center justify-end gap-2">
+            <CotizacionDolar v-if="grilla" :valor="grilla.cotizacion" @actualizada="load()" />
+            <div class="flex items-center gap-1">
             <button class="ds-btn-secondary h-8 w-8 !px-0" aria-label="Año anterior" @click="cambiarAnio(-1)">
               <IonIcon :icon="chevronBackOutline" class="text-[15px]" />
             </button>
@@ -150,6 +153,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
             <button class="ds-btn-secondary h-8 w-8 !px-0" aria-label="Año siguiente" @click="cambiarAnio(1)">
               <IonIcon :icon="chevronForwardOutline" class="text-[15px]" />
             </button>
+            </div>
           </div>
         </header>
 
@@ -245,7 +249,9 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
             <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded chip-cobrada inline-block"></span> Cobrado</span>
             <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded chip-parcial inline-block"></span> Parcial</span>
             <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded chip-demo inline-block"></span> Pendiente (arrastrable)</span>
-            <span class="ml-auto tnum">Cotización {{ fmtMoneda(grilla.cotizacion) }}</span>
+            <span class="ml-auto">
+              <CotizacionDolar variante="texto" :valor="grilla.cotizacion" @actualizada="load()" />
+            </span>
           </div>
         </template>
       </div>

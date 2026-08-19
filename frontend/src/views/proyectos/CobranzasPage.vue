@@ -15,6 +15,7 @@ import {
   checkmarkCircleOutline, arrowUndoOutline, createOutline, timeOutline,
 } from 'ionicons/icons'
 import { useProyectosStore, ESTADOS_PROYECTO, type CobranzasDetalle, type Cuota } from '@/stores/proyectos'
+import CotizacionDolar from '@/components/shared/CotizacionDolar.vue'
 import { useMeStore } from '@/stores/me'
 import { useToast } from '@/composables/useToast'
 import { useEscapeToClose } from '@/composables/useEscapeToClose'
@@ -203,7 +204,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
         </div>
 
         <template v-if="data">
-          <header class="flex items-center justify-between gap-4 pb-5">
+          <header class="flex flex-wrap items-center justify-between gap-3 pb-5">
             <div>
               <h1 class="text-xl font-semibold tracking-tight text-ink">Cobranzas · {{ data.proyecto.nombre }}</h1>
               <p class="mt-0.5 text-sm text-ink-soft flex items-center gap-2">
@@ -213,10 +214,15 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
                 </span>
               </p>
             </div>
-            <button v-if="meStore.can('cobranzas:create')" class="ds-btn-primary" @click="modalError = ''; modalAgregar = true">
-              <IonIcon :icon="addOutline" class="text-[16px]" />
-              Agregar cuota
-            </button>
+            <div class="flex items-center gap-2">
+              <!-- La cotización se edita acá mismo: es el número con el que se convierte cada
+                   cuota pendiente a pesos, y acá es donde se ve si quedó vieja. -->
+              <CotizacionDolar :valor="data.kpis.cotizacion" @actualizada="load()" />
+              <button v-if="meStore.can('cobranzas:create')" class="ds-btn-primary shrink-0" @click="modalError = ''; modalAgregar = true">
+                <IonIcon :icon="addOutline" class="text-[16px]" />
+                Agregar cuota
+              </button>
+            </div>
           </header>
 
           <!-- KPIs -->

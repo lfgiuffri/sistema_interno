@@ -275,7 +275,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
 
               <!-- Ajuste por año + otorgamientos -->
               <div class="grid lg:grid-cols-2 gap-4">
-                <form v-if="meStore.can('vacaciones:manage')" class="flex items-end gap-2" @submit.prevent="guardarAsignacion">
+                <form v-if="meStore.can('vacaciones:manage')" class="flex flex-wrap items-end gap-2" @submit.prevent="guardarAsignacion">
                   <div>
                     <label class="ds-label" for="va-anio">Año</label>
                     <input id="va-anio" v-model.number="asigForm.anio" class="ds-input h-8 w-24 font-mono" type="number" min="2000" max="2100" />

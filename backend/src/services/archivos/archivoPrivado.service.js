@@ -87,10 +87,18 @@ export const firmaAdjuntoValida = (buf, ext) => {
  * Aplica TODAS las defensas a un archivo subido y resuelve cómo debe guardarse.
  * No toca el disco ni la base: decide.
  * @param {object} file - Archivo de multer ({ buffer, originalname, size }).
+ * @param {'editor'|'adjunto'} [destino] - Para qué se sube.
+ *
+ *   Las DEFENSAS las decide el contenido (firma binaria, límites, lista blanca) y eso no se
+ *   negocia. Lo que decide `destino` es la CLASIFICACIÓN: una imagen subida con el botón
+ *   «Adjuntar» tiene que quedar como `archivo`, porque las listas de adjuntos filtran por ese
+ *   tipo para no repetir las imágenes que ya se ven embebidas en el cuerpo. Antes el tipo salía
+ *   solo del contenido, así que adjuntar una foto la mandaba al cuerpo y desaparecía de la
+ *   lista: la subida decía «adjuntado» y no se veía en ninguna parte.
  * @returns {{ext: string, tipo: 'imagen'|'archivo', mime: string, nombre: string}} Datos resueltos.
  * @throws {Error} 400 con mensaje concreto si no pasa alguna defensa.
  */
-export const resolverArchivo = (file) => {
+export const resolverArchivo = (file, destino = 'editor') => {
     if (!file?.buffer?.length) throw bizError(400, 'No se pudo subir el archivo');
 
     const extDeclarada = (path.extname(file.originalname || '').slice(1) || '').toLowerCase();
@@ -99,9 +107,10 @@ export const resolverArchivo = (file) => {
     let ext, tipo;
     if (extImagen) {
         // Es imagen por contenido: la extensión canónica sale de la firma, no del nombre.
+        // El límite sigue siendo el de imagen (5 MB) aunque se adjunte: lo manda el contenido.
         if (file.size > MAX_IMAGEN) throw bizError(400, 'La imagen supera los 5 MB');
         ext = extImagen;
-        tipo = 'imagen';
+        tipo = destino === 'adjunto' ? 'archivo' : 'imagen';
     } else if (EXT_IMAGEN.has(extDeclarada)) {
         // Dice ser imagen pero el contenido no lo es → afuera (regla del legado).
         throw bizError(400, 'El archivo no es una imagen válida');

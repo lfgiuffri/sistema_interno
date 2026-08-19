@@ -126,7 +126,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void store.fetchEspaciosAdmin() })
     <IonContent class="page-content">
       <div class="max-w-5xl mx-auto px-5 lg:px-8 py-6 ds-enter">
 
-        <header class="flex items-center justify-between gap-4 pb-5">
+        <header class="flex flex-wrap items-center justify-between gap-3 pb-5">
           <div>
             <h1 class="text-xl font-semibold tracking-tight text-ink">Espacios de documentación</h1>
             <p class="mt-0.5 text-sm text-ink-soft">Contenedores de listas y documentos, con acceso por usuario.</p>

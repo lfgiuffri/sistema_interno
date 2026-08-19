@@ -144,7 +144,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
               Sueldos de {{ MESES[periodo.mes - 1] }} {{ periodo.anio }} — se abonan en {{ mesQueSePaga }}.
             </p>
           </div>
-          <div class="flex items-center gap-2">
+          <div class="flex flex-wrap items-center justify-end gap-2">
             <!-- Estado de autoguardado -->
             <span v-if="estadoGuardado === 'guardando'" class="flex items-center gap-1 text-xs text-ink-faint">
               <IonIcon :icon="syncOutline" class="text-[13px] animate-spin" /> Guardando…

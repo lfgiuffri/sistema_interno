@@ -14,6 +14,7 @@ import {
   documentTextOutline, downloadOutline, arrowUndoOutline,
 } from 'ionicons/icons'
 import DescripcionEditor from '@/components/tareas/DescripcionEditor.vue'
+import ZonaAdjuntos from '@/components/shared/ZonaAdjuntos.vue'
 import {
   useDocumentacionStore,
   type Documento, type DocumentoVersion, type DocumentoArchivo,
@@ -142,30 +143,28 @@ async function eliminar(): Promise<void> {
 // ── Adjuntos ──
 
 /**
- * Adjunta un archivo. Funciona igual creando que editando: si el documento todavía no existe,
- * el archivo se sube suelto y queda pendiente de ligar al guardar.
- * @param e - Evento change del input file.
+ * Sube un archivo como ADJUNTO. `destino: 'adjunto'` es lo que hace que una imagen quede
+ * listada acá en vez de irse al cuerpo como contenido del editor.
+ * @param file - Archivo elegido o soltado.
+ * @returns Resultado, para que la zona informe los que fallaron.
  */
-async function adjuntar(e: Event): Promise<void> {
-  const input = e.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (!file) return
+async function subirAdjunto(file: File): Promise<{ ok: boolean; message: string }> {
+  const r = await store.subirArchivo(file, props.documentoId ?? undefined, 'adjunto')
+  // Creando, el registro se guarda acá: todavía no hay documento que releer.
+  if (r.ok && !props.documentoId && r.archivo) adjuntosPendientes.value.push(r.archivo)
+  return r
+}
 
-  const r = await store.subirArchivo(file, props.documentoId ?? undefined)
-  input.value = ''
-  if (!r.ok) { toast.error(r.message); return }
-
-  // Una imagen se guarda como CONTENIDO del cuerpo, no como adjunto (así no se duplica con
-  // las que se pegan en el editor), y por eso no aparece en esta lista. Se dice, en vez de
-  // festejar un "adjuntado" que después no se ve por ningún lado.
-  if (r.archivo?.tipo === 'imagen') {
-    toast.info('Las imágenes se insertan en el cuerpo: usá el botón de imagen del editor.')
-    return
+/**
+ * Terminó una tanda de subidas: refresca y avisa.
+ * @param r - Cuántos entraron y qué falló.
+ */
+async function adjuntosListos(r: { subidos: number; errores: string[] }): Promise<void> {
+  if (r.subidos) {
+    toast.success(r.subidos === 1 ? 'Archivo adjuntado' : `${r.subidos} archivos adjuntados`)
+    if (props.documentoId) await cargar()
   }
-
-  toast.success('Archivo adjuntado')
-  if (props.documentoId) await cargar()
-  else if (r.archivo) adjuntosPendientes.value.push(r.archivo)
+  r.errores.forEach(e => toast.error(e))
 }
 
 async function quitarAdjunto(id: number): Promise<void> {
@@ -281,11 +280,16 @@ function editar(): void {
                 <IonIcon :icon="attachOutline" class="text-[14px] text-ink-faint" />
                 Archivos ({{ adjuntos.length }})
               </h3>
-              <label v-if="puedeEscribir" class="ds-btn-secondary h-7 px-2.5 text-xs cursor-pointer">
-                Adjuntar
-                <input type="file" class="hidden" @change="adjuntar" />
-              </label>
+
             </div>
+
+            <ZonaAdjuntos
+              v-if="puedeEscribir"
+              class="mb-2"
+              :subir="subirAdjunto"
+              ayuda="Imágenes, PDF, Office, CSV, TXT y ZIP. Hasta 5 MB las imágenes y 15 MB el resto."
+              @listo="adjuntosListos"
+            />
 
             <div v-if="adjuntos.length" class="border border-line rounded-lg divide-y divide-line-soft">
               <div v-for="a in adjuntos" :key="a.id" class="flex items-center gap-2 px-3 h-10 text-xs">

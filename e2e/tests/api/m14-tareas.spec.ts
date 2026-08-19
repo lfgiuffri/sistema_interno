@@ -196,6 +196,48 @@ test.describe('M14: Tareas y listas', () => {
     await expectError(await tareasApi.delete(`${APP_ENDPOINTS.tareas}/999999`), 404);
   });
 
+  test('M14.12 - adjuntos: una IMAGEN sube como adjunto con destino=adjunto, y como contenido sin él', async ({ adminTokens, playwright }) => {
+    // Contexto propio: los fixtures fijan Content-Type JSON y eso rompe el multipart.
+    const up = await playwright.request.newContext({
+      baseURL: `${API_BASE}/`,
+      extraHTTPHeaders: { 'x-access-token': adminTokens.accessToken },
+    });
+    // PNG mínimo válido (firma + IHDR): las defensas miran el CONTENIDO, no el nombre.
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      'base64',
+    );
+    const subir = (destino?: string) => up.post(`${APP_ENDPOINTS.tareas}/archivos`, {
+      multipart: {
+        archivo: { name: 'foto.png', mimeType: 'image/png', buffer: png },
+        ...(destino ? { destino } : {}),
+      },
+    });
+
+    // Sin `destino` (o con 'editor') una imagen es contenido del cuerpo.
+    expect((await expectSuccess(await subir(), 201)).data.tipo).toBe('imagen');
+    expect((await expectSuccess(await subir('editor'), 201)).data.tipo).toBe('imagen');
+    // Con 'adjunto' queda como archivo, que es lo que lista la ficha de la tarea.
+    expect((await expectSuccess(await subir('adjunto'), 201)).data.tipo).toBe('archivo');
+
+    // La clasificación cambia; las DEFENSAS no: un .png que no es imagen sigue afuera…
+    await expectError(await up.post(`${APP_ENDPOINTS.tareas}/archivos`, {
+      multipart: {
+        archivo: { name: 'falso.png', mimeType: 'image/png', buffer: Buffer.from('no soy una imagen') },
+        destino: 'adjunto',
+      },
+    }), 400);
+    // …y el límite de 5 MB de las imágenes se aplica igual al adjuntarlas.
+    await expectError(await up.post(`${APP_ENDPOINTS.tareas}/archivos`, {
+      multipart: {
+        archivo: { name: 'grande.png', mimeType: 'image/png', buffer: Buffer.concat([png, Buffer.alloc(6 * 1024 * 1024)]) },
+        destino: 'adjunto',
+      },
+    }), 400);
+
+    await up.dispose();
+  });
+
   test('M14.11 - capability gating: el fixture (sin tareas:read) → 403', async ({ authedApi }) => {
     const res = await authedApi.get(`${APP_ENDPOINTS.tareas}/espacios`);
     const body = await expectError(res, 403);

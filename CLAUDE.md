@@ -159,7 +159,13 @@ Paginación en `meta` (helper `Paginate`). Validación: express-validator → 42
   miran: texto que no entra en su caja). Lo clave: una tabla ancha **se recorre, no se
   comprime** (`min-width` + `overflow-x-auto` + primera columna `sticky` con fondo opaco);
   una fila `label`+`control` se APILA en celular (si no, el control con `flex-shrink: 0`
-  deja la etiqueta en 0px y el texto sale una letra por renglón).
+  deja la etiqueta en 0px y el texto sale una letra por renglón); un item de grid necesita
+  `min-w-0` (su `min-width: auto` = min-content, así que un `truncate` largo lo ensancha y se
+  sale); y toda fila de controles va con `flex-wrap`.
+- **Cotización del dólar**: `components/shared/CotizacionDolar.vue` — se muestra y se edita
+  desde el panel, abonos, cobranzas y la grilla (variantes `chip` y `texto`). Emite
+  `actualizada` y CADA vista recarga: los montos en pesos dependen de ese número. Editar
+  exige `configuracion:update`; sin permiso se ve el valor y el histórico.
 - Español argentino. TypeScript estricto (`vue-tsc` debe quedar verde).
 
 ## Cómo agregar un MÓDULO feature (checklist)
@@ -330,6 +336,11 @@ recortes distintos a los tableros y sus accesos se administran aparte. Doc compl
   puede adjuntar TAMBIÉN al crear: el archivo se sube suelto y el alta lo liga con
   `archivoIds` filtrando por `documentoId: null` (mismo patrón que tareas); lo que quede
   huérfano lo barre el GC diario, que ahora cubre tareas y documentación.
+- **Adjuntar imágenes**: el endpoint de subida recibe `destino` (`editor` | `adjunto`). El
+  CONTENIDO decide las defensas (firma binaria, lista blanca, 5 MB imágenes / 15 MB adjuntos);
+  la INTENCIÓN decide la clasificación, así que una imagen subida con «Adjuntar» queda como
+  `tipo: 'archivo'` y aparece en la lista en vez de irse al cuerpo. Arrastrar y soltar en
+  tareas y documentos con `components/shared/ZonaAdjuntos.vue`.
 - **Buscador** por título y contenido, acotado a los espacios visibles, y **orden manual**
   (drag & drop) de listas y documentos con `orden` en múltiplos de 10.
 - **Refactors para no duplicar**: las defensas de archivos subidos viven en

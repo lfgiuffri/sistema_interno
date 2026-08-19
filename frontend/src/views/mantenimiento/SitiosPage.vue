@@ -200,7 +200,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void store.fetchSitios() })
               Se chequean cada 5 minutos. Los dominios se consultan una vez por día.
             </p>
           </div>
-          <div class="flex items-center gap-2">
+          <div class="flex flex-wrap items-center justify-end gap-2">
             <!-- Buscador: un solo campo que mira nombre y URL. -->
             <div class="relative">
               <IonIcon :icon="searchOutline" class="absolute left-2.5 top-1/2 -translate-y-1/2 text-[15px] text-ink-faint pointer-events-none" />

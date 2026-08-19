@@ -173,23 +173,28 @@ await page.evaluate(([a, r]) => {
 
 const informe = [];
 for (const [ruta, nombre] of RUTAS) {
-  await page.goto(`${APP}${ruta}`, { waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(2200);   // datos + render de Ionic
+  await page.goto(`${APP}${ruta}`, { waitUntil: 'load' });
+  // Ionic anima la entrada de la página y el split-pane tarda en colapsar: medir antes de que
+  // se asiente reporta anchos de la transición (un contenedor todavía en layout de escritorio)
+  // y produce falsos positivos. Se espera a que la red se calme y después un margen.
+  await page.waitForLoadState('networkidle').catch(() => null);
+  await page.waitForTimeout(1200);
   const d = await page.evaluate(medir);
   const archivo = `${SALIDA}/${nombre.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.png`;
   await page.screenshot({ path: archivo, fullPage: false });
   informe.push({ nombre, ruta, ...d, archivo });
 
-  const problema = d.scrollPagina > 1 || d.totalApretados > 0 || d.columnasFinas.length > 0;
+  const problema = d.scrollPagina > 1 || d.culpables.length > 0 || d.totalApretados > 0 || d.columnasFinas.length > 0;
   const partes = [];
   if (d.scrollPagina > 1) partes.push(`scroll +${d.scrollPagina}px`);
+  if (d.culpables.length) partes.push(`${d.culpables.length} elemento(s) fuera de pantalla`);
   if (d.totalApretados) partes.push(`${d.totalApretados} texto(s) que no entran`);
   if (d.columnasFinas.length) partes.push(`${d.columnasFinas.length} columna(s) < 45px`);
   console.log(`${problema ? '❌' : '✅'}  ${nombre.padEnd(26)} ${partes.join(' · ')}`);
 }
 
 fs.writeFileSync(`${SALIDA}/informe.json`, JSON.stringify({ viewport: CELULAR, informe, errores }, null, 1));
-const roto = informe.filter(i => i.scrollPagina > 1 || i.totalApretados > 0 || i.columnasFinas.length > 0);
+const roto = informe.filter(i => i.scrollPagina > 1 || i.culpables.length > 0 || i.totalApretados > 0 || i.columnasFinas.length > 0);
 console.log(`\n=== ${roto.length} de ${informe.length} vistas con problemas en ${CELULAR.width}px ===`);
 roto.sort((a, b) => (b.totalApretados + b.scrollPagina) - (a.totalApretados + a.scrollPagina)).forEach(i => {
   console.log(`\n▸ ${i.nombre}   ${i.scrollPagina > 1 ? `scroll de página +${i.scrollPagina}px` : ''}`);

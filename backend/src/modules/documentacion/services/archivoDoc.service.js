@@ -36,12 +36,15 @@ const bizError = (statusCode, message) => {
  * @param {object} models - Modelos de la app.
  * @param {object} file - Archivo de multer ({ buffer, originalname, size }).
  * @param {number} userId - Usuario que sube.
- * @param {number|null} [documentoId] - Documento al que se adjunta (null = imagen del editor).
+ * @param {number|null} [documentoId] - Documento al que se adjunta (null = todavía no existe).
+ * @param {'editor'|'adjunto'} [destino] - Si viene del editor (imagen del cuerpo) o del botón
+ *   «Adjuntar». Decide la clasificación: una imagen adjuntada queda como `archivo` para que
+ *   aparezca en la lista de adjuntos y no se confunda con las embebidas en el cuerpo.
  * @returns {Promise<object>} Registro creado ({ id, nombre, url, tipo, ... }).
  * @throws {Error} 400 con mensaje concreto si el archivo no pasa las defensas.
  */
-export const guardarArchivo = async (models, file, userId, documentoId = null) => {
-    const { tipo, mime, nombre } = resolverArchivo(file);
+export const guardarArchivo = async (models, file, userId, documentoId = null, destino = 'editor') => {
+    const { tipo, mime, nombre } = resolverArchivo(file, destino);
 
     // Si adjunta a un documento, el documento tiene que existir (el permiso lo valida el controller).
     if (documentoId) {

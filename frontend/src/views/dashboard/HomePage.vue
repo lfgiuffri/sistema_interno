@@ -16,13 +16,13 @@ import {
   IonButtons, IonMenuButton, IonIcon,
 } from '@ionic/vue'
 import {
-  createOutline, alertCircleOutline, timeOutline, walletOutline, trendingUpOutline,
+  alertCircleOutline, timeOutline, walletOutline, trendingUpOutline,
   folderOpenOutline, flagOutline, peopleOutline, pulseOutline, serverOutline, globeOutline,
 } from 'ionicons/icons'
 import BanderaPrioridad from '@/components/tareas/BanderaPrioridad.vue'
+import CotizacionDolar from '@/components/shared/CotizacionDolar.vue'
 import IndicadorAutoRefresh from '@/components/shared/IndicadorAutoRefresh.vue'
 import { useAutoRefresh } from '@/composables/useAutoRefresh'
-import { useEscapeToClose } from '@/composables/useEscapeToClose'
 import { duracion, fechaHora } from '@/composables/useFormato'
 import api, { apiErrorMessage } from '@/services/api'
 import { useMeStore } from '@/stores/me'
@@ -108,11 +108,6 @@ const router = useRouter()
 const data = ref<DashboardData | null>(null)
 const loading = ref(false)
 
-// Modal de cotización (editar + histórico).
-const modalCotizacion = ref(false)
-const cotizacionInput = ref('')
-const historicoCotizacion = ref<Array<{ id: number; valor: number; fecha: string; usuario?: string | null }>>([])
-useEscapeToClose(modalCotizacion, () => { modalCotizacion.value = false })
 const firstName = computed(() => meStore.user?.name?.split(' ')[0] ?? '')
 
 // Facturación del mes combinada (abonos + proyectos, según permisos).
@@ -191,28 +186,6 @@ async function load(silencioso = false): Promise<void> {
 // chequean cada 5), así que bajar más solo agregaría consultas sin datos nuevos.
 const auto = useAutoRefresh(() => load(true), { intervaloMs: 60_000, clave: 'panelAutoRefresh' })
 
-/** Abre el modal de cotización: valor editable (con permiso) + histórico (mejora §10.10). */
-async function abrirCotizacion(): Promise<void> {
-  cotizacionInput.value = String(data.value?.cotizacion ?? '')
-  modalCotizacion.value = true
-  try {
-    const res = await api.get('/app-config/cotizaciones')
-    if (res.data.success) historicoCotizacion.value = res.data.data
-  } catch { historicoCotizacion.value = [] }
-}
-
-async function guardarCotizacion(): Promise<void> {
-  try {
-    const res = await api.put('/app-config', { name: 'COTIZACION_DOLAR', value: cotizacionInput.value })
-    if (!res.data.success) { toast.error(res.data.message); return }
-    toast.success('Cotización actualizada')
-    modalCotizacion.value = false
-    await load()
-  } catch (e) {
-    toast.error(apiErrorMessage(e))
-  }
-}
-
 let loadedOnce = false
 onMounted(async () => {
   loadedOnce = true
@@ -246,15 +219,7 @@ onIonViewWillLeave(() => auto.parar())
             <!-- Estado del refresco automático: pensado para dejar el panel en un monitor -->
             <IndicadorAutoRefresh v-if="data" :auto="auto" />
 
-            <button
-              v-if="data"
-              class="flex items-center gap-2 px-3 h-9 rounded-md border border-line bg-surface text-sm hover:bg-surface-2 transition-colors"
-              @click="abrirCotizacion()"
-            >
-              <span class="text-ink-faint text-xs">Dólar</span>
-              <span class="tnum font-semibold text-ink">{{ fmtMoneda(data.cotizacion) }}</span>
-              <IonIcon v-if="meStore.can('configuracion:update')" :icon="createOutline" class="text-[13px] text-ink-faint" />
-            </button>
+            <CotizacionDolar v-if="data" :valor="data.cotizacion" @actualizada="load()" />
           </div>
         </header>
 
@@ -524,36 +489,6 @@ onIonViewWillLeave(() => auto.parar())
         </template>
       </div>
 
-      <!-- Modal cotización: editar + histórico -->
-      <Teleport defer to="ion-app">
-        <div v-if="modalCotizacion" class="ds-modal-backdrop" @click.self="modalCotizacion = false">
-          <div class="ds-modal max-w-sm" role="dialog" aria-modal="true" aria-label="Cotización del dólar">
-            <h2 class="text-base font-semibold text-ink mb-1">Cotización del dólar</h2>
-            <p class="text-xs text-ink-soft mb-3">Impacta en abonos USD, cuotas de proyectos y montos pendientes.</p>
-            <form v-if="meStore.can('configuracion:update')" class="flex items-end gap-2 mb-4" @submit.prevent="guardarCotizacion">
-              <div class="flex-1">
-                <label class="ds-label" for="cot-valor">Valor</label>
-                <input id="cot-valor" v-model="cotizacionInput" class="ds-input font-mono" type="number" min="1" step="0.01" />
-              </div>
-              <button type="submit" class="ds-btn-primary">Guardar</button>
-            </form>
-            <div>
-              <p class="ds-label !mb-1">Histórico</p>
-              <div v-if="historicoCotizacion.length" class="border border-line rounded-lg divide-y divide-line-soft max-h-56 overflow-y-auto">
-                <div v-for="h in historicoCotizacion" :key="h.id" class="flex items-center gap-3 px-3 h-9 text-xs">
-                  <span class="tnum font-medium text-ink">{{ fmtMoneda(h.valor) }}</span>
-                  <span class="flex-1 text-ink-faint truncate">{{ h.usuario ?? '—' }}</span>
-                  <span class="text-ink-faint tnum">{{ fechaHora(h.fecha) }}</span>
-                </div>
-              </div>
-              <p v-else class="text-2xs text-ink-faint">Sin cambios registrados todavía.</p>
-            </div>
-            <footer class="flex justify-end pt-3">
-              <button type="button" class="ds-btn-secondary" @click="modalCotizacion = false">Cerrar</button>
-            </footer>
-          </div>
-        </div>
-      </Teleport>
     </IonContent>
   </IonPage>
 </template>

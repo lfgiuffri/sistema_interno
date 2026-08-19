@@ -15,6 +15,12 @@ node auditar-modales.mjs   /tmp/mod  390     # todos los modales
 
 Imprime una línea por vista, deja los screenshots en la carpeta indicada y un `informe.json`. Corrélo a **320, 360 y 390**: 390 es un iPhone típico, 360 el Android más común, y 320 es el peor caso realista — el que destapa los layouts frágiles.
 
+## Un error mío, para que no lo repitas
+
+La primera versión del script **recolectaba** los elementos que se salen de la pantalla pero **no los usaba** para marcar la vista como problemática: la condición solo miraba el scroll de página y el texto apretado. Resultado: reportaba «0 problemas» con botones cortados por el borde en 9 vistas. Si agregás una métrica, acordate de sumarla a la condición.
+
+El otro error fue medir **demasiado pronto**: Ionic anima la entrada de la página y el split-pane tarda en colapsar, así que medir a los 2 segundos daba anchos de la transición (contenedores todavía en layout de escritorio) — falsos positivos que me mandaron a buscar bugs que no existían. Ahora espera `load` + `networkidle` + un margen.
+
 ## Qué mide, y por qué no alcanza con lo obvio
 
 El primer intento midió lo que todo el mundo mide: **¿la página scrollea de costado?** (`scrollWidth > clientWidth`). Dio **0 problemas en 37 vistas**… con la grilla de cobranzas ilegible en pantalla.
@@ -64,7 +70,21 @@ El patrón `display: flex; justify-content: space-between` con el control en `fl
 **5. Una tira de pestañas se desplaza, no se apila.**
 `overflow-x: auto` + `flex-shrink: 0` en cada pestaña + `scrollbar-width: none`. Que la última quede cortada es la señal correcta de «hay más para el costado». Así ya funciona la de Configuración.
 
-**6. Los modales no necesitan nada especial.**
+**6. Un item de grid no baja del ancho de su contenido.**
+`min-width` de un item de grid vale `auto`, o sea **min-content**: si adentro hay texto con `nowrap` (todo lo que lleve `truncate`) o varios controles en fila, la tarjeta se ensancha más que su columna y se sale de la pantalla — arrastrando a todas las de su columna, así que basta **un** nombre largo para romper la grilla entera. Ponele `min-w-0` a los items:
+
+```html
+<div class="grid sm:grid-cols-2 gap-3">
+  <button class="ds-card min-w-0 …">…</button>
+</div>
+```
+
+Esto rompía las tarjetas de espacios en Tareas, las dos columnas de Aumentos y los gráficos de Estadísticas.
+
+**7. Una fila de controles envuelve.**
+Un encabezado con título + 2 o 3 botones, o una barra con selectores, necesita `flex-wrap` (y `justify-end` en el grupo de botones). Sin eso el último botón queda cortado por el borde. Es el arreglo más repetido de esta auditoría: 9 vistas a 320px.
+
+**8. Los modales no necesitan nada especial.**
 `ds-modal` y sus variantes usan `max-width`, no `width`, así que se adaptan solos: los 9 modales auditados entran bien hasta en 320px, y los de dos columnas (tareas, documentos) se apilan por el `grid` de Tailwind con prefijo `lg:`. Al agregar un modal, usá `max-width` y prefijá las grillas con `lg:`.
 
 ## Estado actual

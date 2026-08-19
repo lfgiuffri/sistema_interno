@@ -119,7 +119,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
             <h1 class="text-xl font-semibold tracking-tight text-ink">Facturaciones</h1>
             <p class="mt-0.5 text-sm text-ink-soft">Histórico de lo facturado, con montos congelados al momento de facturar.</p>
           </div>
-          <div class="flex items-center gap-3">
+          <div class="flex flex-wrap items-center justify-end gap-3">
           <button class="ds-btn-secondary" title="Exportar CSV" @click="exportarCsv">
             <IonIcon :icon="downloadOutline" class="text-[15px]" />
             CSV
