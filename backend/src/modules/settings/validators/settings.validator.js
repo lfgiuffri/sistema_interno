@@ -20,3 +20,11 @@ export const validatePushToken = [
     check('token').exists().isString().isLength({ min: 10, max: 500 }),
     (req, res, next) => validator(req, res, next)
 ];
+
+/** Suscripción de Web Push tal como la entrega el navegador. */
+export const validateSuscripcion = [
+    check('endpoint').isString().notEmpty().isLength({ max: 500 }),
+    check('keys.p256dh').isString().notEmpty().isLength({ max: 255 }),
+    check('keys.auth').isString().notEmpty().isLength({ max: 255 }),
+    (req, res, next) => validator(req, res, next)
+];

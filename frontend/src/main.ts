@@ -6,6 +6,7 @@ import App from './App.vue'
 import router from './router/index.js'
 import { setupLocalNotificationActions } from '@/composables/useNative'
 import { initShareTarget } from '@/composables/useShareTarget'
+import { iniciarInstalacion } from '@/composables/useInstalarApp'
 
 /* Ionic CSS */
 import '@ionic/vue/css/ionic.bundle.css'
@@ -42,6 +43,11 @@ if (import.meta.env.VITE_SENTRY_DSN) {
 // si el usuario abre la app desde el botón "Listo / Posponer" de una notif
 // (con la app cerrada), Capacitor entrega el evento al primer listener registrado.
 setupLocalNotificationActions().catch(() => { /* ignore */ })
+
+// Instalación de la PWA: hay que escuchar ANTES de montar. El navegador dispara
+// `beforeinstallprompt` una sola vez y muy temprano; si nadie lo agarra en ese momento, se
+// pierde y el botón de «Instalar» de Configuración nunca puede ofrecerlo.
+iniciarInstalacion()
 
 router.isReady().then(() => {
   app.mount('#app')

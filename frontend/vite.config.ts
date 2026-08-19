@@ -21,13 +21,20 @@ export default defineConfig({
         icons: [
           { src: 'icons/pwa-192.png', sizes: '192x192', type: 'image/png' },
           { src: 'icons/pwa-512.png', sizes: '512x512', type: 'image/png' },
-          { src: 'icons/pwa-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          // El maskable es un archivo DISTINTO, con margen: Android recorta el icono y la zona
+          // segura es el 80% central. Usar el mismo que el normal obliga a elegir entre que se
+          // vea chico en todos lados o que Android le corte los bordes.
+          { src: 'icons/pwa-512-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
       workbox: {
         // Nunca cachear la API ni el socket: datos siempre frescos.
         navigateFallbackDenylist: [/^\/api/, /^\/socket\.io/],
         runtimeCaching: [],
+        // Solo puede haber UN service worker por scope, así que el de la PWA es también el
+        // que recibe las notificaciones. Se le suma nuestro handler en un archivo aparte
+        // porque el generado se reescribe en cada build.
+        importScripts: ['/sw-push.js'],
       },
     }),
   ],

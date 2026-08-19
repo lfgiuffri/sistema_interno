@@ -56,15 +56,27 @@ export const setPushToken = async (models, userId, token) => {
  * @returns {Promise<{ok: boolean, reason?: string, result?: object}>} `ok:false`/`reason:'no-token'` si no hay token.
  */
 export const sendTestNotification = async (models, userId, appName) => {
-    const settings = await models.UserSettings.findOne({ where: { userId } });
-    if (!settings?.pushToken) return { ok: false, reason: 'no-token' };
+    const titulo = `🔔 ${appName}`;
+    const cuerpo = 'Las notificaciones están funcionando correctamente.';
 
-    // Import dinámico: el servicio de push solo se carga cuando realmente se usa.
-    const { sendPushNotification } = await import('../../../services/push/services/push.service.js');
-    const result = await sendPushNotification(
-        settings.pushToken,
-        `🔔 ${appName} - Test`,
-        '¡Las notificaciones están funcionando correctamente!'
-    );
-    return { ok: true, result };
+    // Los dos caminos conviven y son para destinos distintos: Web Push llega al NAVEGADOR
+    // (Chrome, Edge, Firefox) y FCM a la app NATIVA de Android. Se prueban los dos y alcanza
+    // con que uno funcione: si el usuario está en Chrome, no tiene ni va a tener token de FCM.
+    const { enviarWebPush } = await import('../../../services/push/services/webpush.service.js');
+    const web = await enviarWebPush(models, userId, { titulo, cuerpo, url: '/panel', tag: 'prueba' });
+
+    const settings = await models.UserSettings.findOne({ where: { userId } });
+    let nativa = null;
+    if (settings?.pushToken) {
+        const { sendPushNotification } = await import('../../../services/push/services/push.service.js');
+        nativa = await sendPushNotification(settings.pushToken, titulo, cuerpo);
+    }
+
+    if (web.enviadas || nativa) return { ok: true, result: { navegador: web, nativa } };
+
+    // Nada que enviar: se dice POR QUÉ, que es lo único accionable para el usuario.
+    const motivo = web.eliminadas
+        ? 'La suscripción de este navegador ya no es válida. Activá de nuevo las notificaciones.'
+        : 'Este dispositivo no está registrado para recibir notificaciones. Activalas en Configuración → Notificaciones.';
+    return { ok: false, reason: 'sin-destino', motivo };
 };

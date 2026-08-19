@@ -55,8 +55,12 @@ onMounted(() => {
           <div class="flex flex-col h-full bg-canvas">
             <!-- Marca -->
             <div class="flex items-center gap-2.5 px-4 pt-5 pb-4">
-              <div class="w-7 h-7 rounded-md bg-accent grid place-items-center shrink-0">
-                <span class="text-white text-xs font-semibold tracking-tight">PM</span>
+              <!-- Fondo blanco fijo (no `bg-surface`): el logo es celeste y negro sobre
+                   transparente, y en tema oscuro el negro se perdería contra el fondo.
+                   El vaso es alto y angosto, así que la caja también: cuadrada, el logo
+                   quedaría diminuto porque lo limitaría la altura. -->
+              <div class="w-7 h-8 rounded-md bg-white border border-line grid place-items-center shrink-0 overflow-hidden">
+                <img src="/icons/logo.png" alt="Positive Media" class="h-full w-auto object-contain py-0.5" />
               </div>
               <div class="leading-tight min-w-0">
                 <p class="text-sm font-semibold text-ink truncate">Sistema Interno</p>

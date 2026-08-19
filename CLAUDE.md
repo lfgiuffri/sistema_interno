@@ -341,6 +341,26 @@ recortes distintos a los tableros y sus accesos se administran aparte. Doc compl
   la INTENCIÓN decide la clasificación, así que una imagen subida con «Adjuntar» queda como
   `tipo: 'archivo'` y aparece en la lista en vez de irse al cuerpo. Arrastrar y soltar en
   tareas y documentos con `components/shared/ZonaAdjuntos.vue`.
+- **Identidad visual**: el logo es `frontend/public/vaso 300x300.png` y de ahí salen TODOS
+  los iconos, con `frontend/scripts/generar-iconos.py` (correrlo si cambia el logo). Tres
+  familias: `icon-*`/`favicon` con fondo TRANSPARENTE (van sobre la pestaña, clara u oscura);
+  `pwa-*`/`apple-touch-icon` con fondo BLANCO (iOS pinta de negro lo transparente); y
+  `pwa-512-maskable` que es el ÚNICO con margen (18%), porque Android recorta con máscara y
+  la zona segura es el 80% central — usar el mismo archivo para los dos obliga a elegir entre
+  verse chico en todos lados o que Android corte los bordes. ⚠️ El `favicon.svg` se genera
+  con el PNG embebido: el navegador PREFIERE el SVG a los `<link>` PNG, así que uno viejo
+  ahí gana y el logo nuevo no se ve nunca. Ojo con el margen: el vaso es ALTO y angosto, así
+  que al centrarlo en un cuadrado manda la altura y cada punto de margen se nota el doble.
+- **Notificaciones**: TRES canales que NO son intercambiables — campana in-app (socket),
+  **Web Push** al navegador (`services/push/webpush.service.js` + `public/sw-push.js`, claves
+  VAPID en el `.env`, sin terceros) y **FCM** a la app nativa (Firebase, solo APK). El push
+  de Capacitor no hace NADA en una pestaña: por eso en Chrome hay que activar Web Push, que
+  se registra **por navegador** (`/settings/push/suscripcion`). Las suscripciones muertas
+  (410) se borran solas. Detalle en `docs/notificaciones.md`.
+- **Instalar la PWA**: `composables/useInstalarApp.ts` guarda el evento `beforeinstallprompt`
+  (se dispara UNA vez y muy temprano → se engancha en `main.ts`, antes de montar) para poder
+  ofrecer la instalación desde Configuración → Acerca de cuando el usuario quiera. Si no hay
+  evento (iOS, o el navegador ya no lo ofrece), muestra las instrucciones manuales.
 - **Buscador** por título y contenido, acotado a los espacios visibles, y **orden manual**
   (drag & drop) de listas y documentos con `orden` en múltiplos de 10.
 - **Refactors para no duplicar**: las defensas de archivos subidos viven en
