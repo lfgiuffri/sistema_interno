@@ -66,15 +66,65 @@ const busqueda = ref('')
 const normalizar = (s: string): string =>
   (s ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 
+/**
+ * Filtros de la barra. Se aplican en el cliente por el mismo motivo que el buscador: el
+ * listado no pagina y ya trae los estados DERIVADOS (dominio y certificado se calculan en
+ * cada consulta, no se guardan). Filtrarlos en SQL obligaría a repetir ese cálculo allá.
+ */
+const fEstado = ref('')      // online | sin_marcador | offline | desconocido
+const fServicio = ref('')    // id de servicio, o 'sin'
+const fServidor = ref('')    // id de servidor, o 'sin'
+const fActivo = ref('')      // si | no
+const fVence = ref('')       // dominio_por_vencer | dominio_vencido | tls_* | cualquiera
+const fIncidentes = ref(false)
+const fNuestros = ref('')    // si | no  («es un sitio nuestro» = verifica el marcador)
+
+/** ¿Hay algún filtro puesto (además del buscador)? */
+const hayFiltros = computed(() =>
+  !!(fEstado.value || fServicio.value || fServidor.value || fActivo.value || fVence.value || fNuestros.value) || fIncidentes.value,
+)
+
+function limpiarFiltros(): void {
+  fEstado.value = ''; fServicio.value = ''; fServidor.value = ''
+  fActivo.value = ''; fVence.value = ''; fNuestros.value = ''; fIncidentes.value = false
+}
+
+/** ¿El sitio cae en el filtro de vencimientos elegido? */
+function pasaVencimiento(s: SitioWeb): boolean {
+  const v = fVence.value
+  if (!v) return true
+  const d = s.dominioEstado?.estado
+  const c = s.tlsEstado?.estado
+  if (v === 'dominio_por_vencer') return d === 'por_vencer'
+  if (v === 'dominio_vencido') return d === 'vencido'
+  if (v === 'tls_por_vencer') return c === 'por_vencer'
+  if (v === 'tls_vencido') return c === 'vencido'
+  // «Algo por vencer o vencido»: la vista de un solo golpe de todo lo que pide atención.
+  return ['por_vencer', 'vencido'].includes(d ?? '') || ['por_vencer', 'vencido'].includes(c ?? '')
+}
+
 const sitiosFiltrados = computed<SitioWeb[]>(() => {
   const q = normalizar(busqueda.value.trim())
-  if (!q) return store.sitios
   // Cada palabra tiene que aparecer en el nombre o en la URL: así «tio com» encuentra
   // «Tio - Tom» sin depender del orden ni de los separadores.
-  const palabras = q.split(/\s+/)
+  const palabras = q ? q.split(/\s+/) : []
+
   return store.sitios.filter((s) => {
-    const texto = `${normalizar(s.nombre)} ${normalizar(s.url)}`
-    return palabras.every(p => texto.includes(p))
+    if (palabras.length) {
+      const texto = `${normalizar(s.nombre)} ${normalizar(s.url)}`
+      if (!palabras.every(p => texto.includes(p))) return false
+    }
+    if (fEstado.value && s.estado !== fEstado.value) return false
+    if (fActivo.value && s.activo !== (fActivo.value === 'si')) return false
+    if (fIncidentes.value && !s.incidentes.length) return false
+    // «Nuestro» = le exigimos el marcador del footer. Los de terceros no lo tienen y por eso
+    // se chequean solo por 2xx: es la misma bandera vista desde el otro lado.
+    if (fNuestros.value && s.verificaMarcador !== (fNuestros.value === 'si')) return false
+    if (fServicio.value === 'sin' && s.servicioId) return false
+    if (fServicio.value && fServicio.value !== 'sin' && s.servicioId !== Number(fServicio.value)) return false
+    if (fServidor.value === 'sin' && s.servidorId) return false
+    if (fServidor.value && fServidor.value !== 'sin' && s.servidorId !== Number(fServidor.value)) return false
+    return pasaVencimiento(s)
   })
 })
 
@@ -232,6 +282,62 @@ onIonViewWillEnter(() => { if (loadedOnce) void store.fetchSitios() })
           </div>
         </header>
 
+        <!--
+          Barra de filtros. `flex-wrap` obligatorio: son siete controles y en celular tienen
+          que bajar de renglón en vez de comprimirse (ver docs/responsive.md).
+        -->
+        <div class="ds-card px-3 py-2.5 mb-3 flex flex-wrap items-center gap-2">
+          <select v-model="fEstado" class="ds-input h-8 w-auto text-xs" aria-label="Filtrar por disponibilidad">
+            <option value="">Disponibilidad: todas</option>
+            <option value="online">En línea</option>
+            <option value="sin_marcador">Sin marcador</option>
+            <option value="offline">Caídos</option>
+            <option value="desconocido">Sin chequear</option>
+          </select>
+
+          <select v-model="fVence" class="ds-input h-8 w-auto text-xs" aria-label="Filtrar por vencimientos">
+            <option value="">Vencimientos: todos</option>
+            <option value="cualquiera">Algo por vencer o vencido</option>
+            <option value="dominio_por_vencer">Dominio por vencer</option>
+            <option value="dominio_vencido">Dominio vencido</option>
+            <option value="tls_por_vencer">Certificado por vencer</option>
+            <option value="tls_vencido">Certificado vencido</option>
+          </select>
+
+          <select v-model="fServicio" class="ds-input h-8 w-auto text-xs" aria-label="Filtrar por servicio">
+            <option value="">Servicio: todos</option>
+            <option value="sin">Sin servicio</option>
+            <option v-for="o in servicios" :key="o.value" :value="String(o.value)">{{ o.label }}</option>
+          </select>
+
+          <select v-model="fServidor" class="ds-input h-8 w-auto text-xs" aria-label="Filtrar por servidor">
+            <option value="">Servidor: todos</option>
+            <option value="sin">Sin servidor</option>
+            <option v-for="o in servidores" :key="o.value" :value="String(o.value)">{{ o.label }}</option>
+          </select>
+
+          <select v-model="fActivo" class="ds-input h-8 w-auto text-xs" aria-label="Filtrar por estado del sitio">
+            <option value="">Activos e inactivos</option>
+            <option value="si">Solo activos</option>
+            <option value="no">Solo inactivos</option>
+          </select>
+
+          <select v-model="fNuestros" class="ds-input h-8 w-auto text-xs" aria-label="Filtrar por sitios propios">
+            <option value="">Propios y de terceros</option>
+            <option value="si">Solo nuestros</option>
+            <option value="no">Solo de terceros</option>
+          </select>
+
+          <label class="flex items-center gap-1.5 text-xs text-ink-soft cursor-pointer select-none">
+            <input v-model="fIncidentes" type="checkbox" class="accent-accent" />
+            Con incidentes abiertos
+          </label>
+
+          <button v-if="hayFiltros" class="ds-btn-ghost h-8 text-xs ml-auto" @click="limpiarFiltros">
+            <IonIcon :icon="closeOutline" class="text-[13px]" /> Limpiar filtros
+          </button>
+        </div>
+
         <div v-if="store.loadingSitios && !store.sitios.length" class="space-y-2">
           <div v-for="i in 3" :key="i" class="ds-skeleton h-16"></div>
         </div>
@@ -313,13 +419,20 @@ onIonViewWillEnter(() => { if (loadedOnce) void store.fetchSitios() })
         </div>
 
         <!-- La búsqueda no encontró nada: es distinto de no tener sitios cargados. -->
-        <div v-else-if="busqueda" class="ds-card flex flex-col items-center py-14 text-center">
+        <div v-else-if="busqueda || hayFiltros" class="ds-card flex flex-col items-center py-14 text-center">
           <div class="w-10 h-10 rounded-lg bg-surface-2 grid place-items-center mb-3">
             <IonIcon :icon="searchOutline" class="text-[18px] text-ink-faint" />
           </div>
-          <p class="text-sm font-medium text-ink">Ningún sitio coincide con «{{ busqueda }}»</p>
-          <p class="text-xs text-ink-faint mt-1">Se busca por nombre y por URL.</p>
-          <button class="ds-btn-secondary mt-4" @click="busqueda = ''">Limpiar la búsqueda</button>
+          <p class="text-sm font-medium text-ink">
+            {{ busqueda ? `Ningún sitio coincide con «${busqueda}»` : 'Ningún sitio pasa los filtros' }}
+          </p>
+          <p class="text-xs text-ink-faint mt-1">
+            {{ busqueda && hayFiltros ? 'Se busca por nombre y por URL, dentro de los filtros puestos.'
+              : busqueda ? 'Se busca por nombre y por URL.' : 'Probá aflojar alguno.' }}
+          </p>
+          <button class="ds-btn-secondary mt-4" @click="busqueda = ''; limpiarFiltros()">
+            Limpiar {{ busqueda && hayFiltros ? 'todo' : busqueda ? 'la búsqueda' : 'los filtros' }}
+          </button>
         </div>
 
         <div v-else class="ds-card flex flex-col items-center py-14 text-center">
@@ -331,7 +444,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void store.fetchSitios() })
           <button v-if="meStore.can('sitios:create')" class="ds-btn-primary mt-4" @click="abrirForm()">Agregar el primero</button>
         </div>
 
-        <p v-if="busqueda && sitiosFiltrados.length" class="text-2xs text-ink-faint mt-2">
+        <p v-if="(busqueda || hayFiltros) && sitiosFiltrados.length" class="text-2xs text-ink-faint mt-2">
           {{ sitiosFiltrados.length }} de {{ store.sitios.length }} sitios.
         </p>
 

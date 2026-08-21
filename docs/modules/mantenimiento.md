@@ -82,6 +82,23 @@ Los avisos van a los usuarios cuyo rol tenga `servidores:read`, por **tres canal
 
 Un canal caído nunca tumba el monitoreo: los envíos van con `catch`.
 
+## Filtros del listado de sitios
+
+Siete filtros que se combinan entre sí y con el buscador: **disponibilidad**
+(en línea / sin marcador / caído / sin chequear), **vencimientos** (dominio o certificado, por
+vencer o vencido, más un «algo por vencer o vencido» que junta los cuatro casos),
+**servicio**, **servidor**, **activo/inactivo**, **propios o de terceros** y **con incidentes
+abiertos**. Las dos opciones «Sin servicio» / «Sin servidor» existen porque un sitio sin
+asignar es justamente lo que se busca cuando se está ordenando el inventario.
+
+Se aplican **en el cliente**, igual que el buscador, y por el mismo motivo: el listado no
+pagina (son decenas de sitios) y los estados de vencimiento son **derivados** — se calculan
+contra la fecha en cada consulta y no se guardan. Filtrarlos en SQL obligaría a repetir ese
+cálculo del otro lado, con el riesgo de que las dos copias se separen.
+
+«Propios o de terceros» es la bandera `verificaMarcador` vista desde el otro lado: a los
+nuestros les exigimos el marcador del footer, a los de terceros les alcanza un 2xx.
+
 ## Historial
 
 - `servidor_metricas`: detalle fino, una fila por minuto y por servidor.
