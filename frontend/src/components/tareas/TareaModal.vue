@@ -30,6 +30,10 @@ import ZonaAdjuntos from '@/components/shared/ZonaAdjuntos.vue'
 const props = defineProps<{
   open: boolean
   listaId: number
+  /** Nombre de la lista donde se está creando (contexto: en el modal no se ve dónde cae). */
+  listaNombre?: string
+  /** Listas del espacio: al crear se puede repetir la tarea en varias de una vez. */
+  listasDelEspacio?: Array<{ id: number; nombre: string }>
   /** null = alta; id = edición (carga el detalle). */
   tareaId: number | null
   asignables: Array<{ id: number; nombre: string; username: string }>
@@ -51,6 +55,12 @@ const comentarioNuevo = ref('')
 const comentando = ref(false)
 /** Adjuntos subidos en un ALTA: viven acá hasta que el POST los liga. */
 const adjuntosPendientes = ref<AdjuntoVista[]>([])
+
+/**
+ * Listas EXTRA donde repetir la tarea (solo al crear). La lista actual siempre va incluida y
+ * no se puede destildar: es donde estás parado.
+ */
+const listasExtra = ref<number[]>([])
 
 const form = ref({
   nombre: '',
@@ -89,6 +99,7 @@ watch(() => props.open, async (v) => {
   formError.value = ''
   detalle.value = null
   adjuntosPendientes.value = []
+  listasExtra.value = []
   if (props.tareaId === null) {
     // Alta preasignada a mí, prioridad verde (regla del legado).
     form.value = {
@@ -133,7 +144,11 @@ async function guardar(): Promise<void> {
   const r = esEdicion.value
     ? await tareasStore.updateTarea(props.tareaId as number, base)
     : await tareasStore.createTarea({
-      listaId: props.listaId,
+      // Con listas extra se manda `listaIds` (la actual + las elegidas) y el backend crea una
+      // tarea independiente en cada una. Sin extras, el alta normal de una sola lista.
+      ...(listasExtra.value.length
+        ? { listaIds: [props.listaId, ...listasExtra.value] }
+        : { listaId: props.listaId }),
       ...base,
       // Adjuntos subidos durante el alta: el backend los liga a la tarea nueva.
       ...(adjuntosPendientes.value.length ? { archivoIds: adjuntosPendientes.value.map(a => a.id) } : {}),
@@ -144,6 +159,28 @@ async function guardar(): Promise<void> {
   toast.success(esEdicion.value ? 'Tarea actualizada' : 'Tarea creada')
   emit('saved')
   emit('close')
+}
+
+/**
+ * Texto legible de una entrada del historial.
+ *
+ * El valor crudo no sirve: un cambio de asignado guarda el id del usuario y uno de estado
+ * guarda la clave interna. Acá se traducen a lo que el usuario ve en pantalla.
+ * @param h - Entrada de la bitácora.
+ * @returns Frase del tipo «Prioridad: Baja → Urgente».
+ */
+function describirCambio(h: { campo: string; campoLabel: string; valorAnterior: string | null; valorNuevo: string | null }): string {
+  const legible = (v: string | null): string => {
+    if (v === null || v === '') return '—'
+    if (h.campo === 'estado') return ESTADOS_TAREA[v]?.label ?? v
+    if (h.campo === 'prioridad') return PRIORIDADES[v]?.label ?? v
+    if (h.campo === 'asignadoA') return props.asignables.find(a => a.id === Number(v))?.nombre ?? `usuario #${v}`
+    return v
+  }
+  // Creación: no hay valor anterior que mostrar.
+  if (h.valorAnterior === null && h.campo === 'estado') return `Creada como ${legible(h.valorNuevo)}`
+  if (h.campo === 'descripcion') return 'Se modificó la descripción'
+  return `${h.campoLabel}: ${legible(h.valorAnterior)} → ${legible(h.valorNuevo)}`
 }
 
 async function subirAdjunto(file: File): Promise<{ ok: boolean; message: string }> {
@@ -274,7 +311,10 @@ async function borrarAdjunto(id: number): Promise<void> {
     <div v-if="open" class="ds-modal-backdrop" @click.self="emit('close')">
       <div class="ds-modal ds-modal-xl" role="dialog" aria-modal="true" :aria-label="esEdicion ? 'Editar tarea' : 'Nueva tarea'">
         <header class="mb-3">
-          <h2 class="text-base font-semibold text-ink">{{ esEdicion ? 'Editar tarea' : 'Nueva tarea' }}</h2>
+          <div class="min-w-0">
+            <h2 class="text-base font-semibold text-ink">{{ esEdicion ? 'Editar tarea' : 'Nueva tarea' }}</h2>
+            <p v-if="listaNombre" class="text-2xs text-ink-faint truncate">en {{ listaNombre }}</p>
+          </div>
           <p v-if="detalle?.lista" class="text-2xs text-ink-faint mt-0.5">
             Lista: {{ detalle.lista.nombre }} (para moverla usá la acción «Mover»)
           </p>
@@ -351,6 +391,26 @@ async function borrarAdjunto(id: number): Promise<void> {
                     {{ meta.label }}
                   </button>
                 </div>
+              </div>
+
+              <!-- Repetir en varias listas: solo al crear. Editando, mover es otra acción. -->
+              <div v-if="!esEdicion && (listasDelEspacio?.length ?? 0) > 1">
+                <span class="ds-label">Crear también en</span>
+                <div class="flex flex-wrap gap-1.5">
+                  <label
+                    v-for="l in listasDelEspacio!.filter(x => x.id !== listaId)"
+                    :key="l.id"
+                    class="lista-chip"
+                    :class="{ 'lista-chip-on': listasExtra.includes(l.id) }"
+                  >
+                    <input v-model="listasExtra" type="checkbox" :value="l.id" class="sr-only" />
+                    {{ l.nombre }}
+                  </label>
+                </div>
+                <p v-if="listasExtra.length" class="ds-hint mt-1">
+                  Se van a crear {{ listasExtra.length + 1 }} tareas independientes, una por lista,
+                  cada una con su copia de los adjuntos.
+                </p>
               </div>
 
               <div ref="descripcionRef">
@@ -464,23 +524,27 @@ async function borrarAdjunto(id: number): Promise<void> {
                 </p>
               </div>
 
-              <!-- Historial de estados -->
+              <!-- Historial: TODOS los cambios, no solo los de estado -->
               <div v-if="esEdicion && detalle && detalle.historial.length">
                 <div class="flex items-center justify-between">
-                  <span class="ds-label !mb-0">Historial de estados</span>
+                  <span class="ds-label !mb-0">Historial de cambios</span>
                   <span class="text-2xs text-ink-faint tnum flex items-center gap-1">
                     <IonIcon :icon="timeOutline" class="text-[12px]" />
                     {{ detalle.tiempoTrabajado ? duracion(detalle.tiempoTrabajado) : 'sin datos' }}
                   </span>
                 </div>
                 <div class="mt-1 border border-line rounded-lg divide-y divide-line-soft max-h-52 overflow-y-auto">
-                  <div v-for="h in detalle.historial" :key="h.id" class="flex items-center gap-2 px-3 h-8 text-xs">
-                    <span class="w-2 h-2 rounded-full shrink-0" :style="{ background: ESTADOS_TAREA[h.estadoNuevo]?.color }"></span>
-                    <span class="text-ink truncate">
-                      {{ h.estadoAnterior ? `${ESTADOS_TAREA[h.estadoAnterior]?.label ?? h.estadoAnterior} → ` : 'Creada como ' }}{{ ESTADOS_TAREA[h.estadoNuevo]?.label ?? h.estadoNuevo }}
-                    </span>
-                    <span class="flex-1"></span>
-                    <span class="text-ink-faint tnum shrink-0">{{ fechaHora(h.fecha) }}</span>
+                  <div v-for="h in detalle.historial" :key="h.id" class="flex items-start gap-2 px-3 py-1.5 text-xs">
+                    <span
+                      class="w-2 h-2 rounded-full shrink-0 mt-1.5"
+                      :style="{ background: h.campo === 'estado' ? (ESTADOS_TAREA[h.valorNuevo ?? '']?.color ?? 'rgb(var(--s-line))') : 'rgb(var(--s-line))' }"
+                    ></span>
+                    <div class="min-w-0 flex-1">
+                      <p class="text-ink">{{ describirCambio(h) }}</p>
+                      <p class="text-2xs text-ink-faint tnum">
+                        {{ h.usuario ?? 'usuario dado de baja' }} · {{ fechaHora(h.fecha) }}
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -506,6 +570,18 @@ async function borrarAdjunto(id: number): Promise<void> {
 </template>
 
 <style scoped>
+.lista-chip {
+  display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 999px;
+  border: 1px solid rgb(var(--s-line)); background: rgb(var(--s-surface));
+  font-size: 0.75rem; color: rgb(var(--s-ink-soft)); cursor: pointer; user-select: none;
+  transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+.lista-chip:hover { background: rgb(var(--s-surface-2)); }
+.lista-chip-on {
+  background: rgb(var(--s-accent-soft)); border-color: rgb(var(--s-accent) / 0.35);
+  color: rgb(var(--s-accent-ink)); font-weight: 500;
+}
+
 .pill {
   height: 26px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 500;
   color: var(--c); background: color-mix(in srgb, var(--c) 10%, transparent);

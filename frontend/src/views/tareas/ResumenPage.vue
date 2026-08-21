@@ -8,12 +8,15 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  onIonViewWillEnter, IonPage, IonContent, IonHeader, IonToolbar, IonButtons,
+  onIonViewWillEnter, onIonViewWillLeave, IonPage, IonContent, IonHeader, IonToolbar, IonButtons,
   IonMenuButton, IonIcon,
 } from '@ionic/vue'
 import { chevronBackOutline, peopleOutline, personOutline } from 'ionicons/icons'
 import { useTareasStore, ESTADOS_TAREA } from '@/stores/tareas'
+import ThOrdenable from '@/components/shared/ThOrdenable.vue'
+import { useOrdenTabla } from '@/composables/useOrdenTabla'
 import { useToast } from '@/composables/useToast'
+import { useTareasEnVivo } from '@/composables/useTareasEnVivo'
 import { fecha as fmtFecha } from '@/composables/useFormato'
 import BanderaPrioridad from '@/components/tareas/BanderaPrioridad.vue'
 
@@ -44,6 +47,8 @@ const CATEGORIAS: Record<string, { label: string; vacio: string }> = {
   hoy: { label: 'Para hoy', vacio: 'No hay nada que venza hoy.' },
   por_vencer: { label: 'Por vencer', vacio: '' }, // se completa con los días
   vencidas: { label: 'Vencidas', vacio: 'No hay tareas vencidas. Al día.' },
+  urgentes: { label: 'Urgentes', vacio: 'No hay tareas urgentes pendientes.' },
+  sin_asignar: { label: 'Sin asignar', vacio: 'Todas las tareas pendientes tienen responsable.' },
 }
 
 const route = useRoute()
@@ -81,11 +86,33 @@ const mensajeVacio = computed(() => {
   return CATEGORIAS[data.value.categoria]?.vacio ?? ''
 })
 
+/**
+ * Las tareas vienen anidadas espacio → lista → tarea, pero la TABLA es plana: se aplana una
+ * vez y cada sección filtra por su espacio. Sin esto no habría cómo ordenar por «Lista»,
+ * que es justamente el criterio que agrupa.
+ */
+interface FilaResumen extends TareaResumen { espacioId: number; listaId: number; lista: string }
+const filas = computed<FilaResumen[]>(() =>
+  (data.value?.grupos ?? []).flatMap(g =>
+    g.listas.flatMap(l => l.tareas.map(t => ({ ...t, espacioId: g.espacioId, listaId: l.listaId, lista: l.lista }))),
+  ),
+)
+
+const orden = useOrdenTabla(
+  filas,
+  (f, col) => (col === 'asignado'
+    ? (f.asignado ? `${f.asignado.name} ${f.asignado.lastName}` : null)
+    : (f as unknown as Record<string, string | number | boolean | null>)[col]),
+)
+
 const hoyIso = new Date().toISOString().slice(0, 10)
 
+const enVivo = useTareasEnVivo(() => load())
+
 let loadedOnce = false
-onMounted(() => { loadedOnce = true; void load() })
-onIonViewWillEnter(() => { if (loadedOnce) void load() })
+onMounted(() => { loadedOnce = true; void load(); enVivo.escuchar() })
+onIonViewWillEnter(() => { if (loadedOnce) void load(); enVivo.escuchar() })
+onIonViewWillLeave(() => enVivo.pausar())
 watch(() => route.query, () => { if (loadedOnce && route.path.includes('/tareas/resumen')) void load() })
 </script>
 
@@ -115,7 +142,7 @@ watch(() => route.query, () => { if (loadedOnce && route.path.includes('/tareas/
               — solo lectura.
             </p>
           </div>
-          <button class="ds-btn-secondary h-8" @click="toggleEquipo">
+          <button v-if="categoria !== 'sin_asignar'" class="ds-btn-secondary h-8" @click="toggleEquipo">
             <IonIcon :icon="esEquipo ? personOutline : peopleOutline" class="text-[14px]" />
             {{ esEquipo ? 'Ver las mías' : 'Ver el equipo' }}
           </button>
@@ -146,24 +173,24 @@ watch(() => route.query, () => { if (loadedOnce && route.path.includes('/tareas/
                   <thead>
                     <tr>
                       <th class="w-9"><span class="sr-only">Prioridad</span></th>
-                      <th>Tarea</th>
-                      <th>Lista</th>
-                      <th v-if="esEquipo || data.alcance === 'usuario'">Asignada a</th>
-                      <th>Vencimiento</th>
-                      <th>Estado</th>
+                      <ThOrdenable columna="nombre" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Tarea</ThOrdenable>
+                      <ThOrdenable columna="lista" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Lista</ThOrdenable>
+                      <ThOrdenable v-if="esEquipo || data.alcance === 'usuario'" columna="asignado" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Asignada a</ThOrdenable>
+                      <ThOrdenable columna="fechaVencimiento" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Vencimiento</ThOrdenable>
+                      <ThOrdenable columna="estado" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Estado</ThOrdenable>
                     </tr>
                   </thead>
                   <tbody>
-                    <template v-for="l in g.listas" :key="l.listaId">
-                      <tr v-for="t in l.tareas" :key="t.id">
+                    <template v-for="l in [g]" :key="l.espacioId">
+                      <tr v-for="t in orden.ordenadas.value.filter(f => f.espacioId === g.espacioId)" :key="t.id">
                         <td><BanderaPrioridad :prioridad="t.prioridad" :size="14" /></td>
                         <td>
                           <button
                             class="font-medium text-ink hover:text-accent transition-colors text-left"
-                            @click="router.push(`/tareas/espacios/${g.espacioId}/listas/${l.listaId}`)"
+                            @click="router.push(`/tareas/espacios/${t.espacioId}/listas/${t.listaId}`)"
                           >{{ t.nombre }}</button>
                         </td>
-                        <td class="text-ink-soft text-sm">{{ l.lista }}</td>
+                        <td class="text-ink-soft text-sm">{{ t.lista }}</td>
                         <td v-if="esEquipo || data.alcance === 'usuario'" class="text-ink-soft text-sm">
                           {{ t.asignado ? `${t.asignado.name} ${t.asignado.lastName}` : '—' }}
                         </td>

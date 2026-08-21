@@ -12,6 +12,7 @@
 
 import { Op } from 'sequelize';
 import { getAppConfigNumber } from '../../../kernel/index.js';
+import { ordenSeguro } from '../../../kernel/index.js';
 import { ESTADOS_PROYECTO } from '../models/Proyecto.js';
 
 /** Estados que cierran el proyecto (sin alertas de entrega). */
@@ -101,6 +102,17 @@ const proyectoIncludes = (models) => [
  * @param {object} [query] - { estado (CSV), clienteId, search, page, limit }.
  * @returns {Promise<{rows: object[], count: number, page: number, limit: number}>}
  */
+/** Columnas ordenables del listado de proyectos. */
+const ordenProyectos = (models) => ({
+    nombre: [['nombre', 'ASC']],
+    // Con el modelo, no con el string: ver la nota en abonos.
+    cliente: [[models.Cliente, 'nombre', 'ASC']],
+    servicio: [[models.Servicio, 'nombre', 'ASC']],
+    estado: [['estado', 'ASC']],
+    presupuesto: [['moneda', 'ASC'], ['total', 'ASC']],
+    fechaEstimadaEntrega: [['fechaEstimadaEntrega', 'ASC']],
+});
+
 export const listProyectos = async (models, query = {}) => {
     const { Proyecto } = models;
     const where = {};
@@ -120,12 +132,13 @@ export const listProyectos = async (models, query = {}) => {
         attributes: { include: [[Proyecto.sequelize.literal(SQL_DIAS_ENTREGA), 'diasParaEntrega']] },
         limit,
         offset: (page - 1) * limit,
-        order: [
+        // Sin orden pedido manda el del legado: abiertos primero, los cerrados al final.
+        order: ordenSeguro(query, ordenProyectos(models), [
             [Proyecto.sequelize.literal(`\`proyectos\`.\`estado\` IN ('finalizado','finalizado_incompleto')`), 'ASC'],
             [Proyecto.sequelize.literal('`proyectos`.`fechaEstimadaEntrega` IS NULL'), 'ASC'],
             ['fechaEstimadaEntrega', 'ASC'],
             [models.Cliente, 'nombre', 'ASC'],
-        ],
+        ]),
         distinct: true,
     });
 

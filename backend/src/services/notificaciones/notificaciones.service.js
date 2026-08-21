@@ -24,9 +24,55 @@ export const crearNotificacion = async (models, io, data) => {
             url: data.url ? String(data.url).slice(0, 255) : null
         });
         if (io) io.to(`user:${data.userId}`).emit('notificacion', notificacion.toJSON());
+
+        // El socket solo llega si la app está ABIERTA. Para que el aviso llegue igual con la
+        // pestaña cerrada va también por Web Push. Se hace acá, en el único punto por el que
+        // pasan TODAS las notificaciones, y no en cada módulo: así ninguno se olvida.
+        // Sin await a propósito: el envío sale por HTTPS a un servicio externo y la mutación
+        // que originó el aviso no tiene por qué esperarlo.
+        void enviarPushNavegador(models, notificacion);
+
         return notificacion;
     } catch {
         return null;
+    }
+};
+
+/**
+ * Manda la notificación al navegador del usuario, respetando sus preferencias.
+ *
+ * Nunca tira: si falla el push, la notificación ya quedó guardada y en la campana. Un canal
+ * caído no puede romper el que sí funciona.
+ * @param {object} models - Modelos de la app.
+ * @param {object} notificacion - La notificación recién creada.
+ * @returns {Promise<void>}
+ */
+const enviarPushNavegador = async (models, notificacion) => {
+    try {
+        if (!models.PushSubscription) return;
+
+        const settings = await models.UserSettings?.findOne({ where: { userId: notificacion.userId } });
+        // Mismas reglas que el push nativo: si apagó las notificaciones, activó «no molestar»
+        // o está en su horario silencioso, la campana igual queda — pero no se le vibra el
+        // teléfono a las 3 de la mañana.
+        if (settings) {
+            const { isQuietHours } = await import('../push/services/push.service.js');
+            if (settings.pushEnabled === false) return;
+            if (settings.doNotDisturbEnabled) return;
+            if (isQuietHours(settings.quietHoursStart, settings.quietHoursEnd)) return;
+        }
+
+        const { enviarWebPush } = await import('../push/services/webpush.service.js');
+        await enviarWebPush(models, notificacion.userId, {
+            titulo: notificacion.titulo,
+            cuerpo: notificacion.cuerpo || '',
+            url: notificacion.url || '/',
+            tag: notificacion.tipo,
+        });
+    } catch (e) {
+        // No se propaga (la notificación ya está guardada), pero SÍ se registra: un catch mudo
+        // acá significa que las notificaciones dejan de llegar sin que nadie se entere.
+        console.warn('⚠️ [PUSH] no se pudo notificar al navegador:', String(e?.message).slice(0, 140));
     }
 };
 

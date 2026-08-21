@@ -7,7 +7,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  onIonViewWillEnter, IonPage, IonContent, IonHeader, IonToolbar, IonButtons,
+  onIonViewWillEnter, onIonViewWillLeave, IonPage, IonContent, IonHeader, IonToolbar, IonButtons,
   IonMenuButton, IonIcon, alertController,
 } from '@ionic/vue'
 import {
@@ -16,7 +16,10 @@ import {
 } from 'ionicons/icons'
 import { useTareasStore, ESTADOS_TAREA, PRIORIDADES, type TareaRow, type FiltrosTareas } from '@/stores/tareas'
 import { useMeStore } from '@/stores/me'
+import ThOrdenable from '@/components/shared/ThOrdenable.vue'
+import { useOrdenTabla } from '@/composables/useOrdenTabla'
 import { useToast } from '@/composables/useToast'
+import { useTareasEnVivo } from '@/composables/useTareasEnVivo'
 import { useEscapeToClose } from '@/composables/useEscapeToClose'
 import { fecha as fmtFecha } from '@/composables/useFormato'
 import BanderaPrioridad from '@/components/tareas/BanderaPrioridad.vue'
@@ -36,6 +39,15 @@ const espacio = ref<{ id: number; nombre: string } | null>(null)
 const lista = ref<{ id: number; nombre: string; activa: boolean } | null>(null)
 const puedeEditar = ref(false)
 const tareas = ref<TareaRow[]>([])
+
+// La prioridad ya tiene su bandera y la lista viene con el orden del legado; el encabezado
+// permite reordenar sobre eso. «Asignada a» ordena por el nombre visible, no por el id.
+const orden = useOrdenTabla(
+  () => tareas.value,
+  (t, col) => (col === 'asignado'
+    ? (t.asignado ? `${t.asignado.name} ${t.asignado.lastName}` : null)
+    : (t as unknown as Record<string, string | number | boolean | null>)[col]),
+)
 const total = ref(0)
 const loading = ref(false)
 const asignables = ref<Array<{ id: number; nombre: string; username: string }>>([])
@@ -120,6 +132,10 @@ async function load(): Promise<void> {
   if (!data) { toast.error('Lista no encontrada en este espacio'); router.replace(`/tareas/espacios/${espacioId.value}`); return }
   espacio.value = data.espacio
   lista.value = data.lista
+  // Para el selector de «crear en varias listas» del modal de alta.
+  tareasStore.fetchListas(espacioId.value)
+    .then(d => { listasDelEspacio.value = (d?.listas ?? []).filter(l => l.activa !== false) })
+    .catch(() => { listasDelEspacio.value = [] })
   puedeEditar.value = data.puedeEditar
   tareas.value = data.tareas
   total.value = data.total
@@ -194,6 +210,8 @@ const modalMover = ref(false)
 const tareaMoviendo = ref<TareaRow | null>(null)
 const espaciosDestino = ref<Array<{ id: number; nombre: string; editar: boolean }>>([])
 const listasDestino = ref<Array<{ id: number; nombre: string }>>([])
+/** Listas del espacio actual: el alta permite crear la misma tarea en varias de una vez. */
+const listasDelEspacio = ref<Array<{ id: number; nombre: string }>>([])
 const destino = ref({ espacioId: 0, listaId: 0 })
 const moverError = ref('')
 useEscapeToClose(modalMover, () => { modalMover.value = false })
@@ -254,13 +272,18 @@ async function confirmDelete(t: TareaRow): Promise<void> {
 const vencida = (t: TareaRow) =>
   !!t.fechaVencimiento && t.estado !== 'completada' && t.fechaVencimiento < new Date().toISOString().slice(0, 10)
 
+// Si otro usuario toca una tarea, el listado se actualiza solo (Socket.IO).
+const enVivo = useTareasEnVivo(() => load())
+
 let loadedOnce = false
 onMounted(async () => {
   loadedOnce = true
   leerQuery()
   await Promise.all([load(), tareasStore.fetchAsignables().then(a => { asignables.value = a })])
+  enVivo.escuchar()
 })
-onIonViewWillEnter(() => { if (loadedOnce) void load() })
+onIonViewWillEnter(() => { if (loadedOnce) void load(); enVivo.escuchar() })
+onIonViewWillLeave(() => enVivo.pausar())
 // Cambiar de lista con la misma vista montada (navegación lateral).
 watch([espacioId, listaId], () => { if (loadedOnce && espacioId.value && listaId.value) { leerQuery(); void load() } })
 </script>
@@ -443,11 +466,11 @@ watch([espacioId, listaId], () => { if (loadedOnce && espacioId.value && listaId
             <thead>
               <tr>
                 <th class="w-9"><span class="sr-only">Prioridad</span></th>
-                <th>Tarea</th>
-                <th>Asignada a</th>
-                <th>Vencimiento</th>
-                <th>Estado</th>
-                <th>Creada</th>
+                <ThOrdenable columna="nombre" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Tarea</ThOrdenable>
+                <ThOrdenable columna="asignado" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Asignada a</ThOrdenable>
+                <ThOrdenable columna="fechaVencimiento" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Vencimiento</ThOrdenable>
+                <ThOrdenable columna="estado" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Estado</ThOrdenable>
+                <ThOrdenable columna="createdAt" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Creada</ThOrdenable>
                 <th class="w-24"><span class="sr-only">Acciones</span></th>
               </tr>
             </thead>
@@ -458,7 +481,7 @@ watch([espacioId, listaId], () => { if (loadedOnce && espacioId.value && listaId
 
             <tbody v-else-if="tareas.length">
               <tr
-                v-for="t in tareas" :key="t.id"
+                v-for="t in orden.ordenadas.value" :key="t.id"
                 class="fila-estado" :class="{ 'opacity-55': t.estado === 'completada' }"
                 :style="{ '--fila': ESTADOS_TAREA[t.estado]?.color }"
               >
@@ -516,6 +539,8 @@ watch([espacioId, listaId], () => { if (loadedOnce && espacioId.value && listaId
       <TareaModal
         :open="modalTarea"
         :lista-id="listaId"
+        :lista-nombre="lista?.nombre ?? ''"
+        :listas-del-espacio="listasDelEspacio"
         :tarea-id="tareaEditando"
         :asignables="asignables"
         @close="modalTarea = false"

@@ -72,11 +72,15 @@ export const useProyectosStore = defineStore('proyectos', () => {
   const saving = ref(false)
   const error = ref('')
 
-  async function fetchList(opts: { estado?: string; search?: string; page?: number } = {}): Promise<void> {
+  async function fetchList(opts: { estado?: string; search?: string; page?: number; orden?: string; dir?: string } = {}): Promise<void> {
     loading.value = true
     try {
       const { data } = await api.get('/proyectos', {
-        params: { page: opts.page ?? 1, limit: 50, estado: opts.estado || undefined, search: opts.search || undefined },
+        params: {
+          page: opts.page ?? 1, limit: 50,
+          estado: opts.estado || undefined, search: opts.search || undefined,
+          orden: opts.orden || undefined, dir: opts.dir || undefined,
+        },
       })
       if (data.success) {
         rows.value = data.data

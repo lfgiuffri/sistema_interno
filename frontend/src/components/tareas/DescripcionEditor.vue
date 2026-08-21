@@ -65,11 +65,23 @@ const editor = useEditor({
     ImagenProtegida,
     // parseHTML extendido: reconoce también el markup por clase (contenido guardado
     // por versiones previas del editor o saneado sin data-type).
+    //
+    // ⚠️ `priority: 51` es obligatorio y es lo que estaba faltando. `<ul>` y `<li>` los reclaman
+    // también BulletList y ListItem del StarterKit, con prioridad 50; TipTap le pone 51 a las
+    // reglas de checklist justo para que ganen. Al sobreescribir `parseHTML` se perdía esa
+    // prioridad, así que una checklist guardada volvía a abrirse como lista común — el markup
+    // en la base estaba bien, el que lo leía mal era el editor.
     TaskList.extend({
-      parseHTML: () => [{ tag: 'ul[data-type="taskList"]' }, { tag: 'ul.checklist' }],
+      parseHTML: () => [
+        { tag: 'ul[data-type="taskList"]', priority: 51 },
+        { tag: 'ul.checklist', priority: 51 },
+      ],
     }).configure({ HTMLAttributes: { class: 'checklist' } }),
     TaskItem.extend({
-      parseHTML: () => [{ tag: 'li[data-type="taskItem"]' }, { tag: 'li.checklist-item' }],
+      parseHTML: () => [
+        { tag: 'li[data-type="taskItem"]', priority: 51 },
+        { tag: 'li.checklist-item', priority: 51 },
+      ],
     }).configure({ nested: false, HTMLAttributes: { class: 'checklist-item' } }),
     Table.configure({ resizable: false }),
     TableRow, TableCell, TableHeader,

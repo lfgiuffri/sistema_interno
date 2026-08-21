@@ -84,7 +84,16 @@ export interface TareaDetalle extends Omit<TareaRow, 'tieneDescripcion'> {
   descripcion: string
   tiempoTrabajado: number
   comentarios: Comentario[]
-  historial: Array<{ id: number; estadoAnterior: string | null; estadoNuevo: string; usuario: string | null; fecha: string }>
+  /** Bitácora de TODOS los cambios (no solo estados): una entrada por campo modificado. */
+  historial: Array<{
+    id: number
+    campo: string
+    campoLabel: string
+    valorAnterior: string | null
+    valorNuevo: string | null
+    usuario: string | null
+    fecha: string
+  }>
   archivos: Array<{ id: number; nombre: string; nombreOriginal: string; tipo: string; mime: string; size: number; url: string }>
   lista?: { id: number; nombre: string }
 }

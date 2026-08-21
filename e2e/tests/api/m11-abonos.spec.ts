@@ -222,4 +222,29 @@ test.describe('M11: Abonos', () => {
     const fixture = await authedApi.get(APP_ENDPOINTS.estadisticas);
     await expectError(fixture, 403);
   });
+
+  test('M11.14 - orden por columna en el servidor: whitelist, dirección y columna inválida', async ({ adminApi }) => {
+    // El listado pagina (50 por página), así que el orden TIENE que venir del servidor:
+    // ordenar en el navegador ordenaría solo la página visible.
+    const asc = await expectSuccess(await adminApi.get(`${APP_ENDPOINTS.abonos}?orden=cliente&dir=asc&limit=20`), 200);
+    const desc = await expectSuccess(await adminApi.get(`${APP_ENDPOINTS.abonos}?orden=cliente&dir=desc&limit=20`), 200);
+    const nombres = (b: { data: Array<{ Cliente?: { nombre: string } }> }) => b.data.map(a => a.Cliente?.nombre ?? '');
+    expect(nombres(asc).length).toBeGreaterThan(1);
+    // Ascendente de verdad (comparación local, como la del frontend).
+    const ordenado = [...nombres(asc)].sort((a, b) => a.localeCompare(b, 'es-AR', { sensitivity: 'base' }));
+    expect(nombres(asc)).toEqual(ordenado);
+    // Y la dirección opuesta arranca por el otro extremo.
+    expect(nombres(desc)[0] >= nombres(asc)[0]).toBe(true);
+
+    // Una columna que no está en la whitelist NO es un error ni se interpola en el SQL:
+    // cae al orden por defecto. Así el frontend puede ofrecer columnas que el backend
+    // todavía no soporta sin romper el listado.
+    const raro = await expectSuccess(await adminApi.get(`${APP_ENDPOINTS.abonos}?orden=precio);DROP+TABLE+abonos;--&limit=5`), 200);
+    expect(Array.isArray(raro.data)).toBe(true);
+
+    // Facturaciones expone su propio catálogo de columnas.
+    const fact = await expectSuccess(await adminApi.get(`${APP_ENDPOINTS.facturaciones}?orden=montoPesos&dir=desc&limit=10`), 200);
+    const montos = fact.data.rows.map((f: { montoPesos: string }) => Number(f.montoPesos));
+    expect(montos).toEqual([...montos].sort((a, b) => b - a));
+  });
 });

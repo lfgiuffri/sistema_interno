@@ -19,6 +19,8 @@ import {
 import IndicadorAutoRefresh from '@/components/shared/IndicadorAutoRefresh.vue'
 import { useAutoRefresh } from '@/composables/useAutoRefresh'
 import { useMantenimientoStore, type Servidor, type ServidorInput } from '@/stores/mantenimiento'
+import ThOrdenable from '@/components/shared/ThOrdenable.vue'
+import { useOrdenTabla } from '@/composables/useOrdenTabla'
 import { useMeStore } from '@/stores/me'
 import { useToast } from '@/composables/useToast'
 import { useEscapeToClose } from '@/composables/useEscapeToClose'
@@ -28,6 +30,14 @@ const store = useMantenimientoStore()
 const meStore = useMeStore()
 const toast = useToast()
 const router = useRouter()
+
+// CPU/RAM/disco viven dentro de `ultima`: sin este mapeo ordenarían por undefined.
+const orden = useOrdenTabla(
+  () => store.servidores,
+  (s, col) => (['cpu', 'ram', 'disco'].includes(col)
+    ? ((s.ultima as Record<string, number> | null)?.[col] ?? null)
+    : (s as unknown as Record<string, string | number | boolean | null>)[col]),
+)
 
 const modalForm = ref(false)
 const editando = ref<Servidor | null>(null)
@@ -172,16 +182,16 @@ onIonViewWillLeave(() => auto.parar())
           <table class="ds-table">
             <thead>
               <tr>
-                <th>Servidor</th>
-                <th class="w-20">CPU</th>
-                <th class="w-20">RAM</th>
-                <th class="w-20">Disco</th>
-                <th>Último contacto</th>
+                <ThOrdenable columna="nombre" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Servidor</ThOrdenable>
+                <ThOrdenable columna="cpu" :activa="orden.columna.value" :dir="orden.dir.value" class="w-20" @ordenar="orden.ordenarPor">CPU</ThOrdenable>
+                <ThOrdenable columna="ram" :activa="orden.columna.value" :dir="orden.dir.value" class="w-20" @ordenar="orden.ordenarPor">RAM</ThOrdenable>
+                <ThOrdenable columna="disco" :activa="orden.columna.value" :dir="orden.dir.value" class="w-20" @ordenar="orden.ordenarPor">Disco</ThOrdenable>
+                <ThOrdenable columna="ultimoContactoAt" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Último contacto</ThOrdenable>
                 <th class="w-28"><span class="sr-only">Acciones</span></th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="s in store.servidores" :key="s.id" :class="{ 'opacity-50': !s.activo }">
+              <tr v-for="s in orden.ordenadas.value" :key="s.id" :class="{ 'opacity-50': !s.activo }">
                 <td>
                   <button class="text-left group" @click="router.push(`/mantenimiento/servidores/${s.id}`)">
                     <div class="flex items-center gap-2">

@@ -25,6 +25,7 @@ App de administración de Positive Media: **single-tenant**, modular (backend No
 | [migrations.md](migrations.md) | migraciones versionadas, idempotencia, runner al boot |
 | [modules/mantenimiento.md](modules/mantenimiento.md) | monitoreo de servidores (agente, métricas, umbrales) y de sitios web (marcador, RDAP, TLS), incidentes, alertas y watchdog externo |
 | [notificaciones.md](notificaciones.md) | los tres canales (campana, Web Push del navegador, FCM nativo): cómo funciona cada uno, claves VAPID y por qué «Probar» fallaba en Chrome |
+| [orden-tablas.md](orden-tablas.md) | ordenar cualquier tabla por columna: comparador local es-AR, accesores a medida y orden en el servidor para los listados paginados |
 | [responsive.md](responsive.md) | cómo auditar el responsive (scripts que miden, no miran) + las reglas que salieron de auditar las 37 vistas en celular |
 | [sql/](sql/) | scripts SQL sueltos para actualizar a mano una base ya en producción (alternativa al runner de migraciones) |
 | [migracion-legado.md](migracion-legado.md) | migración de DATOS del sistema PHP legado (`npm run migrar_legado`): mapeo de tablas, permisos → capabilities, usuarios y contraseñas |

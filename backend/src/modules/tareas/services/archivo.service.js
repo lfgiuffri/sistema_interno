@@ -7,6 +7,7 @@
  * ligado de imágenes a la tarea para el GC.
  */
 
+import crypto from 'crypto';
 import path from 'path';
 import {
     NOMBRE_RE, resolverArchivo, escribirBinario, leerBinario, borrarBinario,
@@ -64,6 +65,40 @@ export const guardarArchivo = async (models, file, userId, tareaId = null, desti
     });
 
     return { ...registro.toJSON(), url: `/api/tareas/archivos/${nombre}` };
+};
+
+/**
+ * Duplica un adjunto para otra tarea: copia el binario con nombre nuevo y crea su registro.
+ *
+ * Hace falta para crear la misma tarea en varias listas: cada tarea queda con SU copia, así
+ * borrar una no deja a las otras sin el archivo. Nombre nuevo a propósito — compartir el
+ * mismo archivo en disco haría que eliminar una tarea rompiera las demás.
+ * @param {object} models - Modelos de la app.
+ * @param {number} archivoId - Adjunto de origen.
+ * @param {number} tareaId - Tarea destino.
+ * @returns {Promise<object|null>} El registro nuevo, o null si el original no existe.
+ */
+export const duplicarArchivo = async (models, archivoId, tareaId) => {
+    const orig = await models.TareaArchivo.findByPk(archivoId);
+    if (!orig) return null;
+
+    const buffer = await leerBinario(STORAGE_DIR(), orig.nombre);
+    if (!buffer) return null;
+
+    // Mismo esquema de nombre que un alta nueva (aleatorio de 80 bits).
+    const ext = orig.nombre.split('.').pop();
+    const nombre = `${new Date().toISOString().slice(0, 7).replace('-', '')}_${crypto.randomBytes(10).toString('hex')}.${ext}`;
+    await escribirBinario(STORAGE_DIR(), nombre, buffer);
+
+    return models.TareaArchivo.create({
+        nombre,
+        nombreOriginal: orig.nombreOriginal,
+        tipo: orig.tipo,
+        mime: orig.mime,
+        size: orig.size,
+        tareaId,
+        userId: orig.userId
+    });
 };
 
 /**

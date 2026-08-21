@@ -16,6 +16,7 @@
 
 import { Op } from 'sequelize';
 import { getAppConfigNumber } from '../../../kernel/index.js';
+import { ordenSeguro } from '../../../kernel/index.js';
 
 /**
  * Error de negocio con status (el controller lo mapea al envelope).
@@ -82,6 +83,23 @@ const abonoIncludes = (models) => [
  * @param {object} [query] - Filtros + page/limit.
  * @returns {Promise<{rows: object[], count: number, page: number, limit: number}>}
  */
+
+/**
+ * Columnas ordenables del listado de abonos (whitelist para `ordenSeguro`).
+ * El precio se ordena por su valor CRUDO: mezclar ARS y USD en un mismo orden numérico
+ * sería mentira, pero el usuario ordena para agrupar por moneda-y-magnitud, no para comparar.
+ */
+const ordenAbonos = (models) => ({
+    // Ordenar por una columna de un include exige el MODELO, no el nombre de la asociación:
+    // con un string Sequelize lo toma como parte del nombre de la columna y arma `a.Cliente`nombre`.
+    cliente: [[models.Cliente, 'nombre', 'ASC']],
+    servicio: [[models.Servicio, 'nombre', 'ASC']],
+    precio: [['moneda', 'ASC'], ['precio', 'ASC']],
+    proximaActualizacion: [['diasParaActualizar', 'ASC']],
+    activo: [['activo', 'ASC']],
+    fechaInicio: [['fechaInicio', 'ASC']],
+});
+
 export const listAbonos = async (models, query = {}) => {
     const { Abono } = models;
     const { where, literalWhere } = buildAbonoFilters(models, query);
@@ -97,7 +115,7 @@ export const listAbonos = async (models, query = {}) => {
         offset: (page - 1) * limit,
         // Clientes históricos primero (por su abono más viejo lo resolvía el legado; acá
         // alcanza con cliente + inicio: mismo efecto práctico, sin subquery frágil).
-        order: [[models.Cliente, 'nombre', 'ASC'], ['fechaInicio', 'ASC']],
+        order: ordenSeguro(query, ordenAbonos(models), [[models.Cliente, 'nombre', 'ASC'], ['fechaInicio', 'ASC']]),
         distinct: true,
     });
 
@@ -551,6 +569,17 @@ export const aplicarFacturacion = async (models, userId, ids, anio, mes, operati
  * @param {object} [query] - { anio, mes, clienteId, abonoId, incluirAnuladas, page, limit }.
  * @returns {Promise<{rows: object[], count: number, page: number, limit: number, totalPesos: number}>}
  */
+/** Columnas ordenables del listado de facturaciones. */
+const ordenFacturaciones = (models) => ({
+    periodo: [['anio', 'ASC'], ['mes', 'ASC']],
+    cliente: [[models.Cliente, 'nombre', 'ASC']],
+    servicio: [[models.Servicio, 'nombre', 'ASC']],
+    precio: [['moneda', 'ASC'], ['precio', 'ASC']],
+    montoPesos: [['montoPesos', 'ASC']],
+    facturadaAt: [['facturadaAt', 'ASC']],
+    anuladaAt: [['anuladaAt', 'ASC']],
+});
+
 export const listFacturaciones = async (models, query = {}) => {
     const { Facturacion, Cliente, Servicio, User } = models;
     const where = {};
@@ -572,7 +601,7 @@ export const listFacturaciones = async (models, query = {}) => {
         ],
         limit,
         offset: (page - 1) * limit,
-        order: [['anio', 'DESC'], ['mes', 'DESC'], ['id', 'DESC']],
+        order: ordenSeguro(query, ordenFacturaciones(models), [['anio', 'DESC'], ['mes', 'DESC'], ['id', 'DESC']]),
         distinct: true,
     });
 

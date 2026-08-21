@@ -41,6 +41,9 @@ export interface AbonoFiltros {
   estado?: string
   activo?: string
   search?: string
+  /** Orden pedido al servidor (columna del catálogo del backend) — ver `ordenSeguro`. */
+  orden?: string
+  dir?: string
 }
 
 export const useAbonosStore = defineStore('abonos', () => {
@@ -60,6 +63,8 @@ export const useAbonosStore = defineStore('abonos', () => {
     estado: filtros.estado || undefined,
     activo: filtros.activo || undefined,
     search: filtros.search || undefined,
+    orden: filtros.orden || undefined,
+    dir: filtros.dir || undefined,
   })
 
   /** Carga listado + resumen en paralelo (mismos filtros). */

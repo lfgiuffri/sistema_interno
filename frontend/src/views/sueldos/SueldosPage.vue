@@ -13,10 +13,14 @@ import {
 import { trendingUpOutline, timeOutline, cashOutline, downloadOutline } from 'ionicons/icons'
 import { descargarCsv } from '@/composables/useCsv'
 import { useSueldosStore, type SueldoRow, type HistorialSueldo } from '@/stores/sueldos'
+import ThOrdenable from '@/components/shared/ThOrdenable.vue'
+import { useOrdenTabla } from '@/composables/useOrdenTabla'
 import { useMeStore } from '@/stores/me'
 import { useToast } from '@/composables/useToast'
 import { useEscapeToClose } from '@/composables/useEscapeToClose'
 import { moneda as fmtMoneda, fecha as fmtFecha, porcentaje as fmtPct } from '@/composables/useFormato'
+
+const orden = useOrdenTabla(() => sueldosStore.rows)
 
 const sueldosStore = useSueldosStore()
 const meStore = useMeStore()
@@ -173,10 +177,10 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
                 <th class="w-10">
                   <input type="checkbox" :checked="todosSeleccionados" class="accent-[#0F7660]" aria-label="Seleccionar todos" @change="toggleTodos" />
                 </th>
-                <th>Empleado</th>
-                <th>Sueldo vigente</th>
-                <th>Último cambio</th>
-                <th>Estado</th>
+                <ThOrdenable columna="nombre" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Empleado</ThOrdenable>
+                <ThOrdenable columna="vigente" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Sueldo vigente</ThOrdenable>
+                <ThOrdenable columna="ultCambio" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Último cambio</ThOrdenable>
+                <ThOrdenable columna="activo" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Estado</ThOrdenable>
                 <th class="w-28"><span class="sr-only">Acciones</span></th>
               </tr>
             </thead>
@@ -186,7 +190,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
             </tbody>
 
             <tbody v-else-if="sueldosStore.rows.length">
-              <tr v-for="row in sueldosStore.rows" :key="row.id" :class="{ 'opacity-50': !row.activo }">
+              <tr v-for="row in orden.ordenadas.value" :key="row.id" :class="{ 'opacity-50': !row.activo }">
                 <td>
                   <input
                     type="checkbox" class="accent-[#0F7660]"

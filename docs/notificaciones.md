@@ -64,6 +64,25 @@ VAPID_SUBJECT=mailto:soporte@positivemedia.com.ar
 - **Las suscripciones muertas se borran solas**: ante un 404 o 410 del servicio de push, la fila se elimina. Cualquier otro error es transitorio y la suscripción se conserva.
 - **El endpoint es único**: el mismo navegador re-suscribiéndose actualiza sus claves; si la suscripción venía de otro usuario (una compu compartida), cambia de dueño.
 
+## Dónde se engancha el envío
+
+En **`crearNotificacion`** (`services/notificaciones/`), que es el único punto por el que pasan
+TODAS las notificaciones del sistema: asignación de tarea, cambio de estado, comentarios,
+menciones, avisos diarios, incidentes de servidores y sitios. Enganchar ahí y no en cada
+módulo significa que ninguno se puede olvidar.
+
+El socket solo llega si la app está **abierta**; el Web Push llega igual con la pestaña
+cerrada. Son complementarios, no alternativos.
+
+Respeta las preferencias del usuario, igual que el push nativo: si tiene las notificaciones
+apagadas, «no molestar» activo o está en su horario silencioso, **no se envía** — pero la
+notificación igual queda guardada y aparece en la campana. Una cosa es no interrumpir; otra
+es perder el aviso.
+
+El envío **no se espera** (`void`): sale por HTTPS a un servicio externo y la operación que
+originó el aviso no tiene por qué demorarse por eso. Y nunca tira: si el push falla, la
+notificación ya está guardada.
+
 ## Endpoints
 
 ```

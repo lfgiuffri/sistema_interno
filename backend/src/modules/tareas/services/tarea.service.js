@@ -50,7 +50,12 @@ const sqlCategorias = (dias) => ({
     pendientes: `\`tareas\`.\`estado\` IN (${SQL_PENDIENTES})`,
     hoy: `\`tareas\`.\`estado\` IN (${SQL_PENDIENTES}) AND \`tareas\`.\`fechaVencimiento\` = CURDATE()`,
     por_vencer: `\`tareas\`.\`estado\` IN (${SQL_PENDIENTES}) AND \`tareas\`.\`fechaVencimiento\` > CURDATE() AND \`tareas\`.\`fechaVencimiento\` <= DATE_ADD(CURDATE(), INTERVAL ${Number(dias)} DAY)`,
-    vencidas: `\`tareas\`.\`estado\` IN (${SQL_PENDIENTES}) AND \`tareas\`.\`fechaVencimiento\` < CURDATE()`
+    vencidas: `\`tareas\`.\`estado\` IN (${SQL_PENDIENTES}) AND \`tareas\`.\`fechaVencimiento\` < CURDATE()`,
+    // Urgentes: la prioridad más alta del legado es 'rojo'.
+    urgentes: `\`tareas\`.\`estado\` IN (${SQL_PENDIENTES}) AND \`tareas\`.\`prioridad\` = 'rojo'`,
+    // Sin asignar: pendientes que no tienen dueño. Es distinto del alcance `u=sin`, que
+    // filtra CUALQUIER categoría por sin-asignar; esto es una categoría propia con su conteo.
+    sin_asignar: `\`tareas\`.\`estado\` IN (${SQL_PENDIENTES}) AND \`tareas\`.\`asignadoA\` IS NULL`
 });
 
 /** Metadatos de las categorías del resumen (labels y ayudas del legado). */
@@ -58,7 +63,9 @@ export const CATEGORIAS_META = {
     pendientes: { label: 'Tareas pendientes', ayuda: 'Todo lo que no está completado.' },
     hoy: { label: 'Para hacer hoy', ayuda: 'Vencen hoy.' },
     por_vencer: { label: 'Por vencer', ayuda: 'Vencen dentro de los próximos días configurados.' },
-    vencidas: { label: 'Tareas vencidas', ayuda: 'Pasó la fecha de vencimiento y siguen abiertas.' }
+    vencidas: { label: 'Tareas vencidas', ayuda: 'Pasó la fecha de vencimiento y siguen abiertas.' },
+    urgentes: { label: 'Urgentes', ayuda: 'Pendientes con prioridad urgente.' },
+    sin_asignar: { label: 'Sin asignar', ayuda: 'Pendientes que todavía no tienen responsable.' }
 };
 
 /**
@@ -516,15 +523,16 @@ export const listTareas = async (models, user, espacioId, listaId, q = {}) => {
 /**
  * Tiempo de trabajo de una tarea: suma de tramos en_progreso del historial (las pausas no
  * cuentan); un tramo abierto suma hasta ahora (§2.9).
- * @param {object[]} historialAsc - Eventos ASC ({ estadoNuevo, createdAt }).
+ * @param {object[]} historialAsc - Eventos ASC ({ campo, valorNuevo, createdAt }). Los que no
+ *   son cambios de estado se ignoran: la bitácora ahora registra todos los campos.
  * @returns {number} Segundos trabajados.
  */
 export const tiempoTrabajado = (historialAsc) => {
     let acum = 0;
     let abierto = null;
-    for (const ev of historialAsc) {
+    for (const ev of historialAsc.filter(e => !e.campo || e.campo === 'estado')) {
         const t = new Date(ev.createdAt).getTime();
-        if (ev.estadoNuevo === 'en_progreso') {
+        if (ev.valorNuevo === 'en_progreso') {
             if (abierto === null) abierto = t; // dos "en progreso" seguidos no reinician
         } else if (abierto !== null) {
             acum += Math.max(0, t - abierto); // max(0) contra desorden
@@ -544,7 +552,7 @@ export const tiempoTrabajado = (historialAsc) => {
  * @returns {Promise<object|null>} Detalle o null si no existe.
  */
 export const getTarea = async (models, user, id) => {
-    const { Tarea, TareaEstado, TareaArchivo, Lista, User } = models;
+    const { Tarea, TareaCambio, TareaArchivo, Lista, User } = models;
     const tarea = await Tarea.findByPk(id, {
         include: [
             ...tareaIncludes(models),
@@ -555,7 +563,7 @@ export const getTarea = async (models, user, id) => {
     await exigirEspacioVer(models, user, tarea.espacioId);
 
     const [historial, archivos, comentarios] = await Promise.all([
-        TareaEstado.findAll({
+        TareaCambio.findAll({
             where: { tareaId: id },
             include: [{ model: User, attributes: ['id', 'name', 'lastName'], required: false, paranoid: false }],
             order: [['createdAt', 'ASC'], ['id', 'ASC']]
@@ -578,8 +586,10 @@ export const getTarea = async (models, user, id) => {
         tiempoTrabajado: tiempoTrabajado(historial.map(h => h.toJSON())),
         historial: [...historial].reverse().map(h => ({
             id: h.id,
-            estadoAnterior: h.estadoAnterior,
-            estadoNuevo: h.estadoNuevo,
+            campo: h.campo,
+            campoLabel: CAMPOS_AUDITADOS[h.campo] ?? h.campo,
+            valorAnterior: h.valorAnterior,
+            valorNuevo: h.valorNuevo,
             // Usuario borrado → null (el frontend muestra "usuario dado de baja").
             usuario: h.user ? `${h.user.name} ${h.user.lastName}`.trim() : null,
             fecha: h.createdAt
@@ -634,8 +644,66 @@ const validarNegocio = async (models, data) => {
  */
 const registrarEstado = async (models, tareaId, anterior, nuevo, userId, opts = {}) => {
     if (anterior !== null && anterior === nuevo) return false;
-    await models.TareaEstado.create({ tareaId, estadoAnterior: anterior, estadoNuevo: nuevo, userId }, opts);
+    await models.TareaCambio.create({ tareaId, campo: 'estado', valorAnterior: anterior, valorNuevo: nuevo, userId }, opts);
     return true;
+};
+
+/** Campos que se auditan, con su etiqueta para mostrar. */
+export const CAMPOS_AUDITADOS = {
+    nombre: 'Nombre',
+    estado: 'Estado',
+    asignadoA: 'Asignada a',
+    prioridad: 'Prioridad',
+    fechaInicio: 'Fecha de inicio',
+    fechaVencimiento: 'Vencimiento',
+    descripcion: 'Descripción',
+    listaId: 'Lista',
+};
+
+/**
+ * Normaliza un valor para compararlo y guardarlo en la bitácora.
+ * Sin esto, `null` vs `''` vs `undefined` se registrarían como cambios que no existieron.
+ * @param {*} v - Valor crudo.
+ * @returns {string|null} Texto comparable, o null si está vacío.
+ */
+const paraBitacora = (v) => {
+    if (v === null || v === undefined || v === '') return null;
+    if (v instanceof Date) return v.toISOString().slice(0, 10);
+    return String(v);
+};
+
+/**
+ * Compara el antes y el después de una tarea y anota UNA fila por campo que cambió.
+ *
+ * Una fila por campo y no una por edición: así el historial dice «cambió la prioridad de
+ * verde a rojo», que es lo que sirve para reconstruir qué pasó.
+ *
+ * La descripción se registra como «se modificó» sin volcar el HTML entero: guardar dos copias
+ * del cuerpo en cada edición haría crecer la bitácora sin que nadie lea ese diff.
+ * @param {object} models - Modelos de la app.
+ * @param {number} tareaId - Tarea.
+ * @param {object} antes - Valores previos (por nombre de campo).
+ * @param {object} despues - Valores nuevos (por nombre de campo).
+ * @param {number} userId - Quién edita.
+ * @param {object} [opts] - { transaction }.
+ * @returns {Promise<number>} Cuántos cambios se anotaron.
+ */
+const registrarCambios = async (models, tareaId, antes, despues, userId, opts = {}) => {
+    const filas = [];
+    for (const campo of Object.keys(CAMPOS_AUDITADOS)) {
+        if (!(campo in despues)) continue;   // no se tocó en esta edición
+        const a = paraBitacora(antes[campo]);
+        const b = paraBitacora(despues[campo]);
+        if (a === b) continue;
+
+        filas.push({
+            tareaId, campo, userId,
+            valorAnterior: campo === 'descripcion' ? (a ? '(texto anterior)' : null) : a,
+            valorNuevo: campo === 'descripcion' ? (b ? '(texto nuevo)' : null) : b,
+        });
+    }
+    if (filas.length) await models.TareaCambio.bulkCreate(filas, opts);
+    return filas.length;
 };
 
 /**
@@ -694,6 +762,55 @@ export const createTarea = async (models, user, data, io = null) => {
 };
 
 /**
+ * Crea la MISMA tarea en varias listas: una tarea independiente por lista.
+ *
+ * Cada tarea sigue perteneciendo a UNA sola lista (el modelo no cambia): esto es un atajo de
+ * carga, no una tarea compartida. Se copia todo —descripción y una copia propia de cada
+ * adjunto— así cada una vive por su cuenta y borrar una no afecta a las demás.
+ *
+ * Los permisos se validan lista por lista dentro de `createTarea`: si el usuario no puede
+ * editar el espacio de una de ellas, esa falla y las demás se crean igual. Se devuelve el
+ * detalle de lo que salió bien y el motivo de lo que no, en vez de abortar todo por una.
+ * @param {object} models - Modelos de la app.
+ * @param {object} user - Usuario del request.
+ * @param {object} data - Igual que `createTarea`, pero con `listaIds` (array).
+ * @param {object|null} [io] - Socket.IO.
+ * @returns {Promise<{creadas: object[], errores: Array<{listaId: number, motivo: string}>}>}
+ */
+export const createTareaEnListas = async (models, user, data, io = null) => {
+    const ids = [...new Set((data.listaIds || []).map(Number).filter(Boolean))];
+    if (!ids.length) throw bizError(400, 'Elegí al menos una lista');
+
+    const creadas = [];
+    const errores = [];
+    // Los adjuntos subidos sueltos se ligan a la PRIMERA tarea; para el resto se duplican,
+    // porque un registro de adjunto pertenece a una sola tarea.
+    const archivoIds = (data.archivoIds || []).map(Number).filter(Boolean);
+    let primera = true;
+
+    for (const listaId of ids) {
+        try {
+            const tarea = await createTarea(
+                models, user,
+                { ...data, listaId, archivoIds: primera ? archivoIds : [] },
+                io,
+            );
+            // De la segunda en adelante: copia propia de cada adjunto.
+            if (!primera && archivoIds.length) {
+                const { duplicarArchivo } = await import('./archivo.service.js');
+                for (const aid of archivoIds) await duplicarArchivo(models, aid, tarea.id);
+            }
+            creadas.push(tarea);
+            primera = false;
+        } catch (e) {
+            errores.push({ listaId, motivo: e.message });
+        }
+    }
+    if (!creadas.length) throw bizError(400, errores[0]?.motivo || 'No se pudo crear la tarea');
+    return { creadas, errores };
+};
+
+/**
  * Edición COMPLETA (modal completo): todos los campos menos la lista (mover es otra acción).
  * @param {object} models - Modelos de la app.
  * @param {object} user - Usuario del request.
@@ -711,18 +828,25 @@ export const updateTareaCompleta = async (models, user, id, data, io = null) => 
 
     const asignadoPrevio = tarea.asignadoA;
     const descripcion = sanearHtml(data.descripcion) || null;
-    const estadoAnterior = tarea.estado;
+    // Foto del antes: hay que tomarla ANTES del update, si no se compara contra sí mismo.
+    const antes = {
+        nombre: tarea.nombre, estado: tarea.estado, asignadoA: tarea.asignadoA,
+        prioridad: tarea.prioridad, fechaInicio: tarea.fechaInicio,
+        fechaVencimiento: tarea.fechaVencimiento, descripcion: tarea.descripcion,
+    };
+    const despues = {
+        nombre: data.nombre,
+        descripcion,
+        asignadoA: data.asignadoA || null,
+        prioridad: data.prioridad || 'verde',
+        estado: data.estado || 'abierta',
+        fechaInicio: data.fechaInicio || null,
+        fechaVencimiento: data.fechaVencimiento || null,
+    };
     await Tarea.sequelize.transaction(async (t) => {
-        await tarea.update({
-            nombre: data.nombre,
-            descripcion,
-            asignadoA: data.asignadoA || null,
-            prioridad: data.prioridad || 'verde',
-            estado: data.estado || 'abierta',
-            fechaInicio: data.fechaInicio || null,
-            fechaVencimiento: data.fechaVencimiento || null
-        }, { transaction: t });
-        await registrarEstado(models, tarea.id, estadoAnterior, tarea.estado, user.id, { transaction: t });
+        await tarea.update(despues, { transaction: t });
+        // Una sola llamada: registra el estado Y todo lo demás que haya cambiado.
+        await registrarCambios(models, tarea.id, antes, despues, user.id, { transaction: t });
     });
     await ligarImagenes(models, tarea.id, descripcion);
     if (tarea.asignadoA && tarea.asignadoA !== asignadoPrevio && tarea.asignadoA !== user.id) {
@@ -759,7 +883,17 @@ export const updateTareaRapida = async (models, user, id, data, io = null) => {
     await exigirPoderAsignar(models, user, patch.asignadoA ?? null, tarea.asignadoA);
 
     const asignadoPrevio = tarea.asignadoA;
-    await tarea.update(patch);
+    const antes = {
+        nombre: tarea.nombre, asignadoA: tarea.asignadoA,
+        prioridad: tarea.prioridad, fechaVencimiento: tarea.fechaVencimiento,
+    };
+    await Tarea.sequelize.transaction(async (t) => {
+        await tarea.update(patch, { transaction: t });
+        // La edición rápida NO registraba nada: cambiar el asignado o la fecha desde el
+        // listado no dejaba rastro. `patch` solo trae los campos presentes, así que
+        // `registrarCambios` audita exactamente lo que se tocó.
+        await registrarCambios(models, tarea.id, antes, patch, user.id, { transaction: t });
+    });
     if (tarea.asignadoA && tarea.asignadoA !== asignadoPrevio && tarea.asignadoA !== user.id) {
         await notificar(models, io, {
             userId: tarea.asignadoA, tipo: 'tarea-asignada',
@@ -873,9 +1007,14 @@ export const resumenCategorias = async (models, user, f, u) => {
         asignadoSql = `\`tareas\`.\`asignadoA\` = ${Number(u)}`;
     }
 
+    // «Sin asignar» manda sobre el alcance: pedir las sin-dueño y que además sean «mías» no
+    // devuelve nada nunca. Si se elige esa categoría, se ignora el filtro por persona.
+    if (categoria === 'sin_asignar') { alcance = 'sin'; usuarioNombre = null; asignadoSql = '1=1'; }
+
     const permisos = await getEspacioPermisos(models, user);
     const visiblesIds = Object.entries(permisos).filter(([, p]) => p.ver).map(([id]) => Number(id));
-    const vacio = { pendientes: 0, hoy: 0, por_vencer: 0, vencidas: 0 };
+    // Derivado de `cat` y no escrito a mano: al sumar una categoría no hay que acordarse de acá.
+    const vacio = Object.fromEntries(Object.keys(cat).map(k => [k, 0]));
     if (!visiblesIds.length) {
         return { categoria, alcance, usuario: usuarioNombre, dias, conteos: vacio, grupos: [] };
     }
@@ -1026,7 +1165,7 @@ export const deleteComentario = async (models, user, comentarioId) => {
  * @returns {Promise<object|null>} El bloque, o null sin espacios visibles.
  */
 export const equipoDashboard = async (models, user) => {
-    const { Tarea, TareaEstado, EspacioTrabajo, Lista, User } = models;
+    const { Tarea, TareaCambio, EspacioTrabajo, Lista, User } = models;
     const permisos = await getEspacioPermisos(models, user);
     const visiblesIds = Object.entries(permisos).filter(([, p]) => p.ver).map(([id]) => Number(id));
     const dias = await getDiasPorVencer(models);
@@ -1055,9 +1194,11 @@ export const equipoDashboard = async (models, user) => {
         ]
     });
     const idsProgreso = enProgresoRows.map(t => t.id);
-    const desdeRows = idsProgreso.length ? await TareaEstado.findAll({
-        attributes: ['tareaId', [TareaEstado.sequelize.fn('MAX', TareaEstado.sequelize.col('createdAt')), 'desde']],
-        where: { tareaId: { [Op.in]: idsProgreso }, estadoNuevo: 'en_progreso' },
+    const desdeRows = idsProgreso.length ? await TareaCambio.findAll({
+        attributes: ['tareaId', [TareaCambio.sequelize.fn('MAX', TareaCambio.sequelize.col('createdAt')), 'desde']],
+        // `campo: 'estado'` es obligatorio: la bitácora ahora tiene también nombres, fechas y
+        // prioridades, y sin el filtro el «desde» saldría de cualquier edición.
+        where: { tareaId: { [Op.in]: idsProgreso }, campo: 'estado', valorNuevo: 'en_progreso' },
         group: ['tareaId'],
         raw: true
     }) : [];
@@ -1104,8 +1245,8 @@ export const equipoDashboard = async (models, user) => {
         raw: true
     });
     const duenioDe = Object.fromEntries(asignadas.map(t => [t.id, t.asignadoA]));
-    const eventos = asignadas.length ? await TareaEstado.findAll({
-        where: { tareaId: { [Op.in]: asignadas.map(t => t.id) } },
+    const eventos = asignadas.length ? await TareaCambio.findAll({
+        where: { tareaId: { [Op.in]: asignadas.map(t => t.id) }, campo: 'estado' },
         order: [['tareaId', 'ASC'], ['createdAt', 'ASC'], ['id', 'ASC']],
         raw: true
     }) : [];
@@ -1115,12 +1256,12 @@ export const equipoDashboard = async (models, user) => {
     const promedioPor = {}; // userId → { segundos, tareas }
     for (const [tareaId, hist] of Object.entries(porTarea)) {
         // Cerrada = llegó a revisión/completada; se descartan abiertas y con 0 segundos.
-        const cerrada = hist.some(h => h.estadoNuevo === 'en_revision' || h.estadoNuevo === 'completada');
+        const cerrada = hist.some(h => h.valorNuevo === 'en_revision' || h.valorNuevo === 'completada');
         if (!cerrada) continue;
         let acum = 0, abierto = null;
         for (const ev of hist) {
             const t = new Date(ev.createdAt).getTime();
-            if (ev.estadoNuevo === 'en_progreso') { if (abierto === null) abierto = t; }
+            if (ev.valorNuevo === 'en_progreso') { if (abierto === null) abierto = t; }
             else if (abierto !== null) { acum += Math.max(0, t - abierto); abierto = null; }
         }
         const segundos = Math.round(acum / 1000);

@@ -6,7 +6,7 @@
 import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  onIonViewWillEnter, IonPage, IonContent, IonHeader, IonToolbar, IonButtons,
+  onIonViewWillEnter, onIonViewWillLeave, IonPage, IonContent, IonHeader, IonToolbar, IonButtons,
   IonMenuButton, IonIcon,
 } from '@ionic/vue'
 import {
@@ -14,15 +14,19 @@ import {
   checkmarkDoneOutline, lockClosedOutline, flagOutline,
 } from 'ionicons/icons'
 import { useTareasStore } from '@/stores/tareas'
+import { useTareasEnVivo } from '@/composables/useTareasEnVivo'
 import { useMeStore } from '@/stores/me'
 
 const tareasStore = useTareasStore()
 const meStore = useMeStore()
 const router = useRouter()
 
+const enVivo = useTareasEnVivo(() => tareasStore.fetchHome())
+
 let loadedOnce = false
-onMounted(() => { loadedOnce = true; void tareasStore.fetchHome() })
-onIonViewWillEnter(() => { if (loadedOnce) void tareasStore.fetchHome() })
+onMounted(() => { loadedOnce = true; void tareasStore.fetchHome(); enVivo.escuchar() })
+onIonViewWillEnter(() => { if (loadedOnce) void tareasStore.fetchHome(); enVivo.escuchar() })
+onIonViewWillLeave(() => enVivo.pausar())
 </script>
 
 <template>

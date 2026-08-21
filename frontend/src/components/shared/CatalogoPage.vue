@@ -18,6 +18,8 @@ import {
   addOutline, searchOutline, createOutline, trashOutline, powerOutline,
   closeOutline, fileTrayOutline,
 } from 'ionicons/icons'
+import ThOrdenable from '@/components/shared/ThOrdenable.vue'
+import { useOrdenTabla } from '@/composables/useOrdenTabla'
 import { useCatalogo, type CatalogoRow } from '@/composables/useCatalogo'
 import { useMeStore } from '@/stores/me'
 import { useToast } from '@/composables/useToast'
@@ -58,6 +60,8 @@ const props = defineProps<{
 const emit = defineEmits<{ (e: 'loaded'): void }>()
 
 const catalogo = useCatalogo(props.endpoint)
+// Orden por cualquier columna, en memoria (el catálogo trae todas sus filas).
+const orden = useOrdenTabla(() => catalogo.rows.value)
 const meStore = useMeStore()
 const toast = useToast()
 
@@ -232,8 +236,14 @@ defineExpose({ reload: load })
           <table class="ds-table">
             <thead>
               <tr>
-                <th v-for="col in columnas" :key="col.key">{{ col.label }}</th>
-                <th>Estado</th>
+                <ThOrdenable
+                  v-for="col in columnas" :key="col.key"
+                  :columna="col.key" :activa="orden.columna.value" :dir="orden.dir.value"
+                  @ordenar="orden.ordenarPor"
+                >{{ col.label }}</ThOrdenable>
+                <ThOrdenable columna="activo" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">
+                  Estado
+                </ThOrdenable>
                 <th class="w-28"><span class="sr-only">Acciones</span></th>
               </tr>
             </thead>
@@ -247,7 +257,7 @@ defineExpose({ reload: load })
             </tbody>
 
             <tbody v-else-if="catalogo.rows.value.length">
-              <tr v-for="row in catalogo.rows.value" :key="row.id" :class="{ 'opacity-50': row.activo === false }">
+              <tr v-for="row in orden.ordenadas.value" :key="row.id" :class="{ 'opacity-50': row.activo === false }">
                 <td v-for="col in columnas" :key="col.key">
                   <slot :name="`cell-${col.key}`" :row="row">
                     <span :class="{ 'font-medium text-ink': col.key === 'nombre', 'text-ink-soft': col.key !== 'nombre' }">

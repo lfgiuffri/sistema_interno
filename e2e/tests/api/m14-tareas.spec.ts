@@ -89,8 +89,12 @@ test.describe('M14: Tareas y listas', () => {
       data: { listaId: lBody.data.id, nombre: 'Tarea propia', asignadoA: userId, prioridad: 'rojo' },
     });
     const tBody = await expectSuccess(tarea, 201);
-    expect(tBody.data.historial).toHaveLength(1); // creación con estadoAnterior null
-    expect(tBody.data.historial[0].estadoAnterior).toBeNull();
+    // La bitácora ahora audita TODOS los campos, no solo el estado: al crear hay una sola
+    // entrada, la del estado inicial, y sin valor anterior.
+    expect(tBody.data.historial).toHaveLength(1);
+    expect(tBody.data.historial[0].campo).toBe('estado');
+    expect(tBody.data.historial[0].valorAnterior).toBeNull();
+    expect(tBody.data.historial[0].valorNuevo).toBe('abierta');
   });
 
   test('M14.4 - tareas:asignar: asignar a OTRO sin la capability → 403; a sí mismo OK', async () => {
@@ -194,6 +198,24 @@ test.describe('M14: Tareas y listas', () => {
     expect(body.message).toContain('tarea(s)');
 
     await expectError(await tareasApi.delete(`${APP_ENDPOINTS.tareas}/999999`), 404);
+  });
+
+  test('M14.13 - la edición RÁPIDA deja rastro en el historial (antes no anotaba nada)', async () => {
+    const lista = await tareasApi.post(`${APP_ENDPOINTS.tareas}/espacios/${espacio1}/listas`, { data: makeNombre('Lista audit') });
+    const listaId = (await lista.json()).data.id;
+    const tarea = await tareasApi.post(APP_ENDPOINTS.tareas, { data: { listaId, nombre: 'Auditoría rápida' } });
+    const tareaId = (await expectSuccess(tarea, 201)).data.id;
+
+    // Edición rápida: solo cambia el vencimiento. Antes esto no dejaba ninguna huella.
+    await expectSuccess(await tareasApi.patch(`${APP_ENDPOINTS.tareas}/${tareaId}/rapida`, {
+      data: { nombre: 'Auditoría rápida', fechaVencimiento: '2030-06-15' },
+    }), 200);
+
+    const detalle = (await expectSuccess(await tareasApi.get(`${APP_ENDPOINTS.tareas}/${tareaId}`), 200)).data;
+    const cambio = detalle.historial.find((h: { campo: string }) => h.campo === 'fechaVencimiento');
+    expect(cambio).toBeTruthy();
+    expect(cambio.valorNuevo).toBe('2030-06-15');
+    expect(cambio.usuario).toBeTruthy();   // quién lo cambió: era justamente lo que faltaba
   });
 
   test('M14.12 - adjuntos: una IMAGEN sube como adjunto con destino=adjunto, y como contenido sin él', async ({ adminTokens, playwright }) => {

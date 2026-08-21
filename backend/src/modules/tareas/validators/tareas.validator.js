@@ -64,7 +64,11 @@ const camposTarea = [
 ];
 
 export const validateCreate = [
-    body('listaId').isInt({ min: 1 }).withMessage('Elegí una lista'),
+    // `listaId` obligatorio salvo que vengan varias listas: el alta acepta las dos formas.
+    body('listaId').if(body('listaIds').not().exists()).isInt({ min: 1 }).withMessage('Elegí una lista'),
+    // Crear la misma tarea en varias listas (una tarea por lista).
+    body('listaIds').optional().isArray({ min: 1, max: 20 }).withMessage('Elegí entre 1 y 20 listas'),
+    body('listaIds.*').isInt({ min: 1 }),
     ...camposTarea,
     // Adjuntos subidos durante el alta (todavía sin tarea): el service los liga.
     body('archivoIds').optional().isArray(),

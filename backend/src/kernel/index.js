@@ -48,3 +48,4 @@ export {
     registerNotificationAction,
     setSandboxResultHandler
 } from './handlerRegistry.js';
+export { ordenSeguro } from './ordenTabla.js';

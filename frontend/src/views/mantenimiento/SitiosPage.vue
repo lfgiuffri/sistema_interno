@@ -22,6 +22,8 @@ import {
   useMantenimientoStore,
   type SitioWeb, type SitioInput, type SitioDetalle, type EstadoVence,
 } from '@/stores/mantenimiento'
+import ThOrdenable from '@/components/shared/ThOrdenable.vue'
+import { useOrdenTabla } from '@/composables/useOrdenTabla'
 import { useMeStore } from '@/stores/me'
 import { useToast } from '@/composables/useToast'
 import { useEscapeToClose } from '@/composables/useEscapeToClose'
@@ -105,6 +107,9 @@ function textoVence(fechaISO: string | null, v: EstadoVence): string {
   if (v.estado === 'vencido') return `${fmtFecha(fechaISO)} · vencido`
   return `${fmtFecha(fechaISO)} · ${v.dias} d`
 }
+
+// Se ordena lo YA filtrado: el buscador acota y el encabezado ordena ese resultado.
+const orden = useOrdenTabla(() => sitiosFiltrados.value)
 
 const hayIncidentes = computed(() => store.sitios.some(s => s.incidentes.length))
 
@@ -235,16 +240,16 @@ onIonViewWillEnter(() => { if (loadedOnce) void store.fetchSitios() })
           <table class="ds-table">
             <thead>
               <tr>
-                <th>Sitio</th>
-                <th class="w-32">Estado</th>
-                <th class="w-36">Dominio</th>
-                <th class="w-36">Certificado</th>
-                <th class="w-32">Último chequeo</th>
+                <ThOrdenable columna="nombre" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Sitio</ThOrdenable>
+                <ThOrdenable columna="estado" :activa="orden.columna.value" :dir="orden.dir.value" class="w-32" @ordenar="orden.ordenarPor">Estado</ThOrdenable>
+                <ThOrdenable columna="dominioVenceAt" :activa="orden.columna.value" :dir="orden.dir.value" class="w-36" @ordenar="orden.ordenarPor">Dominio</ThOrdenable>
+                <ThOrdenable columna="tlsVenceAt" :activa="orden.columna.value" :dir="orden.dir.value" class="w-36" @ordenar="orden.ordenarPor">Certificado</ThOrdenable>
+                <ThOrdenable columna="ultimoChequeoAt" :activa="orden.columna.value" :dir="orden.dir.value" class="w-32" @ordenar="orden.ordenarPor">Último chequeo</ThOrdenable>
                 <th class="w-32"><span class="sr-only">Acciones</span></th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="s in sitiosFiltrados" :key="s.id" :class="{ 'opacity-50': !s.activo }">
+              <tr v-for="s in orden.ordenadas.value" :key="s.id" :class="{ 'opacity-50': !s.activo }">
                 <td>
                   <button class="text-left group" @click="verDetalle(s)">
                     <div class="flex items-center gap-2">

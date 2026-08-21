@@ -12,6 +12,8 @@ import {
   addOutline, createOutline, trashOutline, powerOutline, personOutline, eyeOutline,
 } from 'ionicons/icons'
 import { useEmpleadosStore, type EmpleadoRow } from '@/stores/empleados'
+import ThOrdenable from '@/components/shared/ThOrdenable.vue'
+import { useOrdenTabla } from '@/composables/useOrdenTabla'
 import { useMeStore } from '@/stores/me'
 import { useToast } from '@/composables/useToast'
 import { fecha as fmtFecha } from '@/composables/useFormato'
@@ -22,6 +24,14 @@ const CATEGORIA_BADGE: Record<string, string> = {
   'Monotributo': 'ds-badge-warn',
   'Freelance': 'ds-badge-neutral',
 }
+
+// «Áreas» no se ordena: son varias por fila y no hay un criterio único razonable.
+const orden = useOrdenTabla(
+  () => empleadosStore.rows,
+  (e, col) => (col === 'vacaciones'
+    ? (e.vacaciones?.disponible ?? null)
+    : (e as unknown as Record<string, string | number | boolean | null>)[col]),
+)
 
 const empleadosStore = useEmpleadosStore()
 const meStore = useMeStore()
@@ -87,12 +97,12 @@ onIonViewWillEnter(() => { if (loadedOnce) void empleadosStore.fetchAll() })
           <table class="ds-table">
             <thead>
               <tr>
-                <th>Empleado</th>
-                <th>Categoría</th>
+                <ThOrdenable columna="nombre" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Empleado</ThOrdenable>
+                <ThOrdenable columna="categoria" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Categoría</ThOrdenable>
                 <th>Áreas</th>
-                <th>Contacto</th>
-                <th>Vac. disp.</th>
-                <th>Estado</th>
+                <ThOrdenable columna="email" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Contacto</ThOrdenable>
+                <ThOrdenable columna="vacaciones" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Vac. disp.</ThOrdenable>
+                <ThOrdenable columna="activo" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Estado</ThOrdenable>
                 <th class="w-28"><span class="sr-only">Acciones</span></th>
               </tr>
             </thead>
@@ -102,7 +112,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void empleadosStore.fetchAll() })
             </tbody>
 
             <tbody v-else-if="empleadosStore.rows.length">
-              <tr v-for="e in empleadosStore.rows" :key="e.id" :class="{ 'opacity-50': !e.activo }">
+              <tr v-for="e in orden.ordenadas.value" :key="e.id" :class="{ 'opacity-50': !e.activo }">
                 <td>
                   <button class="text-left group" @click="router.push(`/empleados/${e.id}`)">
                     <p class="font-medium text-ink group-hover:text-accent transition-colors">{{ e.nombre }}</p>

@@ -13,6 +13,8 @@ import {
   addOutline, searchOutline, createOutline, trashOutline, cashOutline, folderOpenOutline,
 } from 'ionicons/icons'
 import { useProyectosStore, ESTADOS_PROYECTO, ESTADOS_ABIERTOS, type Proyecto } from '@/stores/proyectos'
+import ThOrdenable from '@/components/shared/ThOrdenable.vue'
+import { useOrdenRemoto } from '@/composables/useOrdenTabla'
 import { useMeStore } from '@/stores/me'
 import { useToast } from '@/composables/useToast'
 import { moneda as fmtMoneda, fecha as fmtFecha } from '@/composables/useFormato'
@@ -28,11 +30,15 @@ const search = ref('')
 const page = ref(1)
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 
+// Orden del servidor (listado paginado). Sin columna elegida manda el default del legado:
+// abiertos primero y los cerrados al final.
+const orden = useOrdenRemoto(() => { page.value = 1; void load() })
+
 async function load(): Promise<void> {
   const estado = filtroEstado.value === 'todos'
     ? undefined
     : (filtroEstado.value || ESTADOS_ABIERTOS.join(','))
-  await store.fetchList({ estado, search: search.value, page: page.value })
+  await store.fetchList({ estado, search: search.value, page: page.value, ...orden.params.value })
 }
 
 function onSearch(): void {
@@ -116,11 +122,11 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
           <table class="ds-table">
             <thead>
               <tr>
-                <th>Proyecto</th>
-                <th>Servicio / Área</th>
-                <th>Estado</th>
-                <th>Presupuesto</th>
-                <th>Entrega estimada</th>
+                <ThOrdenable columna="nombre" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Proyecto</ThOrdenable>
+                <ThOrdenable columna="servicio" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Servicio / Área</ThOrdenable>
+                <ThOrdenable columna="estado" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Estado</ThOrdenable>
+                <ThOrdenable columna="presupuesto" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Presupuesto</ThOrdenable>
+                <ThOrdenable columna="fechaEstimadaEntrega" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Entrega estimada</ThOrdenable>
                 <th class="w-28"><span class="sr-only">Acciones</span></th>
               </tr>
             </thead>

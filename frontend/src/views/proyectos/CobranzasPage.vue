@@ -17,6 +17,8 @@ import {
 import { useProyectosStore, ESTADOS_PROYECTO, type CobranzasDetalle, type Cuota } from '@/stores/proyectos'
 import CotizacionDolar from '@/components/shared/CotizacionDolar.vue'
 import { useMeStore } from '@/stores/me'
+import ThOrdenable from '@/components/shared/ThOrdenable.vue'
+import { useOrdenTabla } from '@/composables/useOrdenTabla'
 import { useToast } from '@/composables/useToast'
 import { useEscapeToClose } from '@/composables/useEscapeToClose'
 import { moneda as fmtMoneda, fecha as fmtFecha, MESES } from '@/composables/useFormato'
@@ -34,6 +36,15 @@ const loading = ref(false)
 // Selección múltiple: SOLO cuotas pendientes (las cobradas no se mueven).
 const seleccion = ref<Set<number>>(new Set())
 const pendientes = computed(() => data.value?.cuotas.filter(c => !c.cobrado) ?? [])
+
+// «Período» son dos columnas (año y mes): ordenar por el texto del mes daría abril, agosto,
+// diciembre. Se ordena por el número YYYYMM.
+const orden = useOrdenTabla(
+  () => data.value?.cuotas ?? [],
+  (c, col) => (col === 'periodo'
+    ? c.anio * 100 + c.mes
+    : (c as unknown as Record<string, string | number | boolean | null>)[col]),
+)
 
 const hoy = new Date()
 const modalAgregar = ref(false)
@@ -272,16 +283,16 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
               <thead>
                 <tr>
                   <th class="w-10"><span class="sr-only">Seleccionar</span></th>
-                  <th>Período</th>
-                  <th>Monto USD</th>
-                  <th>En pesos</th>
-                  <th>Estado</th>
-                  <th>Cobro</th>
+                  <ThOrdenable columna="periodo" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Período</ThOrdenable>
+                  <ThOrdenable columna="monto" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Monto USD</ThOrdenable>
+                  <ThOrdenable columna="enPesos" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">En pesos</ThOrdenable>
+                  <ThOrdenable columna="cobrado" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Estado</ThOrdenable>
+                  <ThOrdenable columna="fechaCobro" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Cobro</ThOrdenable>
                   <th class="w-32"><span class="sr-only">Acciones</span></th>
                 </tr>
               </thead>
               <tbody v-if="data.cuotas.length">
-                <tr v-for="c in data.cuotas" :key="c.id">
+                <tr v-for="c in orden.ordenadas.value" :key="c.id">
                   <td>
                     <input
                       type="checkbox"

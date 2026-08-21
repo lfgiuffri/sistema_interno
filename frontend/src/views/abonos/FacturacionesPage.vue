@@ -12,6 +12,8 @@ import { banOutline, receiptOutline , downloadOutline
 } from 'ionicons/icons'
 import { descargarCsv } from '@/composables/useCsv'
 import { useAbonosStore } from '@/stores/abonos'
+import ThOrdenable from '@/components/shared/ThOrdenable.vue'
+import { useOrdenRemoto } from '@/composables/useOrdenTabla'
 import { useMeStore } from '@/stores/me'
 import { useToast } from '@/composables/useToast'
 import { moneda as fmtMoneda, fecha as fmtFecha, MESES } from '@/composables/useFormato'
@@ -47,6 +49,9 @@ const totalPesos = ref(0)
 const loading = ref(false)
 const page = ref(1)
 
+// Igual que abonos: listado paginado → el orden lo hace el servidor.
+const orden = useOrdenRemoto(() => { page.value = 1; void load() })
+
 async function load(): Promise<void> {
   loading.value = true
   try {
@@ -54,6 +59,7 @@ async function load(): Promise<void> {
       anio: anio.value || undefined,
       mes: mes.value || undefined,
       incluirAnuladas: incluirAnuladas.value ? 'true' : undefined,
+      ...orden.params.value,
     }, page.value)
     if (res.success) {
       rows.value = res.data.rows
@@ -153,8 +159,12 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
           <table class="ds-table">
             <thead>
               <tr>
-                <th>Período</th><th>Cliente / Servicio</th><th>Precio</th><th>Monto (congelado)</th>
-                <th>Facturada</th><th>Estado</th><th class="w-16"><span class="sr-only">Acciones</span></th>
+                <ThOrdenable columna="periodo" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Período</ThOrdenable>
+                <ThOrdenable columna="cliente" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Cliente / Servicio</ThOrdenable>
+                <ThOrdenable columna="precio" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Precio</ThOrdenable>
+                <ThOrdenable columna="montoPesos" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Monto (congelado)</ThOrdenable>
+                <ThOrdenable columna="facturadaAt" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Facturada</ThOrdenable>
+                <ThOrdenable columna="anuladaAt" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Estado</ThOrdenable><th class="w-16"><span class="sr-only">Acciones</span></th>
               </tr>
             </thead>
 

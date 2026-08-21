@@ -14,6 +14,8 @@ import {
   powerOutline, listOutline,
 } from 'ionicons/icons'
 import { useTareasStore, type ListaRow } from '@/stores/tareas'
+import ThOrdenable from '@/components/shared/ThOrdenable.vue'
+import { useOrdenTabla } from '@/composables/useOrdenTabla'
 import { useToast } from '@/composables/useToast'
 import { useEscapeToClose } from '@/composables/useEscapeToClose'
 import { fecha as fmtFecha } from '@/composables/useFormato'
@@ -43,6 +45,9 @@ const filtradas = computed(() => {
   const q = normalizar(busqueda.value)
   return listas.value.filter(l => normalizar(l.nombre).includes(q))
 })
+
+// Se ordena lo ya filtrado por el buscador.
+const orden = useOrdenTabla(() => filtradas.value)
 
 async function load(): Promise<void> {
   loading.value = true
@@ -171,11 +176,11 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
           <table class="ds-table">
             <thead>
               <tr>
-                <th>Lista</th>
-                <th>Pendientes</th>
-                <th>Vencidas</th>
-                <th>Próximo vencimiento</th>
-                <th>Estado</th>
+                <ThOrdenable columna="nombre" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Lista</ThOrdenable>
+                <ThOrdenable columna="pendientes" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Pendientes</ThOrdenable>
+                <ThOrdenable columna="vencidas" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Vencidas</ThOrdenable>
+                <ThOrdenable columna="proximoVencimiento" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Próximo vencimiento</ThOrdenable>
+                <ThOrdenable columna="activa" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Estado</ThOrdenable>
                 <th class="w-24"><span class="sr-only">Acciones</span></th>
               </tr>
             </thead>
@@ -185,7 +190,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
             </tbody>
 
             <tbody v-else-if="filtradas.length">
-              <tr v-for="l in filtradas" :key="l.id" :class="{ 'opacity-50': !l.activa }">
+              <tr v-for="l in orden.ordenadas.value" :key="l.id" :class="{ 'opacity-50': !l.activa }">
                 <td>
                   <button class="text-left group" @click="router.push(`/tareas/espacios/${espacioId}/listas/${l.id}`)">
                     <p class="font-medium text-ink group-hover:text-accent transition-colors">{{ l.nombre }}</p>

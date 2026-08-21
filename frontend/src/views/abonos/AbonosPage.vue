@@ -17,6 +17,8 @@ import {
 import { descargarCsv } from '@/composables/useCsv'
 import { useAbonosStore, type Abono, type AbonoFiltros } from '@/stores/abonos'
 import CotizacionDolar from '@/components/shared/CotizacionDolar.vue'
+import ThOrdenable from '@/components/shared/ThOrdenable.vue'
+import { useOrdenRemoto } from '@/composables/useOrdenTabla'
 import { useMeStore } from '@/stores/me'
 import { useToast } from '@/composables/useToast'
 import { moneda as fmtMoneda, fecha as fmtFecha } from '@/composables/useFormato'
@@ -45,8 +47,12 @@ const todosSeleccionados = computed(() =>
   activos.value.length > 0 && activos.value.every(a => seleccion.value.has(a.id))
 )
 
+// El orden lo resuelve el SERVIDOR: son 76 abonos en páginas de 50, así que ordenar en el
+// navegador ordenaría media tabla. Cambiar de columna vuelve a la página 1.
+const orden = useOrdenRemoto(() => { page.value = 1; void load() })
+
 async function load(): Promise<void> {
-  await abonosStore.fetchAll(filtros.value, page.value)
+  await abonosStore.fetchAll({ ...filtros.value, ...orden.params.value }, page.value)
   // Depurar selección: ids que ya no están en la página.
   const visibles = new Set(abonosStore.rows.map(a => a.id))
   seleccion.value = new Set([...seleccion.value].filter(id => visibles.has(id)))
@@ -222,10 +228,10 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
                 <th class="w-10">
                   <input type="checkbox" :checked="todosSeleccionados" class="accent-[#0F7660]" aria-label="Seleccionar todos" @change="toggleTodos" />
                 </th>
-                <th>Cliente / Servicio</th>
-                <th>Precio</th>
-                <th>Próx. actualización</th>
-                <th>Estado</th>
+                <ThOrdenable columna="cliente" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Cliente / Servicio</ThOrdenable>
+                <ThOrdenable columna="precio" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Precio</ThOrdenable>
+                <ThOrdenable columna="proximaActualizacion" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Próx. actualización</ThOrdenable>
+                <ThOrdenable columna="activo" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Estado</ThOrdenable>
                 <th class="w-24"><span class="sr-only">Acciones</span></th>
               </tr>
             </thead>

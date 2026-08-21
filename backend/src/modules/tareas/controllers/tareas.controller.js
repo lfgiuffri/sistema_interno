@@ -190,7 +190,22 @@ export const getById = async (req, res) => {
  */
 export const create = async (req, res) => {
     try {
-        const tarea = await tareaService.createTarea(req.models, req.user, matchedData(req), req.io);
+        const data = matchedData(req);
+
+        // `listaIds` = crear la misma tarea en varias listas (una tarea por lista, cada una
+        // con su copia de los adjuntos). Se resuelve acá y no en otro endpoint para que el
+        // alta sea un solo camino con las mismas validaciones.
+        if (Array.isArray(data.listaIds) && data.listaIds.length) {
+            const { creadas, errores } = await tareaService.createTareaEnListas(req.models, req.user, data, req.io);
+            if (req.io) {
+                for (const t of creadas) {
+                    req.io.to('app').emit('tarea:creada', { id: t.id, espacioId: t.espacioId, listaId: t.listaId });
+                }
+            }
+            return await responseManager(201, { creadas, errores }, req, res, false);
+        }
+
+        const tarea = await tareaService.createTarea(req.models, req.user, data, req.io);
         if (req.io) req.io.to('app').emit('tarea:creada', { id: tarea.id, espacioId: tarea.espacioId, listaId: tarea.listaId });
         return await responseManager(201, tarea, req, res, false);
     } catch (e) { return bizCatch(e, req, res); }

@@ -19,10 +19,18 @@ import {
 import UsuarioEspaciosModal from '@/components/espacios/UsuarioEspaciosModal.vue'
 import { useUsersStore } from '@/stores/users'
 import { useRolesStore } from '@/stores/roles'
+import ThOrdenable from '@/components/shared/ThOrdenable.vue'
+import { useOrdenTabla } from '@/composables/useOrdenTabla'
 import { useMeStore } from '@/stores/me'
 import { useToast } from '@/composables/useToast'
 import { useEscapeToClose } from '@/composables/useEscapeToClose'
 import type { User, UserInput } from '@/types'
+
+// El rol es un objeto: se ordena por su etiqueta, que es lo que se ve en la columna.
+const orden = useOrdenTabla(
+  () => usersStore.users,
+  (u, col) => (col === 'rol' ? (u.role?.label ?? null) : (u as unknown as Record<string, string | number | boolean | null>)[col]),
+)
 
 const usersStore = useUsersStore()
 const rolesStore = useRolesStore()
@@ -177,10 +185,10 @@ onIonViewWillEnter(() => {
           <table class="ds-table">
             <thead>
               <tr>
-                <th>Usuario</th>
-                <th>Email</th>
-                <th>Rol</th>
-                <th>Estado</th>
+                <ThOrdenable columna="username" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Usuario</ThOrdenable>
+                <ThOrdenable columna="email" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Email</ThOrdenable>
+                <ThOrdenable columna="rol" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Rol</ThOrdenable>
+                <ThOrdenable columna="active" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Estado</ThOrdenable>
                 <th class="w-28"><span class="sr-only">Acciones</span></th>
               </tr>
             </thead>
@@ -195,7 +203,7 @@ onIonViewWillEnter(() => {
             </tbody>
 
             <tbody v-else-if="usersStore.users.length">
-              <tr v-for="user in usersStore.users" :key="user.id" :class="{ 'opacity-50': user.active === false }">
+              <tr v-for="user in orden.ordenadas.value" :key="user.id" :class="{ 'opacity-50': user.active === false }">
                 <td>
                   <div class="flex items-center gap-2.5">
                     <div class="w-7 h-7 rounded-full bg-accent-soft text-accent-ink grid place-items-center text-2xs font-semibold shrink-0">

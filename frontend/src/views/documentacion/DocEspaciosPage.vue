@@ -13,11 +13,21 @@ import {
   addOutline, createOutline, trashOutline, peopleOutline, powerOutline, libraryOutline,
 } from 'ionicons/icons'
 import { useDocumentacionStore, type DocEspacio, type FilaMatrizDocEspacio } from '@/stores/documentacion'
+import ThOrdenable from '@/components/shared/ThOrdenable.vue'
+import { useOrdenTabla } from '@/composables/useOrdenTabla'
 import { useMeStore } from '@/stores/me'
 import { useToast } from '@/composables/useToast'
 import { useEscapeToClose } from '@/composables/useEscapeToClose'
 
 const store = useDocumentacionStore()
+// Igual que en espacios de tareas: la columna de accesos ordena por cantidad.
+const orden = useOrdenTabla(
+  () => store.espacios,
+  (e, col) => (col === 'usuarios'
+    ? (e.usuarios?.length ?? 0)
+    : (e as unknown as Record<string, string | number | boolean | null>)[col]),
+)
+
 const meStore = useMeStore()
 const toast = useToast()
 
@@ -141,11 +151,11 @@ onIonViewWillEnter(() => { if (loadedOnce) void store.fetchEspaciosAdmin() })
           <table class="ds-table">
             <thead>
               <tr>
-                <th>Espacio</th>
-                <th>Listas</th>
-                <th>Documentos</th>
-                <th>Usuarios con acceso</th>
-                <th>Estado</th>
+                <ThOrdenable columna="nombre" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Espacio</ThOrdenable>
+                <ThOrdenable columna="listasCount" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Listas</ThOrdenable>
+                <ThOrdenable columna="documentosCount" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Documentos</ThOrdenable>
+                <ThOrdenable columna="usuarios" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Usuarios con acceso</ThOrdenable>
+                <ThOrdenable columna="activo" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Estado</ThOrdenable>
                 <th class="w-28"><span class="sr-only">Acciones</span></th>
               </tr>
             </thead>
@@ -155,7 +165,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void store.fetchEspaciosAdmin() })
             </tbody>
 
             <tbody v-else-if="store.espacios.length">
-              <tr v-for="e in store.espacios" :key="e.id" :class="{ 'opacity-50': !e.activo }">
+              <tr v-for="e in orden.ordenadas.value" :key="e.id" :class="{ 'opacity-50': !e.activo }">
                 <td>
                   <p class="font-medium text-ink">{{ e.nombre }}</p>
                   <p v-if="e.descripcion" class="text-2xs text-ink-faint">{{ e.descripcion }}</p>
