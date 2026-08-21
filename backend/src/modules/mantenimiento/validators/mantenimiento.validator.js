@@ -1,4 +1,4 @@
-import { body, param } from 'express-validator';
+import { body, param, query } from 'express-validator';
 import { validator } from '../../../kernel/index.js';
 
 export const validateId = [
@@ -53,6 +53,52 @@ export const validateCreateSitio = [...camposSitio, validator];
 export const validateUpdateSitio = [
     param('id').isInt({ min: 1 }),
     ...camposSitio,
+    validator
+];
+
+/** Campos comunes de alta/edición de una vista de sitio. */
+const camposVista = [
+    // La ruta la normaliza el service (`/tienda/` → `/tienda`, y acepta una URL completa):
+    // acá solo se controla el largo y que sea texto.
+    body('ruta').optional().isString().trim().isLength({ max: 190 }),
+    body('nombre').optional({ nullable: true }).isString().trim().isLength({ max: 100 }),
+    body('verificaMarcador').optional().isBoolean().toBoolean(),
+    // Cadena vacía = «usá el marcador global». Igual que `dominioVenceAt`: con
+    // `optional({ nullable: true })` el null se cae de `matchedData` y el borrado no llegaría
+    // nunca al service.
+    body('marcadorId')
+        .optional()
+        .custom((v) => v === '' || /^[A-Za-z][A-Za-z0-9_:-]{0,63}$/.test(String(v)))
+        .withMessage('El id del marcador tiene que empezar con una letra y usar solo letras, números, guiones, guiones bajos o dos puntos'),
+    body('activo').optional().isBoolean().toBoolean(),
+];
+
+export const validateCreateVista = [
+    param('id').isInt({ min: 1 }),
+    // En el alta la ruta es obligatoria: una vista sin ruta sería un duplicado de la home,
+    // que ya existe siempre.
+    body('ruta').isString().trim().notEmpty().withMessage('La ruta es obligatoria').isLength({ max: 190 }),
+    ...camposVista.slice(1),
+    validator
+];
+
+export const validateUpdateVista = [
+    param('id').isInt({ min: 1 }),
+    ...camposVista,
+    validator
+];
+
+export const validateOrdenVistas = [
+    param('id').isInt({ min: 1 }),
+    body('ids').isArray({ min: 1, max: 100 }).withMessage('Hace falta la lista de ids'),
+    body('ids.*').isInt({ min: 1 }).toInt(),
+    validator
+];
+
+export const validateVelocidad = [
+    param('id').isInt({ min: 1 }),
+    query('granularidad').optional().isIn(['dia', 'mes', 'anio']).withMessage('La granularidad tiene que ser dia, mes o anio'),
+    query('vistaId').optional().isInt({ min: 1 }).toInt(),
     validator
 ];
 

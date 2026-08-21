@@ -15,7 +15,7 @@ import {
 import {
   addOutline, createOutline, trashOutline, powerOutline, globeOutline,
   refreshOutline, openOutline, alertCircleOutline, calendarOutline, timeOutline,
-  searchOutline, closeOutline,
+  searchOutline, closeOutline, speedometerOutline, layersOutline,
 } from 'ionicons/icons'
 import api from '@/services/api'
 import {
@@ -23,6 +23,8 @@ import {
   type SitioWeb, type SitioInput, type SitioDetalle, type EstadoVence,
 } from '@/stores/mantenimiento'
 import ThOrdenable from '@/components/shared/ThOrdenable.vue'
+import VistasSitioModal from '@/components/mantenimiento/VistasSitioModal.vue'
+import VelocidadSitioModal from '@/components/mantenimiento/VelocidadSitioModal.vue'
 import { useOrdenTabla } from '@/composables/useOrdenTabla'
 import { useMeStore } from '@/stores/me'
 import { useToast } from '@/composables/useToast'
@@ -49,6 +51,17 @@ useEscapeToClose(modalDetalle, () => { modalDetalle.value = false })
 
 /** Sitio con un chequeo manual en curso (para deshabilitar el botón). */
 const chequeando = ref<number | null>(null)
+
+/** Sitio cuyas vistas se están administrando (null = modal cerrado). */
+const sitioVistas = ref<SitioWeb | null>(null)
+/** Sitio cuya velocidad se está mirando. */
+const sitioVelocidad = ref<SitioWeb | null>(null)
+
+function abrirVistas(s: SitioWeb): void { sitioVistas.value = s }
+function abrirVelocidad(s: SitioWeb): void { sitioVelocidad.value = s }
+
+/** Las vistas cambiaron: el estado y el resumen de la fila salen de ellas. */
+async function vistasCambiaron(): Promise<void> { await store.fetchSitios() }
 
 /**
  * Buscador por nombre O URL.
@@ -377,6 +390,19 @@ onIonViewWillEnter(() => { if (loadedOnce) void store.fetchSitios() })
                     {{ ETIQUETA[s.estado] }}
                   </span>
                   <p v-if="s.tiempoMs && s.estado !== 'desconocido'" class="text-2xs text-ink-faint tnum">{{ s.tiempoMs }} ms</p>
+                  <!--
+                    Resumen de vistas. Solo se muestra si hay MÁS DE UNA: en el caso normal
+                    —un sitio, una URL— «1 de 1 vista» sería ruido que no informa nada.
+                  -->
+                  <button
+                    v-if="s.vistasTotal > 1"
+                    class="text-2xs tnum hover:underline"
+                    :class="s.vistasOk === s.vistasTotal ? 'text-ink-faint' : 'text-danger font-medium'"
+                    :title="`Ver las ${s.vistasTotal} vistas de ${s.nombre}`"
+                    @click.stop="abrirVistas(s)"
+                  >
+                    {{ s.vistasOk }} de {{ s.vistasTotal }} vistas OK
+                  </button>
                 </td>
                 <td class="text-xs tnum" :class="claseVence(s.dominioEstado)">
                   {{ textoVence(s.dominioVenceAt, s.dominioEstado) }}
@@ -401,6 +427,12 @@ onIonViewWillEnter(() => { if (loadedOnce) void store.fetchSitios() })
                     </button>
                     <button v-if="meStore.can('sitios:update')" class="row-action" title="Consultar el vencimiento del dominio" aria-label="Consultar dominio" @click="consultarDominio(s)">
                       <IonIcon :icon="calendarOutline" class="text-[15px]" />
+                    </button>
+                    <button class="row-action" title="Velocidad del sitio" aria-label="Velocidad del sitio" @click="abrirVelocidad(s)">
+                      <IonIcon :icon="speedometerOutline" class="text-[15px]" />
+                    </button>
+                    <button v-if="meStore.can('sitios:update')" class="row-action" title="Vistas que se chequean" aria-label="Vistas que se chequean" @click="abrirVistas(s)">
+                      <IonIcon :icon="layersOutline" class="text-[15px]" />
                     </button>
                     <button v-if="meStore.can('sitios:update')" class="row-action" title="Editar" aria-label="Editar" @click="abrirForm(s)">
                       <IonIcon :icon="createOutline" class="text-[15px]" />
@@ -604,6 +636,18 @@ onIonViewWillEnter(() => { if (loadedOnce) void store.fetchSitios() })
           </div>
         </div>
       </Teleport>
+      <VistasSitioModal
+        v-if="sitioVistas"
+        :sitio="sitioVistas"
+        @cerrar="sitioVistas = null"
+        @cambio="vistasCambiaron"
+      />
+
+      <VelocidadSitioModal
+        v-if="sitioVelocidad"
+        :sitio="sitioVelocidad"
+        @cerrar="sitioVelocidad = null"
+      />
     </IonContent>
   </IonPage>
 </template>

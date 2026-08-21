@@ -99,6 +99,77 @@ cálculo del otro lado, con el riesgo de que las dos copias se separen.
 «Propios o de terceros» es la bandera `verificaMarcador` vista desde el otro lado: a los
 nuestros les exigimos el marcador del footer, a los de terceros les alcanza un 2xx.
 
+## Vistas por sitio
+
+Un sitio **no siempre es una sola página**. Un cliente puede tener la home hecha por nosotros y
+un `/ecommerce` montado aparte, o un `/blog` de un tercero. Chequear solo la raíz diría «está en
+línea» mientras la tienda devuelve 500 desde ayer.
+
+Cada sitio tiene N **vistas** (`sitio_vistas`), y cada vista lleva su propio:
+
+- **«Esto lo administramos nosotros»** (`verificaMarcador`) — a lo nuestro le exigimos el
+  marcador del footer; a lo de terceros le alcanza un 2xx. Exigirle el marcador a algo que no
+  hicimos lo dejaría en `sin_marcador` para siempre.
+- **Id del marcador** (`marcadorId`) — en `null` usa el **global** (config
+  `MANTENIMIENTO_MARCADOR_ID`, default `app-conn-id`). El override existe porque un sitio viejo
+  puede llevar todavía otro id y no vale la pena redeployarlo solo para monitorearlo.
+- **Estado, tiempo y fallos consecutivos** propios.
+
+**Todo sitio tiene al menos la `/`**: la crea el alta y la migración se la agrega a los que ya
+existían, heredando su estado (mismo `fallosSeguidos`, mismo estado) para que el chequeo siga
+donde estaba y no avise una caída falsa. Así el caso simple —un sitio, una URL— no cambia para
+nadie. La **última vista no se puede eliminar** (409): un sitio sin ninguna URL dejaría de
+monitorearse en silencio, que es lo que este módulo tiene que evitar; para eso está desactivar
+el sitio, que es explícito y reversible.
+
+**El sitio resume, la vista alerta.** La fila del listado muestra «2 de 3 vistas OK» (solo si
+hay más de una: «1 de 1» sería ruido) y su estado es el **peor** de sus vistas activas — si la
+tienda está caída, el sitio no está «en línea». Pero el **incidente y el aviso son por vista**,
+con la clave anti-spam en `(sitio, vista, tipo)`: la home caída y la tienda caída son dos
+problemas, y con la clave solo por sitio el segundo quedaría silenciado por el primero. El aviso
+nombra la vista salvo que sea la home.
+
+**Lo que NO se parte por vista**: el **dominio** y el **certificado**. Son del host, no de la
+ruta, así que se consultan y avisan una vez por sitio — el TLS se lee del primer handshake que
+funcione, porque todas las vistas comparten el mismo.
+
+Rutas normalizadas al guardar: `tienda/` → `/tienda`, y si pegan la URL completa se recorta a su
+ruta. Sin eso, `/tienda` y `/tienda/` serían dos vistas distintas del mismo lugar, con chequeos
+y alertas duplicados. Recrear una vista eliminada la **reactiva** con el estado limpio (pasó
+tiempo sin chequearse), mismo patrón que los catálogos.
+
+## Velocidad: día, mes y año
+
+Dos fuentes, y la distinción es el punto de todo esto:
+
+| Tabla | Qué guarda | Cuánto vive |
+|---|---|---|
+| `sitio_chequeos` | un registro cada 5 minutos | **30 días** (se purga) |
+| `sitio_velocidad_dia` | una fila por vista y día | **para siempre** |
+
+Sin el rollup, «¿el sitio está más lento que el año pasado?» no tendría respuesta: el detalle de
+hace un año ya no existe. El resumen se consolida en la tarea diaria **antes** de purgar — el
+orden importa, purgar primero borraría el dato sin resumirlo. Se consolidan los **últimos 7
+días** y no solo ayer, así el proceso se recupera solo de un apagado de una semana; es
+idempotente (único por `vistaId + fecha`), así que re-consolidar un día ya hecho no duplica.
+
+Tres decisiones que se notan en los números:
+
+1. **El promedio ignora los chequeos que no respondieron.** Un timeout de 12 s no es «12000 ms
+   de latencia», es una caída. Mezclarlos haría que un día con tres caídas parezca un día lento.
+   La caída se cuenta aparte, en `disponibilidad`.
+2. **El mes y el año ponderan por muestras.** Promediar los promedios diarios le daría el mismo
+   peso a un día con 12 chequeos que a uno con 288.
+3. **El día de HOY sale del detalle**, no del rollup: todavía no está consolidado. Por eso se
+   mueve durante la jornada, y la pantalla lo dice.
+
+El tiempo medido es **solo el pedido HTTP**: el handshake TLS de la lectura del certificado es
+otro socket y sumarlo inflaría la medición con algo que el visitante no espera.
+
+La serie viene alineada con `periodos` y con `null` en los huecos, para que el gráfico **corte**
+la línea en vez de unir dos meses lejanos o bajarla a cero (que leería como «respondió
+instantáneo»).
+
 ## Historial
 
 - `servidor_metricas`: detalle fino, una fila por minuto y por servidor.

@@ -170,4 +170,79 @@ test.describe('M21: Mantenimiento — Sitios web', () => {
     expect(body.ok).toBe(true);
     expect(typeof body.uptimeSeg).toBe('number');
   });
+
+  test('M21.12 - vistas: el sitio nace con «/», normaliza rutas y no admite duplicados', async ({ adminApi }) => {
+    const alta = await adminApi.post(APP_ENDPOINTS.sitios, {
+      data: { nombre: makeNombre('Sitio Vistas').nombre, url: `https://vistas-${Date.now()}.test`, verificaMarcador: false },
+    });
+    const sitioId = (await alta.json()).data.id;
+    cleanup.push(`${APP_ENDPOINTS.sitios}/${sitioId}`);
+
+    // Todo sitio nace con la vista «/» heredando su «lo administramos nosotros»: el caso
+    // simple —un sitio, una URL— sigue siendo un solo paso para el usuario.
+    const iniciales = await expectSuccess(await adminApi.get(`${APP_ENDPOINTS.sitios}/${sitioId}/vistas`), 200);
+    expect(iniciales.data).toHaveLength(1);
+    expect(iniciales.data[0].ruta).toBe('/');
+    expect(iniciales.data[0].verificaMarcador).toBe(false);
+
+    // La ruta se normaliza: barra final fuera, y una URL completa se recorta a su ruta.
+    const conBarra = await expectSuccess(await adminApi.post(`${APP_ENDPOINTS.sitios}/${sitioId}/vistas`, { data: { ruta: 'tienda/' } }), 201);
+    expect(conBarra.data.ruta).toBe('/tienda');
+    const conUrl = await expectSuccess(await adminApi.post(`${APP_ENDPOINTS.sitios}/${sitioId}/vistas`, { data: { ruta: 'https://otro.test/blog' } }), 201);
+    expect(conUrl.data.ruta).toBe('/blog');
+
+    // Duplicada → 409 (no un 500 por el índice).
+    await expectError(await adminApi.post(`${APP_ENDPOINTS.sitios}/${sitioId}/vistas`, { data: { ruta: '/tienda' } }), 409);
+
+    // El marcador por vista pisa el global; cadena vacía vuelve al global.
+    const conMarcador = await expectSuccess(
+      await adminApi.put(`${APP_ENDPOINTS.sitios}/vistas/${conUrl.data.id}`, { data: { marcadorId: 'otro-id' } }), 200);
+    expect(conMarcador.data.marcadorId).toBe('otro-id');
+    const sinMarcador = await expectSuccess(
+      await adminApi.put(`${APP_ENDPOINTS.sitios}/vistas/${conUrl.data.id}`, { data: { marcadorId: '' } }), 200);
+    expect(sinMarcador.data.marcadorId).toBeNull();
+
+    // Un id de marcador inválido no llega al service.
+    await expectError(await adminApi.put(`${APP_ENDPOINTS.sitios}/vistas/${conUrl.data.id}`, { data: { marcadorId: '9 mal' } }), 422);
+
+    // El listado RESUME las vistas: el estado del sitio es el peor de ellas.
+    const listado = await expectSuccess(await adminApi.get(APP_ENDPOINTS.sitios), 200);
+    const fila = listado.data.find((s: { id: number }) => s.id === sitioId);
+    expect(fila.vistasTotal).toBe(3);
+    expect(fila.vistasOk).toBeLessThanOrEqual(3);
+
+    // Se pueden borrar todas menos la última: un sitio sin ninguna URL dejaría de
+    // monitorearse en silencio, que es justo lo que este módulo tiene que evitar.
+    await expectSuccess(await adminApi.delete(`${APP_ENDPOINTS.sitios}/vistas/${conBarra.data.id}`), 200);
+    await expectSuccess(await adminApi.delete(`${APP_ENDPOINTS.sitios}/vistas/${conUrl.data.id}`), 200);
+    await expectError(await adminApi.delete(`${APP_ENDPOINTS.sitios}/vistas/${iniciales.data[0].id}`), 409);
+
+    // Y la eliminada se REACTIVA al recrearla, con el estado limpio (pasó tiempo sin chequear).
+    const revivida = await expectSuccess(await adminApi.post(`${APP_ENDPOINTS.sitios}/${sitioId}/vistas`, { data: { ruta: '/tienda' } }), 201);
+    expect(revivida.data.id).toBe(conBarra.data.id);
+    expect(revivida.data.estado).toBe('desconocido');
+  });
+
+  test('M21.13 - velocidad: día/mes/año, granularidad inválida → 422', async ({ adminApi, authedApi }) => {
+    const alta = await adminApi.post(APP_ENDPOINTS.sitios, {
+      data: { nombre: makeNombre('Sitio Velocidad').nombre, url: `https://veloc-${Date.now()}.test`, verificaMarcador: false },
+    });
+    const sitioId = (await alta.json()).data.id;
+    cleanup.push(`${APP_ENDPOINTS.sitios}/${sitioId}`);
+
+    for (const granularidad of ['dia', 'mes', 'anio']) {
+      const body = await expectSuccess(await adminApi.get(`${APP_ENDPOINTS.sitios}/${sitioId}/velocidad?granularidad=${granularidad}`), 200);
+      expect(body.data.granularidad).toBe(granularidad);
+      expect(Array.isArray(body.data.periodos)).toBe(true);
+      // Una serie por vista, alineada con `periodos`: el gráfico necesita el hueco explícito
+      // (null) para cortar la línea en vez de unir dos períodos lejanos.
+      expect(body.data.vistas).toHaveLength(1);
+      expect(body.data.vistas[0].serie).toHaveLength(body.data.periodos.length);
+    }
+
+    await expectError(await adminApi.get(`${APP_ENDPOINTS.sitios}/${sitioId}/velocidad?granularidad=siglo`), 422);
+    await expectError(await adminApi.get(`${APP_ENDPOINTS.sitios}/999999/velocidad`), 404);
+    // El fixture no tiene sitios:read.
+    await expectError(await authedApi.get(`${APP_ENDPOINTS.sitios}/${sitioId}/velocidad`), 403);
+  });
 });

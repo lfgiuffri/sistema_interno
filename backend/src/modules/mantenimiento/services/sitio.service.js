@@ -9,6 +9,7 @@
 import { Op } from 'sequelize';
 import { getAppConfigNumber } from '../../../kernel/index.js';
 import { dominioDe } from './rdap.service.js';
+import { resumenVistasPorSitio, listVistas } from './vista.service.js';
 
 /**
  * Error de negocio con status (el controller lo mapea al envelope).
@@ -58,20 +59,30 @@ export const listSitios = async (models) => {
     ]);
     if (!sitios.length) return [];
 
-    const abiertos = await SitioIncidente.findAll({
-        where: { sitioId: { [Op.in]: sitios.map(s => s.id) }, resueltoAt: null },
-        raw: true,
-    });
+    const ids = sitios.map(s => s.id);
+    const [abiertos, resumenVistas] = await Promise.all([
+        SitioIncidente.findAll({ where: { sitioId: { [Op.in]: ids }, resueltoAt: null }, raw: true }),
+        resumenVistasPorSitio(models, ids),
+    ]);
     const porSitio = {};
     for (const i of abiertos) (porSitio[i.sitioId] ??= []).push(i.tipo);
 
     return sitios.map(s => {
         const json = s.toJSON();
+        const r = resumenVistas[s.id];
         return {
             ...json,
             dominioEstado: estadoVencimiento(json.dominioVenceAt, diasDominio),
             tlsEstado: estadoVencimiento(json.tlsVenceAt, diasTls),
             incidentes: porSitio[s.id] ?? [],
+            // El estado de la FILA es el de sus vistas, no el de la columna `estado` del sitio:
+            // con varias URLs, «en línea» tiene que significar que todas lo están. La columna
+            // se mantiene sincronizada con el peor estado, pero la fuente es la vista.
+            estado: r?.total ? r.estado : json.estado,
+            tiempoMs: r?.total ? r.tiempoMs : json.tiempoMs,
+            vistasTotal: r?.total ?? 0,
+            vistasOk: r?.ok ?? 0,
+            vistas: r?.vistas ?? [],
         };
     });
 };
@@ -92,11 +103,12 @@ export const getSitio = async (models, id) => {
     });
     if (!sitio) return null;
 
-    const [chequeos, incidentes, diasDominio, diasTls] = await Promise.all([
+    const [chequeos, incidentes, diasDominio, diasTls, vistas] = await Promise.all([
         SitioChequeo.findAll({ where: { sitioId: id }, order: [['createdAt', 'DESC']], limit: 200, raw: true }),
         SitioIncidente.findAll({ where: { sitioId: id }, order: [['createdAt', 'DESC']], limit: 30, raw: true }),
         getAppConfigNumber(models, 'MANTENIMIENTO_DIAS_AVISO_DOMINIO'),
         getAppConfigNumber(models, 'MANTENIMIENTO_DIAS_AVISO_TLS'),
+        listVistas(models, id),
     ]);
 
     // Disponibilidad de la ventana guardada: cuántos chequeos dieron online.
@@ -110,6 +122,9 @@ export const getSitio = async (models, id) => {
         disponibilidad: chequeos.length ? Math.round((online / chequeos.length) * 1000) / 10 : null,
         chequeos: chequeos.slice(0, 60),
         incidentes,
+        vistas,
+        vistasTotal: vistas.filter(v => v.activo).length,
+        vistasOk: vistas.filter(v => v.activo && v.estado === 'online').length,
     };
 };
 
@@ -140,7 +155,18 @@ export const createSitio = async (models, data) => {
     if (existe) throw bizError(400, 'Ya hay un sitio cargado con esa URL');
 
     // `dominioAuto` arranca en false: lo pone en true el refresco de RDAP si logra la fecha.
-    return SitioWeb.create({ ...data, dominio });
+    const sitio = await SitioWeb.create({ ...data, dominio });
+
+    // Todo sitio nace con la vista `/`: sin ninguna vista no se chequearía nada, y el caso
+    // simple —un sitio, una URL— tiene que seguir siendo un solo paso para el usuario.
+    // Hereda el «lo administramos nosotros» del sitio, que es lo que se cargó en el alta.
+    await models.SitioVista.create({
+        sitioId: sitio.id,
+        ruta: '/',
+        verificaMarcador: data.verificaMarcador ?? true,
+        orden: 10,
+    });
+    return sitio;
 };
 
 /**

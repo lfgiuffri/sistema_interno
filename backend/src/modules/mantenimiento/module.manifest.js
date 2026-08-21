@@ -22,7 +22,7 @@ export default {
     basePath: '/mantenimiento',
     models: [
         'Servidor', 'ServidorMetrica', 'ServidorMetricaDia', 'ServidorIncidente',
-        'SitioWeb', 'SitioChequeo', 'SitioIncidente'
+        'SitioWeb', 'SitioVista', 'SitioChequeo', 'SitioIncidente', 'SitioVelocidadDia'
     ],
     capabilities: [
         'servidores:read', 'servidores:create', 'servidores:update',

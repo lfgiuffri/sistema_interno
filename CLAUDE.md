@@ -404,6 +404,19 @@ Monitoreo de los VPS de la empresa. Doc completa en `docs/modules/mantenimiento.
   certificado vencido es justamente el caso a avisar y con validación estricta ni se leería.
 - El **estado** de los vencimientos (ok / por vencer / vencido) se DERIVA de la fecha en cada
   consulta; no se persiste.
+- **Vistas por sitio** (2026-08-21): un sitio tiene N URLs chequeables (`sitio_vistas`), cada
+  una con su propio «lo administramos nosotros» y su override del id del marcador (el global
+  es la config `MANTENIMIENTO_MARCADOR_ID`). Todo sitio nace con la vista `/` y la ÚLTIMA no
+  se elimina (409): un sitio sin URLs dejaría de monitorearse en silencio. El **sitio resume**
+  («2 de 3 vistas OK», estado = el peor) y la **alerta es por vista** (anti-spam por
+  `sitio+vista+tipo`). Dominio y TLS siguen siendo del SITIO: son del host, no de la ruta.
+- **Velocidad histórica**: `sitio_velocidad_dia` es un rollup **permanente** (una fila por
+  vista y día) que la tarea diaria consolida **antes** de purgar el detalle de 30 días — el
+  orden importa. El promedio ignora los chequeos que no respondieron (un timeout es una caída,
+  no latencia), el mes/año ponderan por muestras, y el día de hoy sale del detalle porque
+  todavía no está consolidado. `GET /mantenimiento/sitios/:id/velocidad?granularidad=dia|mes|anio`.
+- **Filtros del listado** (7, en el cliente como el buscador): disponibilidad, vencimientos,
+  servicio, servidor, activo/inactivo, propios/terceros, con incidentes abiertos.
 - **Punto ciego resuelto**: el monitoreo vive dentro de este proceso, así que hay
   `GET /api/health` **público** (200 solo si la base responde) para un watchdog EXTERNO —
   runbook en `docs/deploy-vps-oracle.md` (§ Watchdog externo). El chequeo no debe apuntar a la

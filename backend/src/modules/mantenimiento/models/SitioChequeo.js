@@ -12,6 +12,9 @@ export const defineSitioChequeoModel = (db) => {
     const SitioChequeo = db.define('sitio_chequeos', {
         id: { type: DataTypes.BIGINT, autoIncrement: true, primaryKey: true },
         sitioId: { type: DataTypes.INTEGER, allowNull: false },
+        // Vista chequeada. Nullable por los chequeos anteriores a las vistas por sitio: se
+        // conservan tal cual en vez de inventarles una vista que no existía cuando se tomaron.
+        vistaId: { type: DataTypes.INTEGER, allowNull: true },
         estado: { type: DataTypes.ENUM('online', 'sin_marcador', 'offline'), allowNull: false },
         httpStatus: { type: DataTypes.INTEGER, allowNull: true },
         tiempoMs: { type: DataTypes.INTEGER, allowNull: true },
@@ -21,11 +24,12 @@ export const defineSitioChequeoModel = (db) => {
         tableName: 'sitio_chequeos',
         timestamps: true,
         updatedAt: false,
-        indexes: [{ fields: ['sitioId', 'createdAt'] }]
+        indexes: [{ fields: ['sitioId', 'createdAt'] }, { fields: ['vistaId', 'createdAt'] }]
     });
 
     SitioChequeo.associate = (models) => {
         if (models.SitioWeb) SitioChequeo.belongsTo(models.SitioWeb, { foreignKey: 'sitioId' });
+        if (models.SitioVista) SitioChequeo.belongsTo(models.SitioVista, { foreignKey: 'vistaId', as: 'vista' });
     };
 
     return SitioChequeo;

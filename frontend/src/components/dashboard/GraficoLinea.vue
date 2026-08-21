@@ -22,8 +22,11 @@ const props = defineProps<{
   alto?: number
   /** Etiquetas del eje X; por defecto los 12 meses (uso original: series anuales). */
   labels?: string[]
-  /** Cómo se leen los valores: importes (default) o porcentajes (métricas de servidores). */
-  formato?: 'moneda' | 'porcentaje'
+  /**
+   * Cómo se leen los valores: importes (default), porcentajes (métricas de servidores) o
+   * milisegundos (velocidad de sitios). Cambia el tick del eje Y y el tooltip; nada más.
+   */
+  formato?: 'moneda' | 'porcentaje' | 'ms'
 }>()
 
 const PALETA_CLARO = ['#0F7660', '#2563eb', '#ea7317', '#7c3aed', '#e34948', '#b45309', '#0891b2', '#db2777']
@@ -90,9 +93,15 @@ function construir(): void {
         },
         tooltip: {
           callbacks: {
-            label: (item) => (props.formato === 'porcentaje'
-              ? `${item.dataset.label}: ${Number(item.parsed.y).toFixed(1)}%`
-              : `${item.dataset.label}: $ ${Number(item.parsed.y).toLocaleString('es-AR')}`),
+            label: (item) => {
+              const v = Number(item.parsed.y);
+              if (props.formato === 'porcentaje') return `${item.dataset.label}: ${v.toFixed(1)}%`
+              // Arriba del segundo se lee mejor en segundos: «1.4 s» y no «1400 ms».
+              if (props.formato === 'ms') {
+                return `${item.dataset.label}: ${v >= 1000 ? `${(v / 1000).toFixed(2)} s` : `${Math.round(v)} ms`}`
+              }
+              return `${item.dataset.label}: $ ${v.toLocaleString('es-AR')}`
+            },
           },
         },
       },
@@ -104,9 +113,12 @@ function construir(): void {
           ticks: {
             color: ink,
             font: { size: 10 },
-            callback: (v) => (props.formato === 'porcentaje'
-              ? `${Math.round(Number(v))}%`
-              : `$${Math.round(Number(v) / 1000).toLocaleString('es-AR')}k`),
+            callback: (v) => {
+              const n = Number(v)
+              if (props.formato === 'porcentaje') return `${Math.round(n)}%`
+              if (props.formato === 'ms') return n >= 1000 ? `${(n / 1000).toFixed(1)}s` : `${Math.round(n)}ms`
+              return `$${Math.round(n / 1000).toLocaleString('es-AR')}k`
+            },
           },
           grid: { color: linea },
         },

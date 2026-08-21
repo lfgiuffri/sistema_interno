@@ -102,6 +102,24 @@ export const APP_CONFIG_KEYS = {
             return String(v);
         },
     },
+    MANTENIMIENTO_MARCADOR_ID: {
+        // Única clave de TEXTO: el resto son números. La UI necesita saberlo para no
+        // renderizar un `input type="number"`, que no dejaría escribir «app-conn-id».
+        tipo: 'texto',
+        label: 'Id del marcador de nuestros sitios',
+        description: 'El id del div que llevan nuestros sitios en el footer y que el chequeo busca para confirmar que lo que responde es nuestro. Cada vista puede pisarlo con el suyo.',
+        default: 'app-conn-id',
+        parse: (raw) => {
+            const v = String(raw ?? '').trim();
+            // Un id de HTML: letras, números, guiones, guiones bajos y dos puntos. Se valida
+            // en vez de escaparse nomás porque el valor termina en una expresión regular Y en
+            // el HTML del sitio: un id raro fallaría en un lugar distinto del que se editó.
+            if (!/^[A-Za-z][A-Za-z0-9_:-]{0,63}$/.test(v)) {
+                throw new Error('El id del marcador tiene que empezar con una letra y usar solo letras, números, guiones, guiones bajos o dos puntos (hasta 64)');
+            }
+            return v;
+        },
+    },
     TAREAS_DIAS_POR_VENCER: {
         label: 'Días de aviso de tareas por vencer',
         description: 'Con cuántos días de anticipación una tarea cuenta como "por vencer" (1 a 60).',
@@ -175,12 +193,19 @@ export const setAppConfig = async (models, name, rawValue) => {
 /**
  * Devuelve todas las claves de negocio con su valor vigente y metadata (para la UI).
  * @param {object} models - Modelos de la app.
- * @returns {Promise<Array<{name: string, label: string, description: string, value: string}>>}
+ * @returns {Promise<Array<{name: string, label: string, description: string, value: string, tipo: string}>>}
  */
 export const listAppConfig = async (models) => {
     const out = [];
     for (const [name, def] of Object.entries(APP_CONFIG_KEYS)) {
-        out.push({ name, label: def.label, description: def.description, value: await getAppConfig(models, name) });
+        // `tipo` default 'numero' porque casi todas las claves lo son; se declara explícito
+        // solo en las de texto. Inferirlo del default sería frágil: una clave de texto con
+        // default «30» se renderizaría como número.
+        out.push({
+            name, label: def.label, description: def.description,
+            tipo: def.tipo ?? 'numero',
+            value: await getAppConfig(models, name),
+        });
     }
     return out;
 };

@@ -11,6 +11,9 @@ export const defineSitioIncidenteModel = (db) => {
     const SitioIncidente = db.define('sitio_incidentes', {
         id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
         sitioId: { type: DataTypes.INTEGER, allowNull: false },
+        // Vista afectada. NULL para los incidentes que son del SITIO y no de una ruta:
+        // dominio y certificado son del host, así que no se parten por vista.
+        vistaId: { type: DataTypes.INTEGER, allowNull: true },
         tipo: { type: DataTypes.ENUM('offline', 'sin_marcador', 'dominio', 'tls'), allowNull: false },
         detalle: { type: DataTypes.STRING(255), allowNull: true },
         resueltoAt: { type: DataTypes.DATE, allowNull: true },
@@ -19,11 +22,12 @@ export const defineSitioIncidenteModel = (db) => {
         tableName: 'sitio_incidentes',
         timestamps: true,
         updatedAt: false,
-        indexes: [{ fields: ['sitioId', 'tipo', 'resueltoAt'] }]
+        indexes: [{ fields: ['sitioId', 'tipo', 'resueltoAt'] }, { fields: ['vistaId', 'tipo', 'resueltoAt'] }]
     });
 
     SitioIncidente.associate = (models) => {
         if (models.SitioWeb) SitioIncidente.belongsTo(models.SitioWeb, { foreignKey: 'sitioId' });
+        if (models.SitioVista) SitioIncidente.belongsTo(models.SitioVista, { foreignKey: 'vistaId', as: 'vista' });
     };
 
     return SitioIncidente;

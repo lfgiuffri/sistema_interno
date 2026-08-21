@@ -100,6 +100,62 @@ export interface SitioWeb {
   dominioEstado: EstadoVence
   tlsEstado: EstadoVence
   incidentes: string[]
+  // Resumen de las vistas: el `estado` de arriba ya es el PEOR de ellas.
+  vistasTotal: number
+  vistasOk: number
+  vistas: SitioVista[]
+}
+
+/**
+ * Una URL concreta que se chequea dentro de un sitio.
+ *
+ * `marcadorId` en null significa «usá el global» (la config `MANTENIMIENTO_MARCADOR_ID`), no
+ * «no busques marcador» — eso lo decide `verificaMarcador`.
+ */
+export interface SitioVista {
+  id: number
+  sitioId: number
+  ruta: string
+  nombre: string | null
+  verificaMarcador: boolean
+  marcadorId: string | null
+  estado: EstadoSitio
+  ultimoChequeoAt: string | null
+  ultimoCodigo: number | null
+  tiempoMs: number | null
+  fallosSeguidos: number
+  activo: boolean
+  orden: number
+}
+
+export interface SitioVistaInput {
+  ruta: string
+  nombre?: string | null
+  verificaMarcador?: boolean
+  marcadorId?: string | null
+  activo?: boolean
+}
+
+/** Un punto de la serie de velocidad (null en los períodos sin datos). */
+export interface PuntoVelocidad {
+  promedioMs: number | null
+  muestras: number
+  disponibilidad: number | null
+  minMs: number | null
+  maxMs: number | null
+}
+
+export interface SerieVelocidad {
+  granularidad: 'dia' | 'mes' | 'anio'
+  periodos: string[]
+  sitio: { id: number; nombre: string; url: string }
+  vistas: Array<{
+    id: number
+    ruta: string
+    nombre: string | null
+    activo: boolean
+    serie: Array<PuntoVelocidad | null>
+  }>
 }
 
 export interface SitioChequeo {
@@ -272,6 +328,50 @@ export const useMantenimientoStore = defineStore('mantenimiento', () => {
     } catch (e) { return toResult(e) }
   }
 
+  /* ─────────────────────── Vistas de un sitio ─────────────────────── */
+
+  async function fetchVistas(sitioId: number): Promise<SitioVista[]> {
+    try {
+      const { data } = await api.get(`/mantenimiento/sitios/${sitioId}/vistas`)
+      return data.success ? (data.data as SitioVista[]) : []
+    } catch { return [] }
+  }
+
+  /** Alta (sin `id`) o edición (con `id`) de una vista. */
+  async function saveVista(sitioId: number, input: SitioVistaInput, id?: number): Promise<Result> {
+    try {
+      const { data } = id
+        ? await api.put(`/mantenimiento/sitios/vistas/${id}`, input)
+        : await api.post(`/mantenimiento/sitios/${sitioId}/vistas`, input)
+      return { ok: !!data.success, message: data.message }
+    } catch (e) { return toResult(e) }
+  }
+
+  async function toggleVista(id: number): Promise<Result> {
+    try {
+      const { data } = await api.patch(`/mantenimiento/sitios/vistas/${id}/active`)
+      return { ok: !!data.success, message: data.message }
+    } catch (e) { return toResult(e) }
+  }
+
+  async function removeVista(id: number): Promise<Result> {
+    try {
+      const { data } = await api.delete(`/mantenimiento/sitios/vistas/${id}`)
+      return { ok: !!data.success, message: data.message }
+    } catch (e) { return toResult(e) }
+  }
+
+  /* ─────────────────────────── Velocidad ─────────────────────────── */
+
+  async function fetchVelocidad(sitioId: number, granularidad = 'dia', vistaId?: number): Promise<SerieVelocidad | null> {
+    try {
+      const { data } = await api.get(`/mantenimiento/sitios/${sitioId}/velocidad`, {
+        params: { granularidad, vistaId: vistaId || undefined },
+      })
+      return data.success ? (data.data as SerieVelocidad) : null
+    } catch { return null }
+  }
+
   function reset(): void {
     servidores.value = []
     sitios.value = []
@@ -281,6 +381,7 @@ export const useMantenimientoStore = defineStore('mantenimiento', () => {
     servidores, loading, fetchServidores, fetchServidor, save, regenerarToken, toggle, remove,
     sitios, loadingSitios, fetchSitios, fetchSitio, saveSitio, chequearSitio, consultarDominio,
     toggleSitio, removeSitio,
+    fetchVistas, saveVista, toggleVista, removeVista, fetchVelocidad,
     reset
   }
 })

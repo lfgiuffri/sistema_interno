@@ -17,7 +17,7 @@
           <input
             v-model="borrador[c.name]"
             class="valor-input"
-            type="number"
+            :type="c.tipo === 'texto' ? 'text' : 'number'"
             :min="1"
             :step="c.name === 'COTIZACION_DOLAR' ? '0.01' : '1'"
             :disabled="!puedeEditar"
@@ -62,7 +62,7 @@ import api, { apiErrorMessage } from '@/services/api'
 import { useToast } from '@/composables/useToast'
 import { useMeStore } from '@/stores/me'
 
-interface ClaveConfig { name: string; label: string; description: string; value: string }
+interface ClaveConfig { name: string; label: string; description: string; value: string; tipo?: string }
 
 const toast = useToast()
 const meStore = useMeStore()

@@ -294,6 +294,19 @@ export const buildOpenApiSpec = () => ({
         '/mantenimiento/sitios/{id}/chequear': { post: op('Chequeo manual de disponibilidad (no abre ni cierra incidentes)', 'Mantenimiento', auth) },
         '/mantenimiento/sitios/{id}/dominio': { post: op('Consultar por RDAP el vencimiento del dominio', 'Mantenimiento', auth) },
         '/mantenimiento/sitios/{id}/active': { patch: op('Activar/desactivar el monitoreo del sitio', 'Mantenimiento', auth) },
+        // Vistas: las URLs concretas que se chequean dentro de un sitio (`/`, `/ecommerce`…).
+        // Cada una con su propio «lo administramos nosotros» y su override del marcador.
+        '/mantenimiento/sitios/{id}/vistas': {
+            get: op('Vistas que se chequean del sitio', 'Mantenimiento', auth),
+            post: op('Agregar una vista al sitio', 'Mantenimiento', auth),
+        },
+        '/mantenimiento/sitios/{id}/vistas/orden': { put: op('Reordenar las vistas del sitio', 'Mantenimiento', auth) },
+        '/mantenimiento/sitios/vistas/{id}': {
+            put: op('Editar una vista', 'Mantenimiento', auth),
+            delete: op('Eliminar una vista (la última del sitio → 409)', 'Mantenimiento', auth),
+        },
+        '/mantenimiento/sitios/vistas/{id}/active': { patch: op('Activar/desactivar el chequeo de una vista', 'Mantenimiento', auth) },
+        '/mantenimiento/sitios/{id}/velocidad': { get: op('Serie de velocidad por día, mes o año (query: granularidad, vistaId)', 'Mantenimiento', auth) },
         '/agente/metricas': { post: op('Reporte del agente (auth por header x-agent-token, SIN sesión): cpu, ram, disco, discos[]', 'Mantenimiento') },
         '/health': { get: op('Salud del backend y su base (público, sin sesión): lo consulta el watchdog externo', 'Mantenimiento') },
         '/agente/instalar-agente.sh': { get: op('Instalador del agente (público, sin secretos)', 'Mantenimiento') },

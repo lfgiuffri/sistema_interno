@@ -53,6 +53,7 @@ export const defineSitioWebModel = (db) => {
         // (`servidores` → `servidore`) y el frontend necesita claves estables.
         if (models.Servicio) SitioWeb.belongsTo(models.Servicio, { foreignKey: 'servicioId', as: 'servicio' });
         if (models.Servidor) SitioWeb.belongsTo(models.Servidor, { foreignKey: 'servidorId', as: 'servidor' });
+        if (models.SitioVista) SitioWeb.hasMany(models.SitioVista, { foreignKey: 'sitioId', as: 'vistas' });
         if (models.SitioChequeo) SitioWeb.hasMany(models.SitioChequeo, { foreignKey: 'sitioId' });
         if (models.SitioIncidente) SitioWeb.hasMany(models.SitioIncidente, { foreignKey: 'sitioId' });
     };
