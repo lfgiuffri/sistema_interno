@@ -173,6 +173,12 @@ export const useTareasStore = defineStore('tareas', () => {
   const toggleLista = (eid: number, lid: number) => accion(() => api.patch(`/tareas/espacios/${eid}/listas/${lid}/active`))
   const restoreLista = (eid: number, lid: number) => accion(() => api.patch(`/tareas/espacios/${eid}/listas/${lid}/restore`))
   const removeLista = (eid: number, lid: number) => accion(() => api.delete(`/tareas/espacios/${eid}/listas/${lid}`))
+  /** Clona una lista con todas sus tareas (el backend numera el nombre: «… (copia 2)»). */
+  const clonarLista = (eid: number, lid: number, conTareas = true) =>
+    accion(() => api.post(`/tareas/espacios/${eid}/listas/${lid}/clonar`, { conTareas }))
+  /** Clona una tarea; sin `listaId` queda en la misma lista. */
+  const clonarTarea = (id: number, listaId?: number) =>
+    accion(() => api.post(`/tareas/${id}/clonar`, listaId ? { listaId } : {}))
 
   async function fetchTareas(espacioId: number, listaId: number, filtros: FiltrosTareas) {
     const params = Object.fromEntries(Object.entries(filtros).filter(([, v]) => v !== undefined && v !== ''))
@@ -238,7 +244,8 @@ export const useTareasStore = defineStore('tareas', () => {
     homeEspacios, miResumen, diasPorVencer, loading,
     fetchHome, fetchListas, saveLista, toggleLista, restoreLista, removeLista,
     fetchTareas, fetchTarea, createTarea, updateTarea, updateRapida, cambiarEstado,
-    moverTarea, removeTarea, fetchAsignables, fetchResumen, subirArchivo, removeArchivo,
+    moverTarea, removeTarea, clonarTarea, clonarLista,
+    fetchAsignables, fetchResumen, subirArchivo, removeArchivo,
     addComentario, removeComentario,
     reset,
   }

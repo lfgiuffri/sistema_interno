@@ -5,7 +5,7 @@ import * as controller from '../controllers/tareas.controller.js';
 import {
     validateId, validateEspacioId, validateEspacioLista, validateLista, validateListaUpdate,
     validateListTareas, validateCreate, validateUpdate, validateRapida, validateEstado,
-    validateMover, validateArchivoId, validateComentario
+    validateMover, validateArchivoId, validateClonarTarea, validateClonarLista, validateComentario
 } from '../validators/tareas.validator.js';
 
 const router = Router();
@@ -25,6 +25,8 @@ router.put('/espacios/:eid/listas/:lid', requireCapability('tareas:update'), val
 router.patch('/espacios/:eid/listas/:lid/active', requireCapability('tareas:update'), validateEspacioLista, controller.toggleLista);
 router.patch('/espacios/:eid/listas/:lid/restore', requireCapability('tareas:update'), validateEspacioLista, controller.restoreLista);
 router.delete('/espacios/:eid/listas/:lid', requireCapability('tareas:update'), validateEspacioLista, controller.removeLista);
+// Clonar una lista CREA una lista y tareas, así que pide `tareas:create` y no `tareas:update`.
+router.post('/espacios/:eid/listas/:lid/clonar', requireCapability('tareas:create'), validateClonarLista, controller.clonarLista);
 
 // Listado central de tareas.
 router.get('/espacios/:eid/listas/:lid/tareas', requireCapability('tareas:read'), validateListTareas, controller.listTareas);
@@ -45,6 +47,7 @@ router.put('/:id', requireCapability('tareas:update'), validateUpdate, controlle
 router.patch('/:id/rapida', requireCapability('tareas:update'), validateRapida, controller.updateRapida);
 router.patch('/:id/estado', requireCapability('tareas:estado'), validateEstado, controller.estado);
 router.patch('/:id/mover', requireCapability('tareas:update'), validateMover, controller.mover);
+router.post('/:id/clonar', requireCapability('tareas:create'), validateClonarTarea, controller.clonar);
 router.delete('/:id', requireCapability('tareas:delete'), validateId, controller.remove);
 
 export default router;

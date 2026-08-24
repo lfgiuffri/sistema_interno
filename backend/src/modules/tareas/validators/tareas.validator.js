@@ -105,6 +105,22 @@ export const validateMover = [
     validator
 ];
 
+export const validateClonarTarea = [
+    param('id').isInt({ min: 1 }),
+    // Sin lista destino se clona en la misma; sin nombre se numera solo («… (copia 2)»).
+    body('listaId').optional().isInt({ min: 1 }),
+    body('nombre').optional().isString().trim().isLength({ max: 200 }),
+    validator
+];
+
+export const validateClonarLista = [
+    param('eid').isInt({ min: 1 }),
+    param('lid').isInt({ min: 1 }),
+    body('nombre').optional().isString().trim().isLength({ max: 100 }),
+    body('conTareas').optional().isBoolean().toBoolean(),
+    validator
+];
+
 export const validateComentario = [
     param('id').isInt({ min: 1 }),
     body('texto').isString().trim().notEmpty().withMessage('El comentario no puede estar vacío').isLength({ max: 2000 }),

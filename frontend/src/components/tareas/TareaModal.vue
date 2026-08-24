@@ -16,7 +16,7 @@ import { ref, computed, watch, nextTick } from 'vue'
 import { IonIcon, alertController } from '@ionic/vue'
 import {
   timeOutline, attachOutline, downloadOutline, trashOutline,
-  chatbubbleOutline, sendOutline,
+  chatbubbleOutline, sendOutline, copyOutline,
 } from 'ionicons/icons'
 import { useTareasStore, ESTADOS_TAREA, PRIORIDADES, type TareaDetalle } from '@/stores/tareas'
 import { useMeStore } from '@/stores/me'
@@ -61,6 +61,17 @@ const adjuntosPendientes = ref<AdjuntoVista[]>([])
  * no se puede destildar: es donde estás parado.
  */
 const listasExtra = ref<number[]>([])
+/** ¿Está desplegado el selector de listas extra? Arranca cerrado. */
+const mostrarListasExtra = ref(false)
+
+/** Las listas del espacio menos donde ya estamos parados. */
+const otrasListas = computed(() => (props.listasDelEspacio ?? []).filter(l => l.id !== props.listaId))
+
+/** Cerrar el selector limpia la selección: dejarla puesta y oculta crearía tareas sorpresa. */
+function cerrarListasExtra(): void {
+  listasExtra.value = []
+  mostrarListasExtra.value = false
+}
 
 const form = ref({
   nombre: '',
@@ -100,6 +111,7 @@ watch(() => props.open, async (v) => {
   detalle.value = null
   adjuntosPendientes.value = []
   listasExtra.value = []
+  mostrarListasExtra.value = false
   if (props.tareaId === null) {
     // Alta preasignada a mí, prioridad verde (regla del legado).
     form.value = {
@@ -393,24 +405,45 @@ async function borrarAdjunto(id: number): Promise<void> {
                 </div>
               </div>
 
-              <!-- Repetir en varias listas: solo al crear. Editando, mover es otra acción. -->
+              <!--
+                Repetir en varias listas: solo al crear (editando, mover es otra acción).
+                Va COLAPSADO: es una opción que casi no se usa y un espacio con 60 listas
+                llenaba media pantalla de chips antes de llegar a la descripción.
+              -->
               <div v-if="!esEdicion && (listasDelEspacio?.length ?? 0) > 1">
-                <span class="ds-label">Crear también en</span>
-                <div class="flex flex-wrap gap-1.5">
-                  <label
-                    v-for="l in listasDelEspacio!.filter(x => x.id !== listaId)"
-                    :key="l.id"
-                    class="lista-chip"
-                    :class="{ 'lista-chip-on': listasExtra.includes(l.id) }"
+                <button
+                  v-if="!mostrarListasExtra"
+                  type="button" class="ds-btn-ghost h-7 -ml-2 text-xs"
+                  @click="mostrarListasExtra = true"
+                >
+                  <IonIcon :icon="copyOutline" class="text-[13px]" />
+                  Crear también en otras listas
+                </button>
+
+                <template v-else>
+                  <label class="ds-label" for="listas-extra">Crear también en</label>
+                  <select
+                    id="listas-extra" v-model="listasExtra" class="ds-input py-1"
+                    multiple :size="Math.min(6, listasDelEspacio!.length - 1)"
                   >
-                    <input v-model="listasExtra" type="checkbox" :value="l.id" class="sr-only" />
-                    {{ l.nombre }}
-                  </label>
-                </div>
-                <p v-if="listasExtra.length" class="ds-hint mt-1">
-                  Se van a crear {{ listasExtra.length + 1 }} tareas independientes, una por lista,
-                  cada una con su copia de los adjuntos.
-                </p>
+                    <option v-for="l in otrasListas" :key="l.id" :value="l.id">{{ l.nombre }}</option>
+                  </select>
+                  <p class="ds-hint mt-1">
+                    <template v-if="listasExtra.length">
+                      Se van a crear {{ listasExtra.length + 1 }} tareas independientes, una por
+                      lista, cada una con su copia de los adjuntos.
+                    </template>
+                    <template v-else>
+                      Ctrl (o ⌘) para elegir varias. La tarea siempre se crea en esta lista.
+                    </template>
+                  </p>
+                  <button
+                    type="button" class="ds-btn-ghost h-7 -ml-2 text-xs mt-1"
+                    aria-label="Crear solo en esta lista" @click="cerrarListasExtra"
+                  >
+                    Solo en esta lista
+                  </button>
+                </template>
               </div>
 
               <div ref="descripcionRef">
@@ -570,18 +603,6 @@ async function borrarAdjunto(id: number): Promise<void> {
 </template>
 
 <style scoped>
-.lista-chip {
-  display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 999px;
-  border: 1px solid rgb(var(--s-line)); background: rgb(var(--s-surface));
-  font-size: 0.75rem; color: rgb(var(--s-ink-soft)); cursor: pointer; user-select: none;
-  transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
-}
-.lista-chip:hover { background: rgb(var(--s-surface-2)); }
-.lista-chip-on {
-  background: rgb(var(--s-accent-soft)); border-color: rgb(var(--s-accent) / 0.35);
-  color: rgb(var(--s-accent-ink)); font-weight: 500;
-}
-
 .pill {
   height: 26px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 500;
   color: var(--c); background: color-mix(in srgb, var(--c) 10%, transparent);

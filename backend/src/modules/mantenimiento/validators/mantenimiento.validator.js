@@ -97,7 +97,7 @@ export const validateOrdenVistas = [
 
 export const validateVelocidad = [
     param('id').isInt({ min: 1 }),
-    query('granularidad').optional().isIn(['dia', 'mes', 'anio']).withMessage('La granularidad tiene que ser dia, mes o anio'),
+    query('granularidad').optional().isIn(['hora', 'dia', 'mes', 'anio']).withMessage('La granularidad tiene que ser hora, dia, mes o anio'),
     query('vistaId').optional().isInt({ min: 1 }).toInt(),
     validator
 ];

@@ -5,6 +5,10 @@
  *  - **Detalle** (`sitio_chequeos`): un registro cada 5 minutos, se purga a los 30 días.
  *  - **Rollup diario** (`sitio_velocidad_dia`): una fila por vista y día, **permanente**.
  *
+ * La granularidad **por hora** sale siempre del detalle y de ningún otro lado: el rollup es
+ * diario, así que una vez purgado el detalle la hora ya no se puede reconstruir. Por eso su
+ * ventana es la del detalle (últimas 48 horas de las 30 días disponibles) y no «todo».
+ *
  * Sin el rollup, «¿el sitio está más lento que el año pasado?» no tendría respuesta: el
  * detalle de hace un año ya no existe. Y con SOLO el detalle, el día de hoy quedaría afuera
  * hasta que corra la tarea nocturna. Así que el día se responde con las dos: rollup para los
@@ -17,7 +21,7 @@
 import { Op, fn, col, literal } from 'sequelize';
 
 /** Granularidades soportadas. */
-export const GRANULARIDADES = ['dia', 'mes', 'anio'];
+export const GRANULARIDADES = ['hora', 'dia', 'mes', 'anio'];
 
 /**
  * Rollup del día indicado: agrega los chequeos de una fecha en `sitio_velocidad_dia`.
@@ -124,14 +128,93 @@ const EXPR_PERIODO = {
  * Un mes de días, dos años de meses y todo lo que haya de años: es lo que entra en un gráfico
  * de línea sin volverse ilegible.
  */
-const VENTANA = { dia: 30, mes: 24, anio: 10 };
+const VENTANA = { hora: 48, dia: 30, mes: 24, anio: 10 };
+
+/**
+ * Serie POR HORA, calculada del detalle.
+ *
+ * No hay rollup horario: guardarlo sería 24 filas por vista y día para responder una pregunta
+ * que solo tiene sentido sobre lo reciente («¿a qué hora se puso lento hoy?»). El detalle ya
+ * tiene la respuesta mientras existe, y cuando se purga la pregunta deja de importar.
+ * @param {object} models - Modelos de la app.
+ * @param {number[]} vistaIds - Vistas.
+ * @param {number} horas - Cuántas horas hacia atrás.
+ * @returns {Promise<Array<{vistaId: number, periodo: string, muestras: number, promedioMs: number|null, minMs: number|null, maxMs: number|null, disponibilidad: number|null}>>}
+ */
+const porHora = async (models, vistaIds, horas) => {
+    const { SitioChequeo } = models;
+    const desde = new Date(Date.now() - horas * 3600 * 1000);
+    const expr = literal("DATE_FORMAT(createdAt, '%Y-%m-%d %H:00')");
+
+    const filas = await SitioChequeo.findAll({
+        attributes: [
+            'vistaId',
+            [expr, 'periodo'],
+            [fn('COUNT', col('id')), 'muestras'],
+            // Mismo criterio que el resto: un timeout es una caída, no latencia.
+            [fn('AVG', literal("CASE WHEN estado <> 'offline' THEN tiempoMs END")), 'promedioMs'],
+            [fn('MIN', literal("CASE WHEN estado <> 'offline' THEN tiempoMs END")), 'minMs'],
+            [fn('MAX', literal("CASE WHEN estado <> 'offline' THEN tiempoMs END")), 'maxMs'],
+            [fn('SUM', literal("CASE WHEN estado = 'online' THEN 1 ELSE 0 END")), 'online'],
+        ],
+        where: { vistaId: { [Op.in]: vistaIds }, createdAt: { [Op.gte]: desde } },
+        group: ['vistaId', expr],
+        order: [[expr, 'ASC']],
+        raw: true,
+    });
+
+    return filas.map((f) => {
+        const muestras = Number(f.muestras) || 0;
+        return {
+            vistaId: f.vistaId,
+            periodo: String(f.periodo),
+            muestras,
+            promedioMs: f.promedioMs == null ? null : Math.round(Number(f.promedioMs)),
+            minMs: f.minMs == null ? null : Number(f.minMs),
+            maxMs: f.maxMs == null ? null : Number(f.maxMs),
+            disponibilidad: muestras ? Math.round((Number(f.online) / muestras) * 10000) / 100 : null,
+        };
+    });
+};
+
+/**
+ * Arma la respuesta final: la ventana de períodos y una serie por vista alineada con ella.
+ * @param {string} granularidad - hora | dia | mes | anio.
+ * @param {object[]} vistas - Vistas del sitio.
+ * @param {object[]} datos - Filas agregadas (de donde sea que vengan).
+ * @returns {{granularidad: string, periodos: string[], vistas: object[]}}
+ */
+const armarRespuesta = (granularidad, vistas, datos) => {
+    // Ventana: los últimos N períodos CON DATOS, no un rango de fechas fijo. Un sitio dado de
+    // alta ayer tiene que verse igual de bien que uno con dos años de historia.
+    const periodos = [...new Set(datos.map(d => d.periodo))].sort().slice(-VENTANA[granularidad]);
+
+    return {
+        granularidad,
+        periodos,
+        vistas: vistas.map(v => ({
+            id: v.id,
+            ruta: v.ruta,
+            nombre: v.nombre,
+            activo: v.activo,
+            // Serie alineada con `periodos`: null donde no hubo datos. El gráfico necesita el
+            // hueco explícito para cortar la línea en vez de unir dos períodos lejanos.
+            serie: periodos.map((p) => {
+                const d = datos.find(x => x.vistaId === v.id && x.periodo === p);
+                return d
+                    ? { promedioMs: d.promedioMs, muestras: d.muestras, disponibilidad: d.disponibilidad, minMs: d.minMs, maxMs: d.maxMs }
+                    : null;
+            }),
+        })),
+    };
+};
 
 /**
  * Serie de velocidad de un sitio, por vista.
  * @param {object} models - Modelos de la app.
  * @param {number} sitioId - Sitio.
  * @param {object} [opts] - Opciones.
- * @param {string} [opts.granularidad] - dia | mes | anio.
+ * @param {string} [opts.granularidad] - hora | dia | mes | anio.
  * @param {number} [opts.vistaId] - Solo una vista (default: todas).
  * @returns {Promise<{granularidad: string, periodos: string[], vistas: object[]}>}
  */
@@ -147,6 +230,13 @@ export const velocidadDeSitio = async (models, sitioId, opts = {}) => {
     const vistas = filas0.map(v => v.toJSON());
     if (!vistas.length) return { granularidad, periodos: [], vistas: [] };
     const vistaIds = vistas.map(v => v.id);
+
+    // Por hora no hay rollup: sale del detalle y se saltea todo el camino de abajo (agregar
+    // el rollup y pegarle el parcial de hoy no aplica cuando el período YA es más chico que
+    // el día).
+    if (granularidad === 'hora') {
+        return armarRespuesta(granularidad, vistas, await porHora(models, vistaIds, VENTANA.hora));
+    }
 
     const expr = EXPR_PERIODO[granularidad];
     const filas = await SitioVelocidadDia.findAll({
@@ -196,25 +286,5 @@ export const velocidadDeSitio = async (models, sitioId, opts = {}) => {
         }
     }
 
-    // Ventana: los últimos N períodos con datos, no un rango de fechas fijo. Un sitio que se
-    // dio de alta ayer tiene que verse igual de bien que uno con dos años de historia.
-    const periodos = [...new Set(datos.map(d => d.periodo))].sort().slice(-VENTANA[granularidad]);
-    const dentro = new Set(periodos);
-
-    return {
-        granularidad,
-        periodos,
-        vistas: vistas.map(v => ({
-            id: v.id,
-            ruta: v.ruta,
-            nombre: v.nombre,
-            activo: v.activo,
-            // Una serie alineada con `periodos`: null donde no hubo datos. El gráfico necesita
-            // el hueco explícito para cortar la línea en vez de unir dos meses lejanos.
-            serie: periodos.map((p) => {
-                const d = datos.find(x => x.vistaId === v.id && x.periodo === p);
-                return d ? { promedioMs: d.promedioMs, muestras: d.muestras, disponibilidad: d.disponibilidad, minMs: d.minMs, maxMs: d.maxMs } : null;
-            }),
-        })),
-    };
+    return armarRespuesta(granularidad, vistas, datos);
 };

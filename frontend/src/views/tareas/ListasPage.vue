@@ -11,7 +11,7 @@ import {
 } from '@ionic/vue'
 import {
   chevronBackOutline, addOutline, searchOutline, createOutline, trashOutline,
-  powerOutline, listOutline,
+  powerOutline, listOutline, copyOutline,
 } from 'ionicons/icons'
 import { useTareasStore, type ListaRow } from '@/stores/tareas'
 import ThOrdenable from '@/components/shared/ThOrdenable.vue'
@@ -28,6 +28,8 @@ const toast = useToast()
 const espacioId = computed(() => Number(route.params.eid) || 0)
 const espacio = ref<{ id: number; nombre: string; activo: boolean } | null>(null)
 const puedeEditar = ref(false)
+/** Lista que se está clonando (para deshabilitar el botón: puede tardar con muchas tareas). */
+const clonando = ref<number | null>(null)
 const listas = ref<ListaRow[]>([])
 const loading = ref(false)
 const busqueda = ref('')
@@ -108,6 +110,38 @@ async function toggle(lista: ListaRow): Promise<void> {
   const r = await tareasStore.toggleLista(espacioId.value, lista.id)
   if (!r.ok) { toast.error(r.message); return }
   toast.success('Estado de la lista cambiado')
+  await load()
+}
+
+/**
+ * Clona una lista con todas sus tareas. Se pide confirmación porque con muchas tareas es una
+ * operación grande (cada adjunto se copia también) y el botón está al lado de «desactivar».
+ */
+async function clonar(lista: ListaRow): Promise<void> {
+  const alert = await alertController.create({
+    header: 'Clonar la lista',
+    message: `Se va a crear una copia de «${lista.nombre}» con todas sus tareas. Las tareas copiadas arrancan abiertas.`,
+    buttons: [
+      { text: 'Cancelar', role: 'cancel' },
+      { text: 'Solo la lista', role: 'sola' },
+      { text: 'Clonar con tareas', role: 'confirm' },
+    ],
+  })
+  await alert.present()
+  const { role } = await alert.onDidDismiss()
+  if (role !== 'confirm' && role !== 'sola') return
+
+  clonando.value = lista.id
+  const r = await tareasStore.clonarLista(espacioId.value, lista.id, role === 'confirm')
+  clonando.value = null
+  if (!r.ok) { toast.error(r.message); return }
+
+  const d = r.data as { lista: { nombre: string }; tareas: number; errores: unknown[] } | undefined
+  toast.success(d?.tareas
+    ? `«${d.lista.nombre}» creada con ${d.tareas} tarea(s)`
+    : `«${d?.lista.nombre}» creada`)
+  // Si alguna tarea no se pudo clonar se avisa: quedarse callado haría creer que está completa.
+  if (d?.errores?.length) toast.error(`${d.errores.length} tarea(s) no se pudieron clonar`)
   await load()
 }
 
@@ -216,6 +250,13 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
                   <div v-if="puedeEditar" class="flex items-center justify-end gap-0.5">
                     <button class="row-action" title="Editar" aria-label="Editar" @click="abrirModal(l)">
                       <IonIcon :icon="createOutline" class="text-[15px]" />
+                    </button>
+                    <button
+                      class="row-action" :disabled="clonando === l.id"
+                      title="Clonar la lista con todas sus tareas" aria-label="Clonar la lista"
+                      @click="clonar(l)"
+                    >
+                      <IonIcon :icon="copyOutline" class="text-[15px]" :class="{ 'animate-pulse': clonando === l.id }" />
                     </button>
                     <button class="row-action" :title="l.activa ? 'Desactivar' : 'Activar'" aria-label="Activar o desactivar" @click="toggle(l)">
                       <IonIcon :icon="powerOutline" class="text-[15px]" />

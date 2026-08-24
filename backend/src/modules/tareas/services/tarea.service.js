@@ -810,6 +810,197 @@ export const createTareaEnListas = async (models, user, data, io = null) => {
     return { creadas, errores };
 };
 
+/* ─────────────────────────────── Clonar ─────────────────────────────── */
+
+/**
+ * Nombre libre para una copia: «X (copia)», y si ya existe «X (copia 2)», «X (copia 3)»…
+ *
+ * Se numera en vez de fallar con un 409 porque clonar dos veces la misma cosa es normal
+ * («armo tres proyectos iguales a partir de este») y hacer que el usuario invente el nombre
+ * cada vez convierte un clic en un formulario.
+ * @param {string} base - Nombre del original.
+ * @param {Set<string>} ocupados - Nombres que ya están en uso (en minúsculas).
+ * @param {number} maxLargo - Largo máximo de la columna (tarea 200, lista 100).
+ * @returns {string} Un nombre libre.
+ */
+export const nombreDeCopia = (base, ocupados, maxLargo) => {
+    /**
+     * Recorta el nombre para que el sufijo entre dentro del largo de la columna.
+     * @param {string} sufijo - Sufijo a agregar.
+     * @returns {string} Nombre completo, recortado si hacía falta.
+     */
+    const armar = (sufijo) => {
+        const tope = maxLargo - sufijo.length;
+        return `${base.length > tope ? base.slice(0, tope).trimEnd() : base}${sufijo}`;
+    };
+    let candidato = armar(' (copia)');
+    let n = 2;
+    while (ocupados.has(candidato.toLowerCase())) {
+        candidato = armar(` (copia ${n})`);
+        n += 1;
+    }
+    return candidato;
+};
+
+/**
+ * Copia los adjuntos de una tarea a otra (cada copia con su propio archivo en disco).
+ * @param {object} models - Modelos de la app.
+ * @param {number} origenId - Tarea de origen.
+ * @param {number} destinoId - Tarea de destino.
+ * @returns {Promise<number>} Cuántos se copiaron.
+ */
+const copiarAdjuntos = async (models, origenId, destinoId) => {
+    const { duplicarArchivo } = await import('./archivo.service.js');
+    const archivos = await models.TareaArchivo.findAll({ where: { tareaId: origenId }, attributes: ['id'], raw: true });
+    let copiados = 0;
+    for (const a of archivos) {
+        // Si un binario se perdió del disco, `duplicarArchivo` devuelve null: se saltea en vez
+        // de abortar el clon entero por un adjunto que ya no está.
+        if (await duplicarArchivo(models, a.id, destinoId)) copiados += 1;
+    }
+    return copiados;
+};
+
+/**
+ * Clona una tarea: una tarea nueva e independiente con los mismos datos.
+ *
+ * Qué se copia y qué no, y por qué:
+ *  - **Sí**: nombre (con sufijo de copia), descripción, prioridad, fechas, asignado y una
+ *    **copia propia** de cada adjunto — así borrar una no toca a la otra.
+ *  - **No**: el estado, que arranca en `abierta`. Clonar una tarea completada es justamente
+ *    para volver a hacerla; heredar «completada» dejaría el clon terminado antes de empezar.
+ *  - **No**: el historial ni los comentarios. Son de lo que pasó en la tarea original; el clon
+ *    arranca con su propia entrada de creación.
+ * @param {object} models - Modelos de la app.
+ * @param {object} user - Usuario del request.
+ * @param {number} id - Tarea a clonar.
+ * @param {object} [opts] - Opciones.
+ * @param {number} [opts.listaId] - Lista destino (default: la misma).
+ * @param {string} [opts.nombre] - Nombre del clon (default: «… (copia)»).
+ * @param {boolean} [opts.conservarNombre] - Deja el nombre TAL CUAL, sin sufijo de copia (lo
+ *   usa el clon de una lista completa: dentro de una lista nueva no hay con qué chocar).
+ * @param {object|null} [io] - Socket.IO.
+ * @returns {Promise<object>} El detalle de la tarea nueva.
+ */
+export const clonarTarea = async (models, user, id, opts = {}, io = null) => {
+    const { Tarea, Lista } = models;
+    const orig = await Tarea.findByPk(id);
+    if (!orig) throw bizError(404, 'Tarea no encontrada');
+    // Se exige editar el espacio del ORIGEN (para leerlo) y el del DESTINO (para escribir):
+    // clonar de un espacio al que entro hacia uno donde no puedo escribir no es válido.
+    await exigirEspacioEditar(models, user, orig.espacioId);
+
+    const destino = opts.listaId ? await Lista.findByPk(opts.listaId) : await Lista.findByPk(orig.listaId);
+    if (!destino) throw bizError(404, 'Lista destino no encontrada');
+    if (destino.espacioId !== orig.espacioId) await exigirEspacioEditar(models, user, destino.espacioId);
+
+    let nombre = opts.nombre?.trim();
+    if (!nombre && opts.conservarNombre) nombre = orig.nombre;
+    if (!nombre) {
+        // Solo se consultan los nombres de la lista destino: las tareas no tienen unicidad,
+        // pero repetir el nombre exacto en la misma lista deja dos filas indistinguibles.
+        const hermanas = await Tarea.findAll({ where: { listaId: destino.id }, attributes: ['nombre'], raw: true });
+        nombre = nombreDeCopia(orig.nombre, new Set(hermanas.map(h => h.nombre.toLowerCase())), 200);
+    }
+
+    const clon = await Tarea.sequelize.transaction(async (tx) => {
+        const nueva = await Tarea.create({
+            espacioId: destino.espacioId,
+            listaId: destino.id,
+            nombre,
+            // La descripción ya está saneada en el original: se copia tal cual.
+            descripcion: orig.descripcion,
+            asignadoA: orig.asignadoA,
+            creadoPor: user.id,
+            prioridad: orig.prioridad,
+            estado: 'abierta',
+            fechaInicio: orig.fechaInicio,
+            fechaVencimiento: orig.fechaVencimiento,
+        }, { transaction: tx });
+        await registrarEstado(models, nueva.id, null, 'abierta', user.id, { transaction: tx });
+        return nueva;
+    });
+
+    // Las imágenes del cuerpo se ligan igual que en un alta: el HTML apunta a los archivos del
+    // original, así que se duplican para que borrar el original no vacíe el clon.
+    await copiarAdjuntos(models, orig.id, clon.id);
+
+    if (clon.asignadoA && clon.asignadoA !== user.id) {
+        await notificar(models, io, {
+            userId: clon.asignadoA, tipo: 'tarea-asignada',
+            titulo: 'Te asignaron una tarea',
+            cuerpo: clon.nombre, url: urlDeTarea(clon),
+        });
+    }
+    return getTarea(models, user, clon.id);
+};
+
+/**
+ * Clona una lista **con todas sus tareas**.
+ *
+ * Es la operación «usar esto como plantilla»: sirve para repetir un checklist en un proyecto
+ * nuevo. Por eso las tareas clonadas arrancan todas en `abierta` — una plantilla con la mitad
+ * de los ítems ya completados no sirve de plantilla.
+ *
+ * Las tareas ELIMINADAS de la lista original no se clonan (el `findAll` es paranoid): estaban
+ * borradas, y resucitarlas en la copia sería una sorpresa.
+ * @param {object} models - Modelos de la app.
+ * @param {object} user - Usuario del request.
+ * @param {number} espacioId - Espacio contenedor.
+ * @param {number} listaId - Lista a clonar.
+ * @param {object} [data] - Opciones.
+ * @param {string} [data.nombre] - Nombre de la copia (default: «… (copia)»).
+ * @param {boolean} [data.conTareas] - Si clona las tareas (default true).
+ * @returns {Promise<{lista: object, tareas: number, errores: Array<{tareaId: number, motivo: string}>}>}
+ */
+export const clonarLista = async (models, user, espacioId, listaId, data = {}) => {
+    const { Lista, Tarea } = models;
+    await buscarEspacio(models, espacioId);
+    await exigirEspacioEditar(models, user, espacioId);
+
+    const orig = await Lista.findOne({ where: { id: listaId, espacioId } });
+    if (!orig) return null;
+
+    let nombre = data.nombre?.trim();
+    if (nombre) {
+        // Nombre elegido a mano: se valida como en un alta normal (incluido el 409 de
+        // «existió y está eliminada», que ofrece reactivar en vez de bloquear sin salida).
+        await checkListaUnica(models, espacioId, nombre);
+    } else {
+        // Automático: se miran también las ELIMINADAS, porque `checkListaUnica` rechaza
+        // chocar con una de esas y el numerado tiene que saltearlas para no elegir un nombre
+        // que después va a fallar.
+        const todas = await Lista.findAll({ where: { espacioId }, attributes: ['nombre'], paranoid: false, raw: true });
+        nombre = nombreDeCopia(orig.nombre, new Set(todas.map(l => l.nombre.toLowerCase())), 100);
+    }
+
+    const copia = await Lista.create({
+        espacioId,
+        nombre,
+        descripcion: orig.descripcion,
+        activa: orig.activa,
+    });
+
+    if (data.conTareas === false) return { lista: copia, tareas: 0, errores: [] };
+
+    // Se clonan en el orden original para que la lista nueva se lea igual que la vieja.
+    const tareas = await Tarea.findAll({ where: { listaId: orig.id }, order: [['id', 'ASC']], attributes: ['id'], raw: true });
+    const errores = [];
+    let clonadas = 0;
+    for (const tarea of tareas) {
+        try {
+            // La lista destino está recién creada y vacía, así que no hay con qué chocar: las
+            // tareas conservan su nombre. Ponerle «(copia)» a 40 tareas sería ruido.
+            await clonarTarea(models, user, tarea.id, { listaId: copia.id, conservarNombre: true });
+            clonadas += 1;
+        } catch (e) {
+            // Una tarea que falla no aborta el resto: se informa y se sigue.
+            errores.push({ tareaId: tarea.id, motivo: e.message });
+        }
+    }
+    return { lista: copia, tareas: clonadas, errores };
+};
+
 /**
  * Edición COMPLETA (modal completo): todos los campos menos la lista (mover es otra acción).
  * @param {object} models - Modelos de la app.

@@ -147,6 +147,13 @@ Dos fuentes, y la distinción es el punto de todo esto:
 | `sitio_chequeos` | un registro cada 5 minutos | **30 días** (se purga) |
 | `sitio_velocidad_dia` | una fila por vista y día | **para siempre** |
 
+Cuatro granularidades: **hora**, **día**, **mes** y **año**. La hora sale **siempre del
+detalle** y de ningún otro lado — el rollup es diario, así que una vez purgado el detalle la
+hora ya no se puede reconstruir. Por eso su ventana son las últimas 48 horas (de los 30 días
+que hay) y no «todo». No se guarda un rollup horario a propósito: serían 24 filas por vista y
+por día para responder una pregunta que solo tiene sentido sobre lo reciente («¿a qué hora se
+puso lento hoy?»), y cuando el detalle se purga la pregunta deja de importar.
+
 Sin el rollup, «¿el sitio está más lento que el año pasado?» no tendría respuesta: el detalle de
 hace un año ya no existe. El resumen se consolida en la tarea diaria **antes** de purgar — el
 orden importa, purgar primero borraría el dato sin resumirlo. Se consolidan los **últimos 7

@@ -223,14 +223,14 @@ test.describe('M21: Mantenimiento — Sitios web', () => {
     expect(revivida.data.estado).toBe('desconocido');
   });
 
-  test('M21.13 - velocidad: día/mes/año, granularidad inválida → 422', async ({ adminApi, authedApi }) => {
+  test('M21.13 - velocidad: hora/día/mes/año, granularidad inválida → 422', async ({ adminApi, authedApi }) => {
     const alta = await adminApi.post(APP_ENDPOINTS.sitios, {
       data: { nombre: makeNombre('Sitio Velocidad').nombre, url: `https://veloc-${Date.now()}.test`, verificaMarcador: false },
     });
     const sitioId = (await alta.json()).data.id;
     cleanup.push(`${APP_ENDPOINTS.sitios}/${sitioId}`);
 
-    for (const granularidad of ['dia', 'mes', 'anio']) {
+    for (const granularidad of ['hora', 'dia', 'mes', 'anio']) {
       const body = await expectSuccess(await adminApi.get(`${APP_ENDPOINTS.sitios}/${sitioId}/velocidad?granularidad=${granularidad}`), 200);
       expect(body.data.granularidad).toBe(granularidad);
       expect(Array.isArray(body.data.periodos)).toBe(true);
@@ -240,6 +240,8 @@ test.describe('M21: Mantenimiento — Sitios web', () => {
       expect(body.data.vistas[0].serie).toHaveLength(body.data.periodos.length);
     }
 
+    // «Por hora» sale SIEMPRE del detalle de chequeos: el rollup es diario, así que una vez
+    // purgado el detalle la hora ya no se puede reconstruir.
     await expectError(await adminApi.get(`${APP_ENDPOINTS.sitios}/${sitioId}/velocidad?granularidad=siglo`), 422);
     await expectError(await adminApi.get(`${APP_ENDPOINTS.sitios}/999999/velocidad`), 404);
     // El fixture no tiene sitios:read.

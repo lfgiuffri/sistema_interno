@@ -279,6 +279,42 @@ export const mover = async (req, res) => {
 };
 
 /**
+ * POST /tareas/:id/clonar — duplica una tarea (opcionalmente en otra lista).
+ * @param {import('express').Request} req - Request.
+ * @param {import('express').Response} res - Response.
+ * @returns {Promise<void>} 201 con el detalle de la tarea nueva.
+ */
+export const clonar = async (req, res) => {
+    try {
+        const { id, ...opts } = matchedData(req);
+        const tarea = await tareaService.clonarTarea(req.models, req.user, id, opts, req.io);
+        if (req.io) req.io.to('app').emit('tarea:creada', { id: tarea.id, espacioId: tarea.espacioId, listaId: tarea.listaId });
+        return await responseManager(201, tarea, req, res, false);
+    } catch (e) { return bizCatch(e, req, res); }
+};
+
+/**
+ * POST /tareas/espacios/:eid/listas/:lid/clonar — duplica una lista con todas sus tareas.
+ * @param {import('express').Request} req - Request.
+ * @param {import('express').Response} res - Response.
+ * @returns {Promise<void>} 201 con la lista nueva y cuántas tareas se clonaron, o 404.
+ */
+export const clonarLista = async (req, res) => {
+    try {
+        const { eid, lid, ...data } = matchedData(req);
+        const r = await tareaService.clonarLista(req.models, req.user, eid, lid, data);
+        if (!r) return await responseManager(404, 'Lista no encontrada', req, res, false);
+        if (req.io) {
+            req.io.to('app').emit('lista:created', r.lista);
+            // Las tareas se emiten como UN evento de lista y no una por una: 40 tareas
+            // clonadas serían 40 mensajes para decir «esta lista cambió toda».
+            req.io.to('app').emit('lista:updated', { id: r.lista.id, espacioId: eid });
+        }
+        return await responseManager(201, r, req, res, false);
+    } catch (e) { return bizCatch(e, req, res); }
+};
+
+/**
  * DELETE /tareas/:id — baja lógica (404 real si no existe).
  * @param {import('express').Request} req - Request.
  * @param {import('express').Response} res - Response.

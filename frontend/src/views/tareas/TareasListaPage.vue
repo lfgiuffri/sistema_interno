@@ -12,7 +12,7 @@ import {
 } from '@ionic/vue'
 import {
   chevronBackOutline, addOutline, funnelOutline, createOutline, trashOutline,
-  documentTextOutline, swapHorizontalOutline, checkboxOutline, listOutline, appsOutline,
+  documentTextOutline, swapHorizontalOutline, checkboxOutline, listOutline, appsOutline, copyOutline,
 } from 'ionicons/icons'
 import { useTareasStore, ESTADOS_TAREA, PRIORIDADES, type TareaRow, type FiltrosTareas } from '@/stores/tareas'
 import { useMeStore } from '@/stores/me'
@@ -215,6 +215,23 @@ const listasDelEspacio = ref<Array<{ id: number; nombre: string }>>([])
 const destino = ref({ espacioId: 0, listaId: 0 })
 const moverError = ref('')
 useEscapeToClose(modalMover, () => { modalMover.value = false })
+
+/** Tarea que se está clonando (para deshabilitar su botón mientras copia los adjuntos). */
+const clonando = ref<number | null>(null)
+
+/**
+ * Clona una tarea en la misma lista. Sin confirmación: es barato y reversible (se borra la
+ * copia), y el nombre con «(copia)» deja claro qué pasó.
+ */
+async function clonar(t: TareaRow): Promise<void> {
+  clonando.value = t.id
+  const r = await tareasStore.clonarTarea(t.id)
+  clonando.value = null
+  if (!r.ok) { toast.error(r.message); return }
+  const d = r.data as { nombre: string } | undefined
+  toast.success(`«${d?.nombre ?? t.nombre}» creada`)
+  await load()
+}
 
 async function abrirMover(t: TareaRow): Promise<void> {
   tareaMoviendo.value = t
@@ -510,6 +527,12 @@ watch([espacioId, listaId], () => { if (loadedOnce && espacioId.value && listaId
                   <div v-if="puedeEditar" class="flex items-center justify-end gap-0.5">
                     <button v-if="meStore.can('tareas:update')" class="row-action" title="Editar" aria-label="Editar" @click="abrirTarea(t.id)">
                       <IonIcon :icon="createOutline" class="text-[15px]" />
+                    </button>
+                    <button
+                      v-if="meStore.can('tareas:create')" class="row-action" :disabled="clonando === t.id"
+                      title="Clonar la tarea" aria-label="Clonar la tarea" @click="clonar(t)"
+                    >
+                      <IonIcon :icon="copyOutline" class="text-[15px]" :class="{ 'animate-pulse': clonando === t.id }" />
                     </button>
                     <button v-if="meStore.can('tareas:update')" class="row-action" title="Mover de lista" aria-label="Mover de lista" @click="abrirMover(t)">
                       <IonIcon :icon="swapHorizontalOutline" class="text-[15px]" />

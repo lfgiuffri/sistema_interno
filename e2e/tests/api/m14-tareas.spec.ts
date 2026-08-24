@@ -265,4 +265,70 @@ test.describe('M14: Tareas y listas', () => {
     const body = await expectError(res, 403);
     expect(body.message).toContain('tareas:read');
   });
+
+  test('M14.14 - clonar una tarea: copia los datos, resetea el estado y numera el nombre', async ({ adminApi }) => {
+    const lista = await adminApi.post(`tareas/espacios/${espacio1}/listas`, { data: makeNombre('Lista Clon') });
+    const listaId = (await lista.json()).data.id;
+    const orig = await adminApi.post(APP_ENDPOINTS.tareas, {
+      data: { listaId, nombre: 'Tarea original', prioridad: 'rojo', descripcion: '<p>cuerpo</p>', estado: 'completada' },
+    });
+    const origId = (await orig.json()).data.id;
+
+    const c1 = await expectSuccess(await adminApi.post(`${APP_ENDPOINTS.tareas}/${origId}/clonar`), 201);
+    expect(c1.data.nombre).toBe('Tarea original (copia)');
+    // El estado NO se hereda: clonar una tarea completada es para volver a hacerla, así que
+    // heredar «completada» dejaría el clon terminado antes de empezar.
+    expect(c1.data.estado).toBe('abierta');
+    expect(c1.data.prioridad).toBe('rojo');
+    expect(c1.data.descripcion).toContain('cuerpo');
+    // El historial del original no se copia: el clon arranca con su propia creación.
+    expect(c1.data.historial).toHaveLength(1);
+
+    // Clonar de nuevo numera en vez de fallar: repetir el clon es normal.
+    const c2 = await expectSuccess(await adminApi.post(`${APP_ENDPOINTS.tareas}/${origId}/clonar`), 201);
+    expect(c2.data.nombre).toBe('Tarea original (copia 2)');
+
+    // Con lista destino explícita el clon se va a esa lista.
+    const otra = await adminApi.post(`tareas/espacios/${espacio1}/listas`, { data: makeNombre('Lista Destino') });
+    const otraId = (await otra.json()).data.id;
+    const c3 = await expectSuccess(await adminApi.post(`${APP_ENDPOINTS.tareas}/${origId}/clonar`, { data: { listaId: otraId } }), 201);
+    expect(c3.data.listaId).toBe(otraId);
+    // En una lista vacía no hay con qué chocar, así que no hace falta numerar.
+    expect(c3.data.nombre).toBe('Tarea original (copia)');
+
+    await expectError(await adminApi.post(`${APP_ENDPOINTS.tareas}/999999/clonar`), 404);
+  });
+
+  test('M14.15 - clonar una lista arrastra sus tareas, todas abiertas', async ({ adminApi }) => {
+    const lista = await adminApi.post(`tareas/espacios/${espacio1}/listas`, { data: makeNombre('Lista Plantilla') });
+    const origen = (await lista.json()).data;
+    for (const [nombre, estado] of [['Paso 1', 'abierta'], ['Paso 2', 'completada'], ['Paso 3', 'en_progreso']]) {
+      await adminApi.post(APP_ENDPOINTS.tareas, { data: { listaId: origen.id, nombre, estado } });
+    }
+
+    const clon = await expectSuccess(await adminApi.post(`tareas/espacios/${espacio1}/listas/${origen.id}/clonar`), 201);
+    expect(clon.data.lista.nombre).toBe(`${origen.nombre} (copia)`);
+    expect(clon.data.tareas).toBe(3);
+    expect(clon.data.errores).toHaveLength(0);
+
+    // Las tareas conservan su nombre (poner «(copia)» a 40 tareas sería ruido) pero arrancan
+    // TODAS abiertas: una plantilla con la mitad de los ítems hechos no sirve de plantilla.
+    const dentro = await expectSuccess(await adminApi.get(`tareas/espacios/${espacio1}/listas/${clon.data.lista.id}/tareas`), 200);
+    const filas = dentro.data.tareas ?? dentro.data;
+    expect(filas).toHaveLength(3);
+    expect(filas.map((f: { nombre: string }) => f.nombre).sort()).toEqual(['Paso 1', 'Paso 2', 'Paso 3']);
+    for (const f of filas) expect(f.estado).toBe('abierta');
+
+    // `conTareas: false` clona solo el contenedor, y el nombre se numera.
+    const solo = await expectSuccess(
+      await adminApi.post(`tareas/espacios/${espacio1}/listas/${origen.id}/clonar`, { data: { conTareas: false } }), 201);
+    expect(solo.data.tareas).toBe(0);
+    expect(solo.data.lista.nombre).toBe(`${origen.nombre} (copia 2)`);
+
+    await expectError(await adminApi.post(`tareas/espacios/${espacio1}/listas/999999/clonar`), 404);
+    // Capa 2: el usuario de tareas no puede editar el espacio 2, así que no puede clonar ahí.
+    const ajena = await adminApi.post(`tareas/espacios/${espacio2}/listas`, { data: makeNombre('Lista Ajena') });
+    const ajenaId = (await ajena.json()).data.id;
+    await expectError(await tareasApi.post(`tareas/espacios/${espacio2}/listas/${ajenaId}/clonar`), 403);
+  });
 });

@@ -253,6 +253,15 @@ Paginación en `meta` (helper `Paginate`). Validación: express-validator → 42
   matriz, editor **TipTap** (`DescripcionEditor.vue`) y `useArchivosProtegidos` (los
   archivos se sirven con auth → blobs cacheados). ⚠️ Tabla `espacios_trabajo` tiene
   `tableName` explícito (Sequelize pluralizaba mal).
+  **Clonar** (2026-08-24, `tareas:create` — duplicar CREA, no edita): una tarea se clona con
+  su descripción, prioridad, fechas, asignado y una **copia propia de cada adjunto**, pero
+  el estado arranca en `abierta` (clonar una completada es para volver a hacerla) y no se
+  copian historial ni comentarios. Clonar una **lista** arrastra todas sus tareas —es la
+  operación «usar esto como plantilla»—, ahí conservan su nombre (poner «(copia)» a 40 tareas
+  sería ruido) y también arrancan abiertas. El nombre se **numera** (`(copia 2)`, `(copia 3)`)
+  en vez de fallar con un 409: clonar dos veces lo mismo es normal.
+  **Crear en varias listas** vive colapsado detrás de un botón (un `<select multiple>`, no
+  chips): un espacio con 60 listas llenaba media pantalla por una opción que casi no se usa.
 - ✅ **Fase 5** — empleados + sueldos: módulo `empleados` (ficha completa, categorías —
   Freelance sin vacaciones —, áreas N:N reemplazo completo, **motor de vacaciones** exacto
   del legado en `vacaciones.service.js`: grants por año con override, vigencia año+1 y
@@ -404,6 +413,8 @@ Monitoreo de los VPS de la empresa. Doc completa en `docs/modules/mantenimiento.
   certificado vencido es justamente el caso a avisar y con validación estricta ni se leería.
 - El **estado** de los vencimientos (ok / por vencer / vencido) se DERIVA de la fecha en cada
   consulta; no se persiste.
+- **Velocidad por hora** (2026-08-24): cuarta granularidad, que sale SIEMPRE del detalle (el
+  rollup es diario, así que la hora no se puede reconstruir después de la purga). Ventana 48 h.
 - **Vistas por sitio** (2026-08-21): un sitio tiene N URLs chequeables (`sitio_vistas`), cada
   una con su propio «lo administramos nosotros» y su override del id del marcador (el global
   es la config `MANTENIMIENTO_MARCADOR_ID`). Todo sitio nace con la vista `/` y la ÚLTIMA no

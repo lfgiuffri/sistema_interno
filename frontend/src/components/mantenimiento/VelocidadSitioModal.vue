@@ -24,11 +24,12 @@ const store = useMantenimientoStore()
 const abierto = ref(true)
 useEscapeToClose(abierto, () => emit('cerrar'))
 
-const granularidad = ref<'dia' | 'mes' | 'anio'>('dia')
+const granularidad = ref<'hora' | 'dia' | 'mes' | 'anio'>('dia')
 const datos = ref<SerieVelocidad | null>(null)
 const cargando = ref(true)
 
-const GRANOS: Array<{ v: 'dia' | 'mes' | 'anio'; label: string; ayuda: string }> = [
+const GRANOS: Array<{ v: 'hora' | 'dia' | 'mes' | 'anio'; label: string; ayuda: string }> = [
+  { v: 'hora', label: 'Por hora', ayuda: 'Últimas 48 horas' },
   { v: 'dia', label: 'Por día', ayuda: 'Últimos 30 días' },
   { v: 'mes', label: 'Por mes', ayuda: 'Últimos 24 meses' },
   { v: 'anio', label: 'Por año', ayuda: 'Todo el historial' },
@@ -36,9 +37,20 @@ const GRANOS: Array<{ v: 'dia' | 'mes' | 'anio'; label: string; ayuda: string }>
 
 const MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
 
-/** Etiqueta del eje X según la granularidad («2026-08-21» → «21/8», «2026-08» → «ago 26»). */
+/**
+ * Etiqueta del eje X según la granularidad:
+ * «2026-08-21 14:00» → «14h», «2026-08-21» → «21/8», «2026-08» → «ago 26», «2026» → «2026».
+ */
 function etiqueta(periodo: string): string {
   if (granularidad.value === 'anio') return periodo
+  if (granularidad.value === 'hora') {
+    // 48 etiquetas no entran todas: se muestra la hora sola, y el día solo cuando cambia, que
+    // es lo que hace falta para ubicarse («… 22h, 23h, 22/8, 1h …»).
+    const [fecha, hora] = periodo.split(' ')
+    const h = Number((hora ?? '00:00').slice(0, 2))
+    if (h === 0) { const [, m, d] = fecha.split('-'); return `${Number(d)}/${Number(m)}` }
+    return `${h}h`
+  }
   const [a, m, d] = periodo.split('-')
   if (granularidad.value === 'mes') return `${MESES_CORTOS[Number(m) - 1]} ${a.slice(2)}`
   return `${Number(d)}/${Number(m)}`
@@ -179,6 +191,10 @@ onMounted(() => { void cargar() })
             El promedio no cuenta los chequeos que no respondieron: un timeout es una caída, no
             latencia. La variación compara contra el período anterior con datos.
             <template v-if="granularidad === 'dia'">El día de hoy es parcial y se mueve durante la jornada.</template>
+            <template v-if="granularidad === 'hora'">
+              Por hora sale del detalle de chequeos, que se conserva 30 días: más atrás queda
+              solo el resumen diario.
+            </template>
           </p>
         </template>
 

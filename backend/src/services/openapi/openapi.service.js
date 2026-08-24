@@ -180,6 +180,9 @@ export const buildOpenApiSpec = () => ({
         '/tareas/{id}/rapida': { patch: op('Edición RÁPIDA: nombre/asignado/vencimiento/prioridad — NO toca descripción ni estado', 'Tareas', auth) },
         '/tareas/{id}/estado': { patch: op('Cambio de estado (inválido → 422; bitácora solo si cambió)', 'Tareas', auth) },
         '/tareas/{id}/mover': { patch: op('Mover a otra lista/espacio (mejora; exige editar AMBOS espacios)', 'Tareas', auth) },
+        // Clonar CREA (tareas:create), no edita: duplicar no es modificar el original.
+        '/tareas/{id}/clonar': { post: op('Duplicar la tarea (estado en abierta, adjuntos copiados; body opcional: listaId, nombre)', 'Tareas', auth) },
+        '/tareas/espacios/{eid}/listas/{lid}/clonar': { post: op('Duplicar la lista con todas sus tareas (body opcional: nombre, conTareas)', 'Tareas', auth) },
         '/tareas/archivos': { post: op('Subir imagen (5 MB, firma binaria) o adjunto (15 MB, lista blanca)', 'Tareas', auth) },
         '/tareas/archivos/{nombre}': { get: op('Servir archivo (headers defensivos; nombre aleatorio validado)', 'Tareas', auth) },
         '/tareas/archivos/{id}': { delete: op('Eliminar adjunto', 'Tareas', auth) },
@@ -306,7 +309,7 @@ export const buildOpenApiSpec = () => ({
             delete: op('Eliminar una vista (la última del sitio → 409)', 'Mantenimiento', auth),
         },
         '/mantenimiento/sitios/vistas/{id}/active': { patch: op('Activar/desactivar el chequeo de una vista', 'Mantenimiento', auth) },
-        '/mantenimiento/sitios/{id}/velocidad': { get: op('Serie de velocidad por día, mes o año (query: granularidad, vistaId)', 'Mantenimiento', auth) },
+        '/mantenimiento/sitios/{id}/velocidad': { get: op('Serie de velocidad por hora, día, mes o año (query: granularidad, vistaId)', 'Mantenimiento', auth) },
         '/agente/metricas': { post: op('Reporte del agente (auth por header x-agent-token, SIN sesión): cpu, ram, disco, discos[]', 'Mantenimiento') },
         '/health': { get: op('Salud del backend y su base (público, sin sesión): lo consulta el watchdog externo', 'Mantenimiento') },
         '/agente/instalar-agente.sh': { get: op('Instalador del agente (público, sin secretos)', 'Mantenimiento') },
