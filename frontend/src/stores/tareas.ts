@@ -213,6 +213,16 @@ export const useTareasStore = defineStore('tareas', () => {
     return data.success ? data.data : null
   }
 
+  /**
+   * Pantalla de Análisis de tareas: TODOS los bloques en una sola llamada (equipo, listas,
+   * espacios, rango de realizadas, serie anual, antigüedad y prioridad).
+   * @param params - desde/hasta (ISO), anio, e (ids por coma), estancadas (días).
+   */
+  async function fetchAnalisis(params: Record<string, string | number>) {
+    const { data } = await api.get('/tareas/analisis', { params })
+    return data.success ? data.data : null
+  }
+
   /** Sube un archivo (imagen del editor o adjunto). Devuelve el registro con su URL. */
   /**
    * Sube un archivo.
@@ -246,7 +256,7 @@ export const useTareasStore = defineStore('tareas', () => {
     fetchHome, fetchListas, saveLista, toggleLista, restoreLista, removeLista,
     fetchTareas, fetchTarea, createTarea, updateTarea, updateRapida, cambiarEstado,
     moverTarea, removeTarea, clonarTarea, clonarLista,
-    fetchAsignables, fetchResumen, subirArchivo, removeArchivo,
+    fetchAsignables, fetchResumen, fetchAnalisis, subirArchivo, removeArchivo,
     addComentario, removeComentario,
     reset,
   }

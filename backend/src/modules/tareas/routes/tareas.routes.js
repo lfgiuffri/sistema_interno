@@ -5,7 +5,8 @@ import * as controller from '../controllers/tareas.controller.js';
 import {
     validateId, validateEspacioId, validateEspacioLista, validateLista, validateListaUpdate,
     validateListTareas, validateCreate, validateUpdate, validateRapida, validateEstado,
-    validateMover, validateArchivoId, validateClonarTarea, validateClonarLista, validateComentario
+    validateMover, validateArchivoId, validateClonarTarea, validateClonarLista, validateComentario,
+    validateAnalisis
 } from '../validators/tareas.validator.js';
 
 const router = Router();
@@ -17,6 +18,9 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 16 
 router.get('/espacios', requireCapability('tareas:read'), controller.home);
 router.get('/asignables', requireCapability('tareas:read'), controller.asignables);
 router.get('/resumen', requireCapability('tareas:read'), controller.resumen);
+// Análisis: capability PROPIA. Ver el tablero y leer las métricas del equipo (quién cierra
+// cuánto, cuánto tarda cada uno) son dos permisos distintos: `tareas:read` no la habilita.
+router.get('/analisis', requireCapability('tareas:analisis'), validateAnalisis, controller.analisis);
 
 // Listas (capa 2 — espacio ver/editar — la exige el service).
 router.get('/espacios/:eid/listas', requireCapability('tareas:read'), validateEspacioId, controller.listas);

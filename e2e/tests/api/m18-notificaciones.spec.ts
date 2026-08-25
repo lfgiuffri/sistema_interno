@@ -129,17 +129,14 @@ test.describe('M18: Notificaciones, comentarios y panel completo', () => {
     expect(body.data[0].usuario).toBeTruthy();
   });
 
-  test('M18.6 - panel: tareas del equipo; las estadísticas viven en su propio endpoint', async ({ adminApi }) => {
+  test('M18.6 - el panel NO calcula ni series anuales ni tareas del equipo: cada una tiene su pantalla', async ({ adminApi }) => {
     const res = await adminApi.get('dashboard');
     const data = (await expectSuccess(res, 200)).data;
 
-    // El panel ya NO calcula las series anuales (pantalla Estadísticas aparte).
+    // Ninguno de los dos bloques pesados se paga al abrir el panel: las series anuales viven
+    // en /dashboard/estadisticas y las tareas del equipo en /tareas/analisis.
     expect(data).not.toHaveProperty('estadisticas');
-
-    // Tareas del equipo: tarjetas + tabla por usuario.
-    expect(data.tareasEquipo).toBeTruthy();
-    expect(data.tareasEquipo.tarjetas.pendientes).toBeGreaterThanOrEqual(1);
-    expect(Array.isArray(data.tareasEquipo.porUsuario)).toBeTruthy();
+    expect(data).not.toHaveProperty('tareasEquipo');
 
     // Estadísticas: series de 12 meses + años disponibles.
     const stats = await adminApi.get('dashboard/estadisticas?anio=2026');
@@ -148,10 +145,15 @@ test.describe('M18: Notificaciones, comentarios y panel completo', () => {
     expect(dataStats.mensual.proyectos).toHaveLength(12);
     expect(Array.isArray(dataStats.anios)).toBeTruthy();
 
-    // El usuario acotado ve el panel (tiene tareas:read) pero NO las estadísticas
-    // (los gráficos salen de facturación y no tiene facturaciones:read).
+    // El bloque del equipo se mudó a Análisis de tareas, con las mismas tarjetas.
+    const analisis = (await expectSuccess(await adminApi.get('tareas/analisis'), 200)).data;
+    expect(analisis.equipo.tarjetas.pendientes).toBeGreaterThanOrEqual(1);
+    expect(Array.isArray(analisis.equipo.porUsuario)).toBeTruthy();
+
+    // El usuario acotado ve el panel pero NO las estadísticas (los gráficos salen de
+    // facturación y no tiene facturaciones:read).
     const resUser = await userApi.get('dashboard');
-    expect((await resUser.json()).data.tareasEquipo).toBeTruthy();
+    expect(resUser.status()).toBe(200);
     const statsUser = await userApi.get('dashboard/estadisticas');
     expect(statsUser.status()).toBe(403);
   });

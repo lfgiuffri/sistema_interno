@@ -35,6 +35,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'grilla-cobranzas', name: 'GrillaCobranzas', component: () => import('@/views/proyectos/GrillaCobranzasPage.vue'), meta: { module: 'cobranzas' } },
       { path: 'tareas', name: 'Tareas', component: () => import('@/views/tareas/TareasHomePage.vue'), meta: { module: 'tareas' } },
       { path: 'tareas/resumen', name: 'TareasResumen', component: () => import('@/views/tareas/ResumenPage.vue'), meta: { module: 'tareas' } },
+      { path: 'tareas/analisis', name: 'TareasAnalisis', component: () => import('@/views/tareas/AnalisisPage.vue'), meta: { module: 'tareas' } },
       { path: 'tareas/espacios/:eid', name: 'Listas', component: () => import('@/views/tareas/ListasPage.vue'), meta: { module: 'tareas' } },
       { path: 'tareas/espacios/:eid/listas/:lid', name: 'TareasLista', component: () => import('@/views/tareas/TareasListaPage.vue'), meta: { module: 'tareas' } },
       { path: 'documentacion', name: 'Documentacion', component: () => import('@/views/documentacion/DocumentacionHomePage.vue'), meta: { module: 'documentacion' } },
@@ -87,7 +88,7 @@ async function destinoInicial(): Promise<string> {
   if (me.canAny('dashboard')) return '/panel'
 
   const { primeraRutaVisible } = await import('@/config/nav')
-  return primeraRutaVisible(m => me.canAny(m))
+  return primeraRutaVisible({ can: c => me.can(c), canAny: m => me.canAny(m) })
 }
 
 // El auth store es la ÚNICA fuente de verdad de la sesión: el guard lo restaura una sola vez

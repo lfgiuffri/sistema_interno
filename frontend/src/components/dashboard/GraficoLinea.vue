@@ -23,10 +23,11 @@ const props = defineProps<{
   /** Etiquetas del eje X; por defecto los 12 meses (uso original: series anuales). */
   labels?: string[]
   /**
-   * Cómo se leen los valores: importes (default), porcentajes (métricas de servidores) o
-   * milisegundos (velocidad de sitios). Cambia el tick del eje Y y el tooltip; nada más.
+   * Cómo se leen los valores: importes (default), porcentajes (métricas de servidores),
+   * milisegundos (velocidad de sitios) o números pelados (conteos de tareas). Cambia el tick
+   * del eje Y y el tooltip; nada más.
    */
-  formato?: 'moneda' | 'porcentaje' | 'ms'
+  formato?: 'moneda' | 'porcentaje' | 'ms' | 'numero'
 }>()
 
 const PALETA_CLARO = ['#0F7660', '#2563eb', '#ea7317', '#7c3aed', '#e34948', '#b45309', '#0891b2', '#db2777']
@@ -100,6 +101,7 @@ function construir(): void {
               if (props.formato === 'ms') {
                 return `${item.dataset.label}: ${v >= 1000 ? `${(v / 1000).toFixed(2)} s` : `${Math.round(v)} ms`}`
               }
+              if (props.formato === 'numero') return `${item.dataset.label}: ${v.toLocaleString('es-AR')}`
               return `${item.dataset.label}: $ ${v.toLocaleString('es-AR')}`
             },
           },
@@ -117,6 +119,8 @@ function construir(): void {
               const n = Number(v)
               if (props.formato === 'porcentaje') return `${Math.round(n)}%`
               if (props.formato === 'ms') return n >= 1000 ? `${(n / 1000).toFixed(1)}s` : `${Math.round(n)}ms`
+              // Conteos: enteros pelados. Un «0.5 tareas» en el eje no significa nada.
+              if (props.formato === 'numero') return Number.isInteger(n) ? String(n) : ''
               return `$${Math.round(n / 1000).toLocaleString('es-AR')}k`
             },
           },

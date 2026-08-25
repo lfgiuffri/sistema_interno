@@ -52,6 +52,19 @@ export const validateListTareas = [
     validator
 ];
 
+/**
+ * Análisis de tareas: todo opcional (sin nada, el service usa el mes actual y el año en
+ * curso). `e` viaja como texto «1,4» y lo interseca el service contra los espacios visibles.
+ */
+export const validateAnalisis = [
+    query('desde').optional({ checkFalsy: true }).isDate(),
+    query('hasta').optional({ checkFalsy: true }).isDate(),
+    query('anio').optional({ checkFalsy: true }).isInt({ min: 2000, max: 2100 }),
+    query('estancadas').optional({ checkFalsy: true }).isInt({ min: 1, max: 365 }),
+    query('e').optional({ checkFalsy: true }).isString().isLength({ max: 500 }),
+    validator
+];
+
 /** Campos comunes de alta/edición completa. */
 const camposTarea = [
     body('nombre').isString().trim().notEmpty().withMessage('El nombre de la tarea es obligatorio').isLength({ max: 200 }),

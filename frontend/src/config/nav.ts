@@ -14,7 +14,7 @@ import {
   walletOutline, documentTextOutline, folderOpenOutline, calendarOutline,
   checkboxOutline, albumsOutline, personOutline, cashOutline, trendingUpOutline,
   calendarNumberOutline, cardOutline, statsChartOutline, libraryOutline, serverOutline,
-  globeOutline,
+  globeOutline, analyticsOutline,
 } from 'ionicons/icons'
 
 export interface NavItem {
@@ -23,8 +23,32 @@ export interface NavItem {
   icon: string
   /** Prefijo de módulo cuyas capabilities habilitan el ítem; null = siempre visible. */
   module: string | null
+  /**
+   * Capability EXACTA que habilita el ítem. Cuando está, manda sobre `module`: sirve para
+   * las pantallas que no se otorgan con «tener algo del módulo» sino con un permiso propio
+   * (ej. Análisis de tareas, que muestra métricas del equipo y no el tablero).
+   */
+  cap?: string
 }
 export interface NavGroup { label: string; items: NavItem[] }
+
+/** Las dos preguntas de permisos que necesita el menú (las expone el store `me`). */
+export interface Permisos {
+  can: (cap: string) => boolean
+  canAny: (moduleKey: string) => boolean
+}
+
+/**
+ * ¿Se ve este ítem? Con `cap` se exige esa capability exacta; si no, alcanza con tener
+ * alguna del módulo. Sin módulo, siempre visible (Configuración).
+ * @param item - Ítem del menú.
+ * @param p - Permisos del usuario.
+ * @returns true si hay que pintarlo.
+ */
+const visible = (item: NavItem, p: Permisos): boolean => {
+  if (item.cap) return p.can(item.cap)
+  return item.module === null || p.canAny(item.module)
+}
 
 /** Grupos del menú (mismos grupos que el sistema legado). */
 export const NAV: NavGroup[] = [
@@ -61,6 +85,7 @@ export const NAV: NavGroup[] = [
       { label: 'Proyectos', path: '/proyectos', icon: folderOpenOutline, module: 'proyectos' },
       { label: 'Grilla de cobranzas', path: '/grilla-cobranzas', icon: calendarOutline, module: 'cobranzas' },
       { label: 'Tareas', path: '/tareas', icon: checkboxOutline, module: 'tareas' },
+      { label: 'Análisis de tareas', path: '/tareas/analisis', icon: analyticsOutline, module: 'tareas', cap: 'tareas:analisis' },
       { label: 'Documentación', path: '/documentacion', icon: libraryOutline, module: 'documentacion' },
     ],
   },
@@ -95,12 +120,12 @@ export const NAV: NavGroup[] = [
 
 /**
  * Grupos visibles para un usuario (se filtran los ítems sin permiso y los grupos vacíos).
- * @param canAny - `meStore.canAny`: ¿tiene alguna capability de ese módulo?
+ * @param p - Permisos del usuario (`can` / `canAny` del store `me`).
  * @returns Los grupos que hay que pintar.
  */
-export function gruposVisibles(canAny: (m: string) => boolean): NavGroup[] {
+export function gruposVisibles(p: Permisos): NavGroup[] {
   return NAV
-    .map(g => ({ ...g, items: g.items.filter(i => i.module === null || canAny(i.module)) }))
+    .map(g => ({ ...g, items: g.items.filter(i => visible(i, p)) }))
     .filter(g => g.items.length > 0)
 }
 
@@ -108,11 +133,11 @@ export function gruposVisibles(canAny: (m: string) => boolean): NavGroup[] {
  * Primera pantalla que el usuario puede ver, en el orden del menú. Es el destino de quien
  * entra sin permiso para el panel; si no puede ver NADA, cae igual en el panel (que muestra
  * el cartel de "no hay nada para vos con los permisos de tu rol").
- * @param canAny - `meStore.canAny`.
+ * @param p - Permisos del usuario (`can` / `canAny` del store `me`).
  * @returns Path al que redirigir.
  */
-export function primeraRutaVisible(canAny: (m: string) => boolean): string {
-  const grupos = gruposVisibles(canAny)
+export function primeraRutaVisible(p: Permisos): string {
+  const grupos = gruposVisibles(p)
   // Configuración es el único ítem sin permiso (siempre visible): sirve de destino final,
   // pero solo si no hay ninguna pantalla de trabajo disponible.
   const conPermiso = grupos.flatMap(g => g.items).filter(i => i.module !== null)

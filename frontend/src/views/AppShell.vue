@@ -27,7 +27,9 @@ const router = useRouter()
 const { isDark, toggle: toggleTheme } = useTheme()
 
 /** Grupos visibles: se filtran los ítems sin permiso y los grupos vacíos (config/nav.ts). */
-const visibleGroups = computed<NavGroup[]>(() => gruposVisibles(m => meStore.canAny(m)))
+const visibleGroups = computed<NavGroup[]>(() =>
+  gruposVisibles({ can: c => meStore.can(c), canAny: m => meStore.canAny(m) }),
+)
 
 const isActive = (path: string): boolean => route.path.startsWith(path)
 

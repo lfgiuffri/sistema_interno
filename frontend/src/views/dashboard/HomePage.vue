@@ -4,10 +4,13 @@
  * PRD §6.9): cotización del dólar (editable con permiso), contadores de abonos (activos,
  * vencidos y próximos a actualizar), facturación del mes (abonos + proyectos combinados),
  * entregas de proyectos (ventana 5 días), estado de la infraestructura (resumen agregado:
- * el detalle vive en el módulo Mantenimiento) y tareas del equipo.
+ * el detalle vive en el módulo Mantenimiento).
  *
- * Los gráficos anuales de facturación NO viven acá: tienen su propia pantalla
- * (`EstadisticasPage.vue` → GET /dashboard/estadisticas).
+ * Dos cosas NO viven acá a propósito, cada una con su pantalla: los gráficos anuales de
+ * facturación (`EstadisticasPage.vue` → GET /dashboard/estadisticas) y el análisis de tareas
+ * del equipo (`tareas/AnalisisPage.vue` → GET /tareas/analisis), que se mudó del panel
+ * porque su cálculo de tiempo promedio lee la bitácora entera y el panel autorefresca cada
+ * minuto.
  */
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
@@ -17,13 +20,11 @@ import {
 } from '@ionic/vue'
 import {
   alertCircleOutline, timeOutline, walletOutline, trendingUpOutline,
-  folderOpenOutline, flagOutline, peopleOutline, pulseOutline, serverOutline, globeOutline,
+  folderOpenOutline, flagOutline, pulseOutline, serverOutline, globeOutline,
 } from 'ionicons/icons'
-import BanderaPrioridad from '@/components/tareas/BanderaPrioridad.vue'
 import CotizacionDolar from '@/components/shared/CotizacionDolar.vue'
 import IndicadorAutoRefresh from '@/components/shared/IndicadorAutoRefresh.vue'
 import { useAutoRefresh } from '@/composables/useAutoRefresh'
-import { duracion, fechaHora } from '@/composables/useFormato'
 import api, { apiErrorMessage } from '@/services/api'
 import { useMeStore } from '@/stores/me'
 import { useToast } from '@/composables/useToast'
@@ -48,36 +49,6 @@ interface AlertaProyecto {
   fechaEstimadaEntrega: string
   dias: number
 }
-interface EnProgresoItem {
-  id: number
-  nombre: string
-  prioridad: string
-  usuario: string
-  espacioId: number
-  listaId: number
-  espacio: string
-  lista: string
-  vencida: boolean
-  desde: string
-}
-interface FilaUsuario {
-  userId: number
-  nombre: string
-  activo: boolean
-  pendientes: number
-  hoy: number
-  porVencer: number
-  vencidas: number
-  enProgreso: number
-  pausadas: number
-  promedio: { segundos: number; sobre: number } | null
-}
-interface TareasEquipo {
-  tarjetas: (Record<string, number> & { personasConVencidas: number }) | null
-  enProgreso: EnProgresoItem[]
-  porUsuario: FilaUsuario[]
-  dias: number
-}
 interface ResumenServidores {
   total: number; online: number; offline: number; sinDatos: number; incidentes: number
   picoCpu: number | null; picoRam: number | null; picoDisco: number | null
@@ -97,7 +68,6 @@ interface DashboardData {
     proyectosFacturado?: number; proyectosPendiente?: number
   } | null
   proyectos: { abiertos: number; vencidos: AlertaProyecto[]; proximos: AlertaProyecto[] } | null
-  tareasEquipo: TareasEquipo | null
   mantenimiento: { servidores: ResumenServidores | null; sitios: ResumenSitios | null } | null
 }
 
@@ -403,81 +373,6 @@ onIonViewWillLeave(() => auto.parar())
                 </div>
               </button>
 
-            </div>
-          </section>
-
-          <!-- Tareas del equipo -->
-          <section v-if="data.tareasEquipo?.tarjetas" class="mb-6">
-            <h2 class="text-sm font-semibold text-ink mb-2 flex items-center gap-1.5">
-              <IonIcon :icon="peopleOutline" class="text-[15px] text-ink-faint" />
-              Tareas del equipo
-            </h2>
-            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
-              <button class="ds-card px-4 py-3 text-left hover:bg-surface-2/50 transition-colors" @click="router.push('/tareas/resumen?f=pendientes&u=todos')">
-                <p class="text-2xs uppercase tracking-wide text-ink-faint">Pendientes</p>
-                <p class="mt-1 text-lg font-semibold tnum text-ink">{{ data.tareasEquipo.tarjetas.pendientes }}</p>
-                <p class="text-2xs text-ink-faint tnum">{{ data.tareasEquipo.tarjetas.enProgreso }} en progreso · {{ data.tareasEquipo.tarjetas.pausadas }} pausada(s)</p>
-              </button>
-              <button class="ds-card px-4 py-3 text-left hover:bg-surface-2/50 transition-colors" @click="router.push('/tareas/resumen?f=hoy&u=todos')">
-                <p class="text-2xs uppercase tracking-wide text-ink-faint">Para hoy</p>
-                <p class="mt-1 text-lg font-semibold tnum" :class="data.tareasEquipo.tarjetas.hoy ? 'text-warn' : 'text-ink'">{{ data.tareasEquipo.tarjetas.hoy }}</p>
-              </button>
-              <button class="ds-card px-4 py-3 text-left hover:bg-surface-2/50 transition-colors" @click="router.push('/tareas/resumen?f=por_vencer&u=todos')">
-                <p class="text-2xs uppercase tracking-wide text-ink-faint">Por vencer</p>
-                <p class="mt-1 text-lg font-semibold tnum" :class="data.tareasEquipo.tarjetas.porVencer ? 'text-warn' : 'text-ink'">{{ data.tareasEquipo.tarjetas.porVencer }}</p>
-                <p class="text-2xs text-ink-faint">próximos {{ data.tareasEquipo.dias }} días</p>
-              </button>
-              <button class="ds-card px-4 py-3 text-left hover:bg-surface-2/50 transition-colors" @click="router.push('/tareas/resumen?f=vencidas&u=todos')">
-                <p class="text-2xs uppercase tracking-wide text-ink-faint">Vencidas</p>
-                <p class="mt-1 text-lg font-semibold tnum" :class="data.tareasEquipo.tarjetas.vencidas ? 'text-danger' : 'text-ink'">{{ data.tareasEquipo.tarjetas.vencidas }}</p>
-                <p v-if="data.tareasEquipo.tarjetas.vencidas" class="text-2xs text-ink-faint tnum">en {{ data.tareasEquipo.tarjetas.personasConVencidas }} persona(s)</p>
-              </button>
-            </div>
-
-            <!-- Qué está haciendo cada uno -->
-            <div class="grid lg:grid-cols-2 gap-3">
-              <div class="ds-card p-4">
-                <h3 class="text-xs font-semibold text-ink mb-2">Qué está haciendo cada uno</h3>
-                <div v-if="data.tareasEquipo.enProgreso.length" class="space-y-2">
-                  <div v-for="t in data.tareasEquipo.enProgreso" :key="t.id" class="flex items-start gap-2">
-                    <BanderaPrioridad :prioridad="t.prioridad" :size="13" />
-                    <div class="min-w-0 flex-1">
-                      <p class="text-xs text-ink">
-                        <span class="font-medium">{{ t.usuario }}</span> ·
-                        <button class="hover:text-accent underline-offset-2 hover:underline" @click="router.push(`/tareas/espacios/${t.espacioId}/listas/${t.listaId}`)">{{ t.nombre }}</button>
-                        <span v-if="t.vencida" class="ds-badge-danger ml-1">vencida</span>
-                      </p>
-                      <p class="text-2xs text-ink-faint">{{ t.espacio }} · {{ t.lista }} · desde {{ fechaHora(t.desde) }}</p>
-                    </div>
-                  </div>
-                </div>
-                <p v-else class="text-xs text-ink-faint py-3">Nadie tiene tareas en progreso ahora mismo.</p>
-              </div>
-
-              <!-- Tabla por usuario -->
-              <div class="ds-card overflow-x-auto">
-                <table class="ds-table">
-                  <thead>
-                    <tr><th>Persona</th><th>Pend.</th><th>Hoy</th><th>Venc.</th><th>Prom. trabajo</th></tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="u in data.tareasEquipo.porUsuario" :key="u.userId" :class="{ 'opacity-50': !u.activo }">
-                      <td class="text-sm" :class="u.userId ? 'text-ink' : 'text-ink-faint italic'">
-                        {{ u.userId ? u.nombre : 'Sin responsable' }}{{ u.activo ? '' : ' (inactivo)' }}
-                      </td>
-                      <td class="tnum text-ink-soft">{{ u.pendientes || '—' }}</td>
-                      <td class="tnum" :class="u.hoy ? 'text-warn' : 'text-ink-faint'">{{ u.hoy || '—' }}</td>
-                      <td class="tnum" :class="u.vencidas ? 'text-danger font-medium' : 'text-ink-faint'">{{ u.vencidas || '—' }}</td>
-                      <td class="text-2xs text-ink-soft tnum">
-                        {{ u.promedio ? `${duracion(u.promedio.segundos)} · ${u.promedio.sobre} tarea(s)` : 'sin datos' }}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-                <p class="px-3 py-2 text-2xs text-ink-faint border-t border-line-soft">
-                  Promedio: desde «en progreso» hasta revisión/completada, descontando pausas.
-                </p>
-              </div>
             </div>
           </section>
 

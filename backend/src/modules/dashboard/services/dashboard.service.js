@@ -163,9 +163,9 @@ const facturacionMesProyectos = async (models, config) => {
  * Arma el panel según las capabilities del usuario. Los bloques sin permiso viajan null
  * y NO se calculan.
  *
- * El panel es "qué está pasando ahora": totales, alertas y tareas del equipo. Los gráficos
- * anuales de facturación viven en su propia pantalla (`armarEstadisticas`), así que abrir el
- * panel no paga las consultas de las series.
+ * El panel es "qué está pasando ahora": totales, alertas e infraestructura. Los gráficos
+ * anuales de facturación viven en su propia pantalla (`armarEstadisticas`) y el análisis de
+ * tareas en la suya, así que abrir el panel no paga esas consultas.
  * @param {object} models - Modelos de la app.
  * @param {object} user - Usuario que mira ({ id, roleId }).
  * @returns {Promise<object>} Bloques del panel (null los no permitidos).
@@ -178,26 +178,26 @@ export const armarDashboard = async (models, user) => {
     const verFacturaciones = puede(caps, 'facturaciones:read');
     const verProyectos = puede(caps, 'proyectos:read') && !!models.Proyecto;
     const verCobranzas = puede(caps, 'cobranzas:read') && !!models.Cobranza;
-    const verTareas = puede(caps, 'tareas:read') && !!models.Tarea;
     const verServidores = puede(caps, 'servidores:read') && !!models.Servidor;
     const verSitios = puede(caps, 'sitios:read') && !!models.SitioWeb;
 
     // Los bloques de otros módulos se importan acá (y no arriba) para no acoplar el boot:
-    // dashboard funciona aunque tareas o mantenimiento no estén montados.
-    const equipoPromise = verTareas
-        ? import('../../tareas/services/tarea.service.js').then(m => m.equipoDashboard(models, user))
-        : Promise.resolve(null);
+    // dashboard funciona aunque mantenimiento no esté montado.
+    //
+    // El bloque «Tareas del equipo» YA NO vive acá (2026-08-25): se mudó a la pantalla
+    // **Análisis de tareas** del módulo tareas. El motivo es de costo: el tiempo promedio de
+    // trabajo se calcula leyendo la bitácora completa de las tareas asignadas, y el Panel se
+    // autorefresca cada minuto para dejarlo en un monitor.
     const mantenimientoPromise = (verServidores || verSitios)
         ? import('../../mantenimiento/services/resumen.service.js')
             .then(m => m.resumenMantenimiento(models, { verServidores, verSitios }))
         : Promise.resolve(null);
 
-    const [abonos, facturacionMes, proyectos, factProyectos, tareasEquipo, mantenimiento] = await Promise.all([
+    const [abonos, facturacionMes, proyectos, factProyectos, mantenimiento] = await Promise.all([
         verAbonos ? bloqueAbonos(models, config) : Promise.resolve(null),
         (verAbonos && verFacturaciones) ? bloqueFacturacionMes(models, config) : Promise.resolve(null),
         verProyectos ? bloqueProyectos(models) : Promise.resolve(null),
         verCobranzas ? facturacionMesProyectos(models, config) : Promise.resolve(null),
-        equipoPromise,
         mantenimientoPromise,
     ]);
 
@@ -208,7 +208,6 @@ export const armarDashboard = async (models, user) => {
             ? { ...(facturacionMes || {}), ...(factProyectos || {}) }
             : null,
         proyectos,
-        tareasEquipo,
         mantenimiento,
     };
 };

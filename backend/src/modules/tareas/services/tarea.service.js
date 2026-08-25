@@ -46,7 +46,7 @@ const SQL_PENDIENTES = ESTADOS_PENDIENTES.map(e => `'${e}'`).join(',');
  * @param {number} dias - Ventana de "por vencer".
  * @returns {Record<string, string>} Condición SQL por categoría (sobre alias `tareas`).
  */
-const sqlCategorias = (dias) => ({
+export const sqlCategorias = (dias) => ({
     pendientes: `\`tareas\`.\`estado\` IN (${SQL_PENDIENTES})`,
     hoy: `\`tareas\`.\`estado\` IN (${SQL_PENDIENTES}) AND \`tareas\`.\`fechaVencimiento\` = CURDATE()`,
     por_vencer: `\`tareas\`.\`estado\` IN (${SQL_PENDIENTES}) AND \`tareas\`.\`fechaVencimiento\` > CURDATE() AND \`tareas\`.\`fechaVencimiento\` <= DATE_ADD(CURDATE(), INTERVAL ${Number(dias)} DAY)`,
@@ -145,6 +145,45 @@ const exigirPoderAsignar = async (models, user, asignadoA, asignadoActual = null
     }
 };
 
+/**
+ * Alcance de espacios de una consulta de lectura: los VISIBLES del usuario, opcionalmente
+ * recortados por el filtro `e` (ids separados por coma).
+ *
+ * El filtro se INTERSECA con lo visible y nunca lo amplía: pedir un espacio ajeno lo
+ * descarta, y si no queda ninguno válido se devuelven todos los visibles (mejor todo que una
+ * pantalla vacía sin explicación). Fuente ÚNICA para el resumen y el análisis: si cada uno
+ * parseara `e` por su lado, un día uno de los dos dejaría entrar un id ajeno.
+ * @param {object} models - Modelos de la app.
+ * @param {object} user - Usuario que mira.
+ * @param {string} [e] - Ids de espacio separados por coma (vacío = todos los visibles).
+ * @returns {Promise<{visiblesIds: number[], espaciosFiltro: number[], alcanceIds: number[]}>} Alcance.
+ */
+export const alcanceEspacios = async (models, user, e) => {
+    const permisos = await getEspacioPermisos(models, user);
+    const visiblesIds = Object.entries(permisos).filter(([, p]) => p.ver).map(([id]) => Number(id));
+    const pedidos = String(e ?? '').split(',').map(v => Number(String(v).trim())).filter(Number.isInteger);
+    const espaciosFiltro = visiblesIds.filter(id => pedidos.includes(id));
+    return { visiblesIds, espaciosFiltro, alcanceIds: espaciosFiltro.length ? espaciosFiltro : visiblesIds };
+};
+
+/**
+ * Catálogo de espacios para poblar un selector: TODOS los visibles, filtre o no la consulta
+ * (si devolviera los filtrados, el filtro se autodestruiría al elegir uno).
+ * @param {object} models - Modelos de la app.
+ * @param {number[]} visiblesIds - Ids visibles.
+ * @returns {Promise<Array<{id: number, nombre: string, activo: boolean}>>} Espacios ordenados por nombre.
+ */
+export const catalogoEspacios = async (models, visiblesIds) => {
+    if (!visiblesIds.length) return [];
+    const filas = await models.EspacioTrabajo.findAll({
+        where: { id: { [Op.in]: visiblesIds } },
+        attributes: ['id', 'nombre', 'activo'],
+        order: [['nombre', 'ASC']],
+        raw: true
+    });
+    return filas.map(x => ({ id: x.id, nombre: x.nombre, activo: !!x.activo }));
+};
+
 // ─────────────────────────── Home del módulo ───────────────────────────
 
 /**
@@ -155,7 +194,7 @@ const exigirPoderAsignar = async (models, user, asignadoA, asignadoActual = null
  * @param {number} dias - Ventana de por vencer.
  * @returns {Promise<object>} Conteos { pendientes, hoy, porVencer, vencidas, enProgreso, pausadas, enRevision, sinFecha, urgentes }.
  */
-const resumenColumnas = async (models, espacioIds, asignadoA, dias) => {
+export const resumenColumnas = async (models, espacioIds, asignadoA, dias) => {
     const vacio = { pendientes: 0, hoy: 0, porVencer: 0, vencidas: 0, enProgreso: 0, pausadas: 0, enRevision: 0, sinFecha: 0, urgentes: 0 };
     if (!espacioIds.length) return vacio;
     const { Tarea } = models;
@@ -1207,8 +1246,7 @@ export const resumenCategorias = async (models, user, f, u, e) => {
     // devuelve nada nunca. Si se elige esa categoría, se ignora el filtro por persona.
     if (categoria === 'sin_asignar') { alcance = 'sin'; usuarioNombre = null; asignadoSql = '1=1'; }
 
-    const permisos = await getEspacioPermisos(models, user);
-    const visiblesIds = Object.entries(permisos).filter(([, p]) => p.ver).map(([id]) => Number(id));
+    const { visiblesIds, espaciosFiltro, alcanceIds } = await alcanceEspacios(models, user, e);
     // Derivado de `cat` y no escrito a mano: al sumar una categoría no hay que acordarse de acá.
     const vacio = Object.fromEntries(Object.keys(cat).map(k => [k, 0]));
     if (!visiblesIds.length) {
@@ -1217,21 +1255,9 @@ export const resumenCategorias = async (models, user, f, u, e) => {
             espacios: [], espaciosFiltro: []
         };
     }
+    const espaciosVisibles = await catalogoEspacios(models, visiblesIds);
 
-    // Catálogo para el selector del frontend: TODOS los visibles (no los filtrados), si no
-    // el filtro se autodestruiría — al elegir uno desaparecerían los demás del selector.
-    const espaciosVisibles = await EspacioTrabajo.findAll({
-        where: { id: { [Op.in]: visiblesIds } },
-        attributes: ['id', 'nombre', 'activo'],
-        order: [['nombre', 'ASC']],
-        raw: true
-    });
-
-    const pedidos = String(e ?? '').split(',').map(v => Number(String(v).trim())).filter(Number.isInteger);
-    const espaciosFiltro = visiblesIds.filter(id => pedidos.includes(id));
-    const alcanceEspacios = espaciosFiltro.length ? espaciosFiltro : visiblesIds;
-
-    const espaciosSql = `\`tareas\`.\`espacioId\` IN (${alcanceEspacios.join(',')})`;
+    const espaciosSql = `\`tareas\`.\`espacioId\` IN (${alcanceIds.join(',')})`;
 
     // Conteos de las 4 categorías con las MISMAS condiciones del listado.
     const conteosRow = await Tarea.findOne({
@@ -1286,7 +1312,7 @@ export const resumenCategorias = async (models, user, f, u, e) => {
 
     return {
         categoria, alcance, usuario: usuarioNombre, dias, conteos, grupos,
-        espacios: espaciosVisibles.map(x => ({ id: x.id, nombre: x.nombre, activo: !!x.activo })),
+        espacios: espaciosVisibles,
         espaciosFiltro
     };
 };
@@ -1367,8 +1393,11 @@ export const deleteComentario = async (models, user, comentarioId) => {
 };
 
 /**
- * Bloque "Tareas del equipo" para el Panel (../analisis_app_php/03 §4.9) — acotado a los
- * espacios VISIBLES del que mira (para que cada número coincida con el listado destino):
+ * Bloque "Tareas del equipo" (../analisis_app_php/03 §4.9) — vive en **Análisis de tareas**
+ * (antes estaba en el Panel: el cálculo del tiempo promedio lee la bitácora completa de las
+ * tareas asignadas, y pagarlo en cada refresco del minuto del Panel no se justificaba para
+ * un bloque que se mira de vez en cuando). Acotado a los espacios VISIBLES del que mira
+ * (para que cada número coincida con el listado destino):
  *  a) 4 tarjetas del equipo (pendientes con hint en progreso/pausadas, hoy, por vencer,
  *     vencidas con "en N persona(s)").
  *  b) "Qué está haciendo cada uno": tareas en_progreso con `desde` = último pase a
@@ -1378,13 +1407,14 @@ export const deleteComentario = async (models, user, comentarioId) => {
  *     atribuido al asignado ACTUAL — regla del legado).
  * @param {object} models - Modelos de la app.
  * @param {object} user - Usuario que mira.
- * @returns {Promise<object|null>} El bloque, o null sin espacios visibles.
+ * @param {number[]|null} [espacioIds] - Alcance ya resuelto (null = recalcular los visibles).
+ * @param {number|null} [diasVentana] - Ventana "por vencer" ya leída (null = releerla).
+ * @returns {Promise<object>} El bloque; `tarjetas` null sin espacios visibles.
  */
-export const equipoDashboard = async (models, user) => {
+export const equipoDashboard = async (models, user, espacioIds = null, diasVentana = null) => {
     const { Tarea, TareaCambio, EspacioTrabajo, Lista, User } = models;
-    const permisos = await getEspacioPermisos(models, user);
-    const visiblesIds = Object.entries(permisos).filter(([, p]) => p.ver).map(([id]) => Number(id));
-    const dias = await getDiasPorVencer(models);
+    const visiblesIds = espacioIds ?? (await alcanceEspacios(models, user)).alcanceIds;
+    const dias = diasVentana ?? await getDiasPorVencer(models);
     if (!visiblesIds.length) {
         return { tarjetas: null, enProgreso: [], porUsuario: [], dias };
     }

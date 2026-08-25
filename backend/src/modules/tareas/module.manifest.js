@@ -16,7 +16,10 @@ export default {
     models: ['Lista', 'Tarea', 'TareaEstado', 'TareaArchivo', 'TareaComentario'],
     capabilities: [
         'tareas:read', 'tareas:create', 'tareas:update', 'tareas:delete',
-        'tareas:estado', 'tareas:asignar'
+        'tareas:estado', 'tareas:asignar',
+        // Pantalla de Análisis: separada de `read` porque expone métricas del EQUIPO
+        // (tiempo promedio por persona, quién cierra cuánto), no el tablero.
+        'tareas:analisis'
     ],
     dependsOn: ['espacios'],
     router

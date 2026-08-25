@@ -7,6 +7,7 @@
 import { matchedData } from 'express-validator';
 import { responseManager } from '../../../kernel/index.js';
 import * as tareaService from '../services/tarea.service.js';
+import * as analisisService from '../services/analisis.service.js';
 import * as archivoService from '../services/archivo.service.js';
 
 /**
@@ -59,6 +60,19 @@ export const resumen = async (req, res) => {
         const data = await tareaService.resumenCategorias(
             req.models, req.user, req.query.f, req.query.u, req.query.e
         );
+        return await responseManager(200, data, req, res, false);
+    } catch (e) { return bizCatch(e, req, res); }
+};
+
+/**
+ * GET /tareas/analisis — pantalla de estadísticas del módulo (equipo, listas, rango, series).
+ * @param {import('express').Request} req - Request.
+ * @param {import('express').Response} res - Response.
+ * @returns {Promise<void>} 200 con todos los bloques del análisis.
+ */
+export const analisis = async (req, res) => {
+    try {
+        const data = await analisisService.analisisTareas(req.models, req.user, matchedData(req));
         return await responseManager(200, data, req, res, false);
     } catch (e) { return bizCatch(e, req, res); }
 };

@@ -18,6 +18,8 @@ test.describe('M14: Tareas y listas', () => {
   let espacio1 = 0; // el usuario de tareas tendrá ver+editar acá (se otorga en M14.2/3)
   let espacio2 = 0; // acá NO tendrá editar
   let userId = 0;
+  let roleId = 0;   // el rol del usuario acotado: M14.9c le agrega `tareas:analisis` en caliente
+  let roleLabel = '';
   let tareasApi: APIRequestContext; // usuario con capabilities de tareas pero acceso por espacio acotado
 
   test.beforeAll(async ({ adminApi }) => {
@@ -27,11 +29,11 @@ test.describe('M14: Tareas y listas', () => {
     espacio2 = (await e2.json()).data.id;
     cleanup.push(`espacios/${espacio1}`, `espacios/${espacio2}`);
 
-    // Rol con la capa 1 completa de tareas (SIN tareas:asignar, a propósito).
-    const rol = await adminApi.post('users/roles', {
-      data: makeRole({ capabilities: ['tareas:read', 'tareas:create', 'tareas:update', 'tareas:delete', 'tareas:estado'] }),
-    });
-    const roleId = (await rol.json()).data.role.id;
+    // Rol con la capa 1 completa de tareas (SIN tareas:asignar ni tareas:analisis, a propósito).
+    const datosRol = makeRole({ capabilities: ['tareas:read', 'tareas:create', 'tareas:update', 'tareas:delete', 'tareas:estado'] });
+    roleLabel = datosRol.label as string;
+    const rol = await adminApi.post('users/roles', { data: datosRol });
+    roleId = (await rol.json()).data.role.id;
     const usuario = await adminApi.post('users', { data: makeUser({ roleId }) });
     const uBody = await usuario.json();
     userId = uBody.data.id;
@@ -222,6 +224,87 @@ test.describe('M14: Tareas y listas', () => {
     );
     expect(colado.data.espaciosFiltro).toEqual([]);
     for (const g of colado.data.grupos) expect([espacio1, espacio2]).toContain(g.espacioId);
+  });
+
+  test('M14.9c - análisis: capability PROPIA, bloques completos, alcance por espacio y rango', async ({ adminApi }) => {
+    // `tareas:read` NO habilita el análisis: son permisos distintos a propósito (la pantalla
+    // muestra métricas del equipo, no el tablero).
+    await expectError(await tareasApi.get(`${APP_ENDPOINTS.tareas}/analisis`), 403);
+
+    // Se le agrega la capability al rol: el cache de capabilities se invalida al guardarlo,
+    // así que el MISMO token pasa a entrar sin volver a loguearse.
+    await expectSuccess(await adminApi.put(`users/roles/${roleId}`, {
+      data: {
+        label: roleLabel,
+        capabilities: [
+          'tareas:read', 'tareas:create', 'tareas:update', 'tareas:delete', 'tareas:estado',
+          'tareas:analisis',
+        ],
+      },
+    }), 200);
+
+    const base = (await expectSuccess(await tareasApi.get(`${APP_ENDPOINTS.tareas}/analisis`), 200)).data;
+
+    // Los siete bloques de la pantalla vienen en UNA sola llamada.
+    for (const k of ['equipo', 'porLista', 'porEspacio', 'rango', 'serie', 'antiguedad', 'prioridad']) {
+      expect(base).toHaveProperty(k);
+    }
+    // Sin rango pedido, el default es el MES ACTUAL completo (del 1 al último día).
+    const hoy = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    expect(base.rango.desde).toBe(`${hoy.getFullYear()}-${pad(hoy.getMonth() + 1)}-01`);
+    expect(base.rango.hasta).toBe(
+      `${hoy.getFullYear()}-${pad(hoy.getMonth() + 1)}-${pad(new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate())}`,
+    );
+    // La serie anual siempre son 12 meses, aunque no haya datos.
+    expect(base.serie.creadas).toHaveLength(12);
+    expect(base.serie.completadas).toHaveLength(12);
+    // El usuario acotado solo analiza SUS espacios.
+    for (const f of base.porEspacio) expect([espacio1, espacio2]).toContain(f.espacioId);
+
+    // Por lista incluye las COMPLETADAS (el resumen del módulo solo mira pendientes).
+    expect(base.porLista.length).toBeGreaterThan(0);
+    for (const f of base.porLista) {
+      expect(f).toHaveProperty('estados.completada');
+      const suma = Object.values(f.estados as Record<string, number>).reduce((a, b) => a + b, 0);
+      expect(suma).toBe(f.total);
+    }
+
+    // Filtro por espacio: recorta TODOS los bloques, no solo uno.
+    const filtrado = (await expectSuccess(
+      await tareasApi.get(`${APP_ENDPOINTS.tareas}/analisis?e=${espacio1}`), 200,
+    )).data;
+    expect(filtrado.espaciosFiltro).toEqual([espacio1]);
+    for (const f of filtrado.porEspacio) expect(f.espacioId).toBe(espacio1);
+    for (const f of filtrado.porLista) expect(f.espacioId).toBe(espacio1);
+
+    // Una tarea completada HOY aparece en el rango de hoy, con quién la cerró.
+    const lista = await tareasApi.post(`${APP_ENDPOINTS.tareas}/espacios/${espacio1}/listas`, { data: makeNombre('Lista analisis') });
+    const listaId = (await lista.json()).data.id;
+    const tarea = await tareasApi.post(APP_ENDPOINTS.tareas, { data: { listaId, nombre: 'Cerrada hoy', fechaVencimiento: '2030-01-01' } });
+    const tareaId = (await expectSuccess(tarea, 201)).data.id;
+    await expectSuccess(await tareasApi.patch(`${APP_ENDPOINTS.tareas}/${tareaId}/estado`, { data: { estado: 'completada' } }), 200);
+
+    const dia = `${hoy.getFullYear()}-${pad(hoy.getMonth() + 1)}-${pad(hoy.getDate())}`;
+    const rango = (await expectSuccess(
+      await tareasApi.get(`${APP_ENDPOINTS.tareas}/analisis?desde=${dia}&hasta=${dia}`), 200,
+    )).data.rango;
+    const cerrada = rango.tareas.find((t: { id: number }) => t.id === tareaId);
+    expect(cerrada).toBeTruthy();
+    expect(cerrada.cumplimiento).toBe('a_tiempo');   // vence en 2030
+    expect(cerrada.cerradaPor).toBeTruthy();
+    expect(rango.completadas).toBeGreaterThanOrEqual(1);
+    expect(rango.aTiempo).toBeGreaterThanOrEqual(1);
+
+    // Un rango invertido se endereza en vez de devolver vacío.
+    const invertido = (await expectSuccess(
+      await tareasApi.get(`${APP_ENDPOINTS.tareas}/analisis?desde=${dia}&hasta=2020-01-01`), 200,
+    )).data.rango;
+    expect(invertido.desde).toBe('2020-01-01');
+    expect(invertido.hasta).toBe(dia);
+
+    // Basura en las fechas → 422 (no un rango inventado en silencio).
+    await expectError(await tareasApi.get(`${APP_ENDPOINTS.tareas}/analisis?desde=pepe`), 422);
   });
 
   test('M14.10 - una lista con tareas no se elimina → 409; tarea inexistente → 404 real', async () => {

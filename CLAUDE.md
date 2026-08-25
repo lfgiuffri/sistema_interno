@@ -104,7 +104,8 @@ helmet → json → globalRateLimit → req.io
   módulos en su manifest, o `registerCapabilities([...])` en rutas de kernel/services.
 - Catálogo por prefijo de módulo (`usuarios:read`, `usuarios:create`, `usuarios:update`,
   `usuarios:toggle`, `usuarios:delete`, `roles:*`, `webhooks:manage`, y las de cada módulo
-  de negocio). El catálogo completo es el del PRD §4 — todos los módulos están construidos.
+  de negocio; `tareas:analisis` gatea la pantalla de Análisis de tareas aparte de
+  `tareas:read`). El catálogo completo es el del PRD §4 — todos los módulos están construidos.
 - `GET /me` → `{ user, modules, capabilities, declaredCapabilities }`: el frontend arma el
   menú y gatea acciones con eso (store `me`: `can(cap)` / `canAny(modulo)`).
 - Protecciones de usuarios: nadie se desactiva/elimina/cambia el rol a sí mismo; el ÚLTIMO
@@ -295,7 +296,8 @@ Paginación en `meta` (helper `Paginate`). Validación: express-validator → 42
   `GET /dashboard/estadisticas` + pantalla propia, ver más abajo) + `equipoDashboard` en tareas
   (tarjetas del equipo, "qué está haciendo cada uno" con desde de la bitácora, tabla por
   usuario con tiempo promedio de trabajo — tramos en_progreso, cerradas, asignado actual —
-  acotado a los espacios del que mira). **Notificaciones in-app**: `services/notificaciones`
+  acotado a los espacios del que mira; desde 2026-08-25 ya NO se sirve en el panel: vive en
+  la pantalla Análisis de tareas). **Notificaciones in-app**: `services/notificaciones`
   (modelo + rutas personales SIN capability, como /me; `crearNotificacion` en el barrel;
   socket `notificacion` a user:<id>) — emitidas en asignación de tarea, cambio de estado de
   tarea ajena, comentarios/menciones y el **scheduler de avisos diarios**
@@ -440,13 +442,56 @@ Monitoreo de los VPS de la empresa. Doc completa en `docs/modules/mantenimiento.
   runbook en `docs/deploy-vps-oracle.md` (§ Watchdog externo). El chequeo no debe apuntar a la
   raíz del dominio: nginx sirve el frontend aunque el backend esté muerto.
 
+## Pantalla «Análisis de tareas» (2026-08-25)
+
+`GET /tareas/analisis` (**`tareas:analisis`** — capability PROPIA, no `tareas:read`) →
+`views/tareas/AnalisisPage.vue`, en el grupo **Proyectos** del menú. Es la pantalla de estadísticas del módulo tareas y reúne SIETE bloques
+en UNA sola llamada (cambiar el rango o el año recalcula todo: son agregados sobre columnas
+indexadas y la pantalla se abre a mano, no autorefresca).
+
+- **Capability separada de `tareas:read`**: ver el tablero y leer las métricas del EQUIPO
+  (tiempo promedio por persona, quién cierra cuánto) son dos permisos distintos. **No hay
+  migración que la otorgue**: al desplegar solo la tiene el rol Administrador (comodín `*`) y
+  se reparte a mano desde Roles — decisión explícita, el objetivo era poder restringirla. Ojo
+  con el efecto: quien veía el bloque del equipo en el Panel se queda sin él hasta que se la
+  asignen. En el menú, el ítem se gatea con la capability EXACTA (`NavItem.cap` en
+  `config/nav.ts`, que manda sobre `module`); entrar por URL sin permiso muestra un cartel que
+  nombra la capability, no una pantalla en blanco.
+- **Se llevó «Tareas del equipo» del Panel** (tarjetas, «qué está haciendo cada uno» y la tabla
+  por persona con el tiempo promedio). Motivo: ese promedio lee la bitácora completa de las
+  tareas asignadas y el Panel se refresca **cada minuto** para dejarlo en un monitor. El panel
+  ya no devuelve `tareasEquipo`; `equipoDashboard()` sigue en `tarea.service.js` y ahora acepta
+  el alcance y la ventana ya resueltos.
+- **Fuente de las fechas de cierre**: la bitácora `tarea_cambios` (`campo='estado'`,
+  `valorNuevo='completada'`), NUNCA `tareas.updatedAt` — una completada que después se renombra
+  tendría `updatedAt` de hoy y contaría como «realizada hoy». Como la migración `0006` volcó
+  ahí `tarea_estados`, el historial del PHP legado también cuenta.
+- **Realizadas en un período**: `desde`/`hasta` (default **el mes actual completo**, calculado
+  en el servidor para que sea el mismo mes que `CURDATE()`), con atajos. Una tarea cerrada,
+  reabierta y vuelta a cerrar cuenta **una vez** y vale su ÚLTIMO cierre del rango. El
+  cumplimiento compara el DÍA del cierre contra `fechaVencimiento`; **sin vencimiento va a su
+  propia cubeta**, no a «a tiempo». El ranking es por **quién marcó completada** (dato de la
+  bitácora), no por el asignado, que pudo cambiar después.
+- **Por lista / por espacio**: conteos por estado **incluyendo completadas** (el resumen del
+  módulo solo mira pendientes). Se listan también las listas con 0 tareas; la UI las esconde
+  por default.
+- **Serie creadas vs. completadas** del año (`anio`), **antigüedad** de las pendientes en
+  cubetas + **estancadas** (`estancadas` = días sin movimiento, default 14 — medidos con
+  `tareas.updatedAt`: un comentario no es trabajo sobre la tarea) y **pendientes por prioridad**
+  marcando las que no tienen responsable.
+- **Filtro por espacio múltiple** (`e=1,4`) que recorta TODOS los bloques, y todo el estado en
+  el query string (rango, año, espacios, días) para compartir una vista por link.
+- Helpers compartidos con el resumen en `tarea.service.js`: `alcanceEspacios()` (interseca el
+  filtro contra lo visible; nunca amplía) y `catalogoEspacios()`.
+
 ## Panel vs Estadísticas (2026-08-12)
 
 El módulo `dashboard` expone DOS superficies, cada una con su pantalla:
 - `GET /dashboard` (`dashboard:read`) → **Panel** (`views/dashboard/HomePage.vue`, grupo
   Principal del menú): qué está pasando ahora — cotización, contadores y alertas de abonos,
-  facturación del mes, proyectos, **infraestructura** y tareas del equipo. NO calcula series
-  anuales. El bloque `mantenimiento` (`modules/mantenimiento/services/resumen.service.js`) es
+  facturación del mes, proyectos e **infraestructura**. NO calcula series anuales NI el bloque
+  de tareas del equipo (desde 2026-08-25 vive en **Análisis de tareas**, ver arriba).
+  El bloque `mantenimiento` (`modules/mantenimiento/services/resumen.service.js`) es
   RESUMEN: solo conteos agregados y el pico de consumo (últimos 10 min, para no mostrar el
   valor congelado de un agente muerto); cada mitad exige `servidores:read` / `sitios:read`.
   El panel se **refresca solo cada minuto** (`composables/useAutoRefresh.ts` +
@@ -462,6 +507,9 @@ El módulo `dashboard` expone DOS superficies, cada una con su pantalla:
   abonos vs proyectos, abonos por servicio y facturación por área, con el selector de año
   único. El gating fino por gráfico (facturaciones, cobranzas, servicios, áreas) sigue dentro
   del service; si los tres vienen null la pantalla lo explica.
+
+En el menú, «Análisis de tareas» va junto a Tareas en el grupo **Proyectos**, pero se otorga
+con su capability propia (`tareas:analisis`), no con «tener algo de tareas».
 
 **Menú y landing** (`frontend/src/config/nav.ts`): el menú es FUENTE ÚNICA y lo consumen el
 shell (para pintarlo) y el router (para decidir el destino inicial). El Panel se otorga con
