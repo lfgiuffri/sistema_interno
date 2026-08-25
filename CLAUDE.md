@@ -470,8 +470,12 @@ indexadas y la pantalla se abre a mano, no autorefresca).
   en el servidor para que sea el mismo mes que `CURDATE()`), con atajos. Una tarea cerrada,
   reabierta y vuelta a cerrar cuenta **una vez** y vale su ÚLTIMO cierre del rango. El
   cumplimiento compara el DÍA del cierre contra `fechaVencimiento`; **sin vencimiento va a su
-  propia cubeta**, no a «a tiempo». El ranking es por **quién marcó completada** (dato de la
-  bitácora), no por el asignado, que pudo cambiar después.
+  propia cubeta**, no a «a tiempo». Debajo, DOS agregados: **quién cerró** (por quién marcó
+  completada — dato de la bitácora, no el asignado, que pudo cambiar después) y **en qué
+  listas cayó el trabajo del período** (solo listas con cierres, por total descendente,
+  reordenable desde los encabezados). El detalle tarea por tarea se calcula pero **no se
+  sirve**: la pantalla muestra agregados y devolver cientos de tareas que nadie pinta era peso
+  al pedo — si hace falta, sale de `tareas` sin tocar las consultas.
 - **Por lista / por espacio**: conteos por estado **incluyendo completadas** (el resumen del
   módulo solo mira pendientes). Se listan también las listas con 0 tareas; la UI las esconde
   por default.

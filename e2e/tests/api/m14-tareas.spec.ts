@@ -289,12 +289,18 @@ test.describe('M14: Tareas y listas', () => {
     const rango = (await expectSuccess(
       await tareasApi.get(`${APP_ENDPOINTS.tareas}/analisis?desde=${dia}&hasta=${dia}`), 200,
     )).data.rango;
-    const cerrada = rango.tareas.find((t: { id: number }) => t.id === tareaId);
-    expect(cerrada).toBeTruthy();
-    expect(cerrada.cumplimiento).toBe('a_tiempo');   // vence en 2030
-    expect(cerrada.cerradaPor).toBeTruthy();
     expect(rango.completadas).toBeGreaterThanOrEqual(1);
-    expect(rango.aTiempo).toBeGreaterThanOrEqual(1);
+    expect(rango.aTiempo).toBeGreaterThanOrEqual(1);   // vence en 2030
+    // El detalle tarea por tarea NO se sirve: la pantalla muestra agregados.
+    expect(rango).not.toHaveProperty('tareas');
+    // Por lista del PERÍODO: solo listas con cierres, de mayor a menor.
+    const enLista = rango.porLista.find((f: { listaId: number }) => f.listaId === listaId);
+    expect(enLista.realizadas).toBe(1);
+    expect(enLista.espacioId).toBe(espacio1);
+    const cantidades = rango.porLista.map((f: { realizadas: number }) => f.realizadas);
+    expect([...cantidades].sort((a: number, b: number) => b - a)).toEqual(cantidades);
+    // Quién cerró sigue saliendo de la bitácora.
+    expect(rango.porUsuario.length).toBeGreaterThanOrEqual(1);
 
     // Un rango invertido se endereza en vez de devolver vacío.
     const invertido = (await expectSuccess(

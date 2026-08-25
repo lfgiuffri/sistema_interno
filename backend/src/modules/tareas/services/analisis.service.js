@@ -29,9 +29,6 @@ const CUBETAS_AGING = [
     { clave: 'mas', label: 'Más de 90 días', cond: 'diff > 90' }
 ];
 
-/** Tope del listado de tareas realizadas del rango (se avisa si se recorta: nunca en silencio). */
-const TOPE_REALIZADAS = 300;
-
 /** Tope del listado de estancadas (es un «mirá estas», no un listado completo). */
 const TOPE_ESTANCADAS = 15;
 
@@ -146,13 +143,17 @@ const bloquePorEspacio = async (models, espacios, espaciosSql, vencidasSql) => {
 };
 
 /**
- * Bloque «Realizadas» del rango elegido: qué se cerró entre dos fechas, si llegó a tiempo y
- * quién lo cerró.
+ * Bloque «Realizadas» del rango elegido: cuánto se cerró entre dos fechas, quién lo cerró y
+ * en qué listas cayó ese trabajo.
  *
  * Una tarea puede cerrarse, reabrirse y volver a cerrarse: se cuenta UNA vez (por `tareaId`)
  * y vale el ÚLTIMO cierre dentro del rango, que es el que dejó la tarea como está.
  * «A tiempo» compara el DÍA del cierre contra `fechaVencimiento`; sin fecha de vencimiento no
  * hay contra qué comparar, así que va a su propia cubeta en vez de contarse como cumplida.
+ *
+ * El detalle tarea por tarea se arma acá pero NO se sirve: la pantalla muestra agregados
+ * (por persona y por lista) y devolver cientos de tareas que nadie pinta era peso al pedo.
+ * Si algún día hace falta el listado, sale de `tareas` sin tocar las consultas.
  * @param {object} models - Modelos de la app.
  * @param {number[]} alcanceIds - Espacios en alcance.
  * @param {string} desde - Fecha ISO inclusive.
@@ -225,6 +226,18 @@ const bloqueRealizadas = async (models, alcanceIds, desde, hasta) => {
         porUsuario.set(clave, fila);
     }
 
+    // En qué listas cayó el trabajo del período. Solo listas CON cierres: acá la pregunta es
+    // «dónde se trabajó este mes», y una lista en cero no es una respuesta (el bloque «Tareas
+    // por lista» de más abajo sí muestra el panorama completo, sin filtrar por fecha).
+    const porLista = new Map();
+    for (const t of tareas) {
+        const fila = porLista.get(t.listaId) ?? {
+            listaId: t.listaId, lista: t.lista, espacioId: t.espacioId, espacio: t.espacio, realizadas: 0
+        };
+        fila.realizadas += 1;
+        porLista.set(t.listaId, fila);
+    }
+
     const cuenta = (c) => tareas.filter(t => t.cumplimiento === c).length;
     return {
         desde,
@@ -235,8 +248,9 @@ const bloqueRealizadas = async (models, alcanceIds, desde, hasta) => {
         tarde: cuenta('tarde'),
         sinFecha: cuenta('sin_fecha'),
         porUsuario: [...porUsuario.values()].sort((a, b) => (b.n - a.n) || a.nombre.localeCompare(b.nombre)),
-        tareas: tareas.slice(0, TOPE_REALIZADAS),
-        truncado: Math.max(0, tareas.length - TOPE_REALIZADAS)
+        porLista: [...porLista.values()].sort(
+            (a, b) => (b.realizadas - a.realizadas) || a.lista.localeCompare(b.lista)
+        )
     };
 };
 
@@ -411,7 +425,7 @@ export const analisisTareas = async (models, user, q = {}) => {
         porLista: [], porEspacio: [],
         rango: {
             desde, hasta, creadas: 0, completadas: 0, aTiempo: 0, tarde: 0, sinFecha: 0,
-            porUsuario: [], tareas: [], truncado: 0
+            porUsuario: [], porLista: []
         },
         serie: { anio, creadas: Array(12).fill(0), completadas: Array(12).fill(0) },
         antiguedad: { diasEstancada: estancadasDias, cubetas: [], totalEstancadas: 0, estancadas: [] },

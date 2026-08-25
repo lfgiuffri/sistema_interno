@@ -51,11 +51,9 @@ interface FilaUsuario {
   enProgreso: number; pausadas: number
   promedio: { segundos: number; sobre: number } | null
 }
-interface TareaRealizada {
-  id: number; nombre: string; prioridad: string; estado: string
-  espacioId: number; espacio: string; listaId: number; lista: string
-  asignado: string | null; cerradaPor: string | null; cerradaEl: string
-  fechaVencimiento: string | null; cumplimiento: 'a_tiempo' | 'tarde' | 'sin_fecha'
+/** Una lista con lo que se cerró EN EL PERÍODO (no su total histórico). */
+interface ListaDelPeriodo {
+  listaId: number; lista: string; espacioId: number; espacio: string; realizadas: number
 }
 interface Estancada {
   id: number; nombre: string; prioridad: string; estado: string
@@ -80,8 +78,7 @@ interface Analisis {
     creadas: number; completadas: number
     aTiempo: number; tarde: number; sinFecha: number
     porUsuario: Array<{ userId: number; nombre: string; n: number; aTiempo: number }>
-    tareas: TareaRealizada[]
-    truncado: number
+    porLista: ListaDelPeriodo[]
   }
   serie: { anio: number; creadas: number[]; completadas: number[] }
   antiguedad: {
@@ -256,21 +253,20 @@ function exportarRealizadas(): void {
   const r = data.value?.rango
   if (!r) return
   descargarCsv(
-    `tareas-realizadas-${r.desde}_${r.hasta}`,
-    ['Tarea', 'Espacio', 'Lista', 'Asignada a', 'Cerrada por', 'Cerrada el', 'Vencimiento', 'Cumplimiento'],
-    r.tareas.map(t => [
-      t.nombre, t.espacio, t.lista, t.asignado ?? '', t.cerradaPor ?? '',
-      fechaHora(t.cerradaEl), t.fechaVencimiento ? fmtFecha(t.fechaVencimiento) : '',
-      CUMPLIMIENTO[t.cumplimiento].label,
-    ]),
+    `tareas-realizadas-por-lista-${r.desde}_${r.hasta}`,
+    ['Espacio', 'Lista', 'Realizadas'],
+    ordenPeriodo.ordenadas.value.map(f => [f.espacio, f.lista, f.realizadas]),
   )
 }
 
-const CUMPLIMIENTO: Record<string, { label: string; clase: string }> = {
-  a_tiempo: { label: 'A tiempo', clase: 'ds-badge-ok' },
-  tarde: { label: 'Tarde', clase: 'ds-badge-danger' },
-  sin_fecha: { label: 'Sin fecha', clase: 'ds-badge-neutral' },
-}
+// ── Tabla «por lista» del período ─────────────────────────────────────────────
+/** Arranca por total de realizadas, de mayor a menor; los encabezados cambian el orden. */
+const filasPeriodo = computed<ListaDelPeriodo[]>(() => data.value?.rango.porLista ?? [])
+const ordenPeriodo = useOrdenTabla(
+  filasPeriodo,
+  (f, col) => (f as unknown as Record<string, string | number | boolean | null>)[col],
+  { columna: 'realizadas', dir: 'desc' },
+)
 
 // ── Bloques visuales ──────────────────────────────────────────────────────────
 const maxCubeta = computed(() => Math.max(1, ...(data.value?.antiguedad.cubetas ?? []).map(c => c.n)))
@@ -452,7 +448,7 @@ watch(() => route.query, () => { if (loadedOnce && route.path.includes('/tareas/
                 Realizadas en un período
               </h2>
               <button
-                v-if="data.rango.tareas.length" class="ds-btn-ghost h-7 px-2 text-xs"
+                v-if="data.rango.porLista.length" class="ds-btn-ghost h-7 px-2 text-xs"
                 @click="exportarRealizadas"
               >
                 <IonIcon :icon="downloadOutline" class="text-[13px]" /> CSV
@@ -512,7 +508,7 @@ watch(() => route.query, () => { if (loadedOnce && route.path.includes('/tareas/
               </div>
             </div>
 
-            <div class="grid lg:grid-cols-3 gap-3">
+            <div class="grid lg:grid-cols-2 gap-3">
               <div class="ds-card overflow-x-auto">
                 <table class="ds-table">
                   <thead><tr><th>Cerró</th><th>Tareas</th><th>A tiempo</th></tr></thead>
@@ -532,37 +528,38 @@ watch(() => route.query, () => { if (loadedOnce && route.path.includes('/tareas/
                 </p>
               </div>
 
-              <div class="ds-card overflow-x-auto lg:col-span-2">
-                <table class="ds-table" style="min-width: 620px">
+              <!--
+                En qué listas cayó el trabajo DEL PERÍODO. Es otra pregunta que la del bloque
+                «Tareas por lista» de más abajo, que muestra el panorama completo sin filtrar
+                por fecha: acá solo aparecen las listas donde se cerró algo entre las dos
+                fechas, de mayor a menor. Los encabezados reordenan como en toda tabla.
+              -->
+              <div class="ds-card overflow-auto max-h-[360px]">
+                <table class="ds-table tabla-pegada">
                   <thead>
                     <tr>
-                      <th class="w-9"><span class="sr-only">Prioridad</span></th>
-                      <th>Tarea</th><th>Lista</th><th>Cerró</th><th>Cuándo</th><th>Cumplimiento</th>
+                      <ThOrdenable columna="espacio" :activa="ordenPeriodo.columna.value" :dir="ordenPeriodo.dir.value" @ordenar="ordenPeriodo.ordenarPor">Espacio</ThOrdenable>
+                      <ThOrdenable columna="lista" :activa="ordenPeriodo.columna.value" :dir="ordenPeriodo.dir.value" @ordenar="ordenPeriodo.ordenarPor">Lista</ThOrdenable>
+                      <ThOrdenable columna="realizadas" :activa="ordenPeriodo.columna.value" :dir="ordenPeriodo.dir.value" @ordenar="ordenPeriodo.ordenarPor">Realizadas</ThOrdenable>
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-for="t in data.rango.tareas" :key="t.id">
-                      <td><BanderaPrioridad :prioridad="t.prioridad" :size="14" /></td>
+                    <tr v-for="f in ordenPeriodo.ordenadas.value" :key="f.listaId">
+                      <td class="text-ink-soft text-sm">{{ f.espacio }}</td>
                       <td>
-                        <button class="font-medium text-ink hover:text-accent transition-colors text-left" @click="irALista(t.espacioId, t.listaId)">
-                          {{ t.nombre }}
+                        <button class="font-medium text-ink hover:text-accent transition-colors text-left" @click="irALista(f.espacioId, f.listaId)">
+                          {{ f.lista }}
                         </button>
                       </td>
-                      <td class="text-ink-soft text-sm">{{ t.espacio }} · {{ t.lista }}</td>
-                      <td class="text-ink-soft text-sm">{{ t.cerradaPor ?? '—' }}</td>
-                      <td class="tnum text-ink-soft text-xs">{{ fechaHora(t.cerradaEl) }}</td>
-                      <td><span :class="CUMPLIMIENTO[t.cumplimiento].clase">{{ CUMPLIMIENTO[t.cumplimiento].label }}</span></td>
+                      <td class="tnum font-medium text-ink">{{ f.realizadas }}</td>
                     </tr>
-                    <tr v-if="!data.rango.tareas.length">
-                      <td colspan="6" class="text-xs text-ink-faint py-6 text-center">
+                    <tr v-if="!filasPeriodo.length">
+                      <td colspan="3" class="text-xs text-ink-faint py-6 text-center">
                         No se completó ninguna tarea en este período.
                       </td>
                     </tr>
                   </tbody>
                 </table>
-                <p v-if="data.rango.truncado" class="px-3 py-2 text-2xs text-warn border-t border-line-soft">
-                  Se muestran las primeras {{ data.rango.tareas.length }}: quedaron {{ data.rango.truncado }} sin listar. Acotá el período.
-                </p>
               </div>
             </div>
           </section>
