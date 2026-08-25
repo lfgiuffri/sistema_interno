@@ -226,16 +226,11 @@ const bloqueRealizadas = async (models, alcanceIds, desde, hasta) => {
         porUsuario.set(clave, fila);
     }
 
-    // En qué listas cayó el trabajo del período. Solo listas CON cierres: acá la pregunta es
-    // «dónde se trabajó este mes», y una lista en cero no es una respuesta (el bloque «Tareas
-    // por lista» de más abajo sí muestra el panorama completo, sin filtrar por fecha).
-    const porLista = new Map();
+    // Cierres por lista del período (la carga completa —con las pendientes— la arma
+    // `cargaPorLista`, que cruza esto con los conteos que ya trae el bloque «por lista»).
+    const realizadasPorLista = new Map();
     for (const t of tareas) {
-        const fila = porLista.get(t.listaId) ?? {
-            listaId: t.listaId, lista: t.lista, espacioId: t.espacioId, espacio: t.espacio, realizadas: 0
-        };
-        fila.realizadas += 1;
-        porLista.set(t.listaId, fila);
+        realizadasPorLista.set(t.listaId, (realizadasPorLista.get(t.listaId) ?? 0) + 1);
     }
 
     const cuenta = (c) => tareas.filter(t => t.cumplimiento === c).length;
@@ -248,11 +243,43 @@ const bloqueRealizadas = async (models, alcanceIds, desde, hasta) => {
         tarde: cuenta('tarde'),
         sinFecha: cuenta('sin_fecha'),
         porUsuario: [...porUsuario.values()].sort((a, b) => (b.n - a.n) || a.nombre.localeCompare(b.nombre)),
-        porLista: [...porLista.values()].sort(
-            (a, b) => (b.realizadas - a.realizadas) || a.lista.localeCompare(b.lista)
-        )
+        realizadasPorLista: Object.fromEntries(realizadasPorLista)
     };
 };
+
+/**
+ * Carga por lista del período: lo que sigue PENDIENTE hoy junto a lo que se CERRÓ entre las
+ * dos fechas, más el total de las dos cosas (que es por donde ordena la pantalla).
+ *
+ * No hace ninguna consulta nueva: las pendientes salen de los conteos que el bloque «por
+ * lista» ya trajo (`total - completada`, la misma cuenta que muestra esa tabla).
+ *
+ * Quedan afuera las listas sin nada en las dos columnas: una lista vacía, o una donde todo se
+ * completó FUERA del período, no dice nada de la carga de trabajo de hoy ni de este mes.
+ *
+ * ⚠️ Una tarea cerrada dentro del período y REABIERTA después suma en las dos columnas (está
+ * pendiente hoy y se cerró en el período): las dos son ciertas, y el total la cuenta dos
+ * veces. Es raro y preferible a esconder una de las dos verdades.
+ * @param {object[]} todas - Filas del bloque «por lista» (todas las listas del alcance).
+ * @param {Record<string, number>} realizadas - Cierres del período por `listaId`.
+ * @returns {object[]} Filas ordenadas por total descendente.
+ */
+const cargaPorLista = (todas, realizadas) => todas
+    .map(l => {
+        const cerradas = Number(realizadas[l.listaId]) || 0;
+        const pendientes = l.total - l.estados.completada;
+        return {
+            listaId: l.listaId,
+            lista: l.lista,
+            espacioId: l.espacioId,
+            espacio: l.espacio,
+            pendientes,
+            realizadas: cerradas,
+            total: pendientes + cerradas
+        };
+    })
+    .filter(f => f.total > 0)
+    .sort((a, b) => (b.total - a.total) || a.lista.localeCompare(b.lista));
 
 /**
  * Serie mensual «creadas vs. completadas» del año elegido — la única foto en movimiento de la
@@ -448,5 +475,12 @@ export const analisisTareas = async (models, user, q = {}) => {
         bloquePrioridad(models, espaciosSql, cat.pendientes)
     ]);
 
-    return { dias, anio, espacios: catalogo, espaciosFiltro, equipo, porLista, porEspacio, rango, serie, antiguedad, prioridad };
+    // La carga por lista del período necesita los dos bloques, así que se arma acá (después
+    // del Promise.all) y no dentro de ninguno de ellos.
+    const { realizadasPorLista, ...restoRango } = rango;
+    return {
+        dias, anio, espacios: catalogo, espaciosFiltro, equipo, porLista, porEspacio,
+        rango: { ...restoRango, porLista: cargaPorLista(porLista, realizadasPorLista) },
+        serie, antiguedad, prioridad
+    };
 };

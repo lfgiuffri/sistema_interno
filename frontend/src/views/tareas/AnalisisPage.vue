@@ -51,9 +51,13 @@ interface FilaUsuario {
   enProgreso: number; pausadas: number
   promedio: { segundos: number; sobre: number } | null
 }
-/** Una lista con lo que se cerró EN EL PERÍODO (no su total histórico). */
+/**
+ * Carga de una lista: lo que sigue pendiente HOY + lo que se cerró EN EL PERÍODO.
+ * `total` es la suma de las dos, y es por donde ordena la tabla por defecto.
+ */
 interface ListaDelPeriodo {
-  listaId: number; lista: string; espacioId: number; espacio: string; realizadas: number
+  listaId: number; lista: string; espacioId: number; espacio: string
+  pendientes: number; realizadas: number; total: number
 }
 interface Estancada {
   id: number; nombre: string; prioridad: string; estado: string
@@ -253,19 +257,19 @@ function exportarRealizadas(): void {
   const r = data.value?.rango
   if (!r) return
   descargarCsv(
-    `tareas-realizadas-por-lista-${r.desde}_${r.hasta}`,
-    ['Espacio', 'Lista', 'Realizadas'],
-    ordenPeriodo.ordenadas.value.map(f => [f.espacio, f.lista, f.realizadas]),
+    `tareas-por-lista-${r.desde}_${r.hasta}`,
+    ['Espacio', 'Lista', 'Pendientes', 'Realizadas', 'Total'],
+    ordenPeriodo.ordenadas.value.map(f => [f.espacio, f.lista, f.pendientes, f.realizadas, f.total]),
   )
 }
 
 // ── Tabla «por lista» del período ─────────────────────────────────────────────
-/** Arranca por total de realizadas, de mayor a menor; los encabezados cambian el orden. */
+/** Arranca por total, de mayor a menor; los encabezados cambian el orden. */
 const filasPeriodo = computed<ListaDelPeriodo[]>(() => data.value?.rango.porLista ?? [])
 const ordenPeriodo = useOrdenTabla(
   filasPeriodo,
   (f, col) => (f as unknown as Record<string, string | number | boolean | null>)[col],
-  { columna: 'realizadas', dir: 'desc' },
+  { columna: 'total', dir: 'desc' },
 )
 
 // ── Bloques visuales ──────────────────────────────────────────────────────────
@@ -508,8 +512,8 @@ watch(() => route.query, () => { if (loadedOnce && route.path.includes('/tareas/
               </div>
             </div>
 
-            <div class="grid lg:grid-cols-2 gap-3">
-              <div class="ds-card overflow-x-auto">
+            <div class="grid lg:grid-cols-5 gap-3">
+              <div class="ds-card overflow-x-auto lg:col-span-2">
                 <table class="ds-table">
                   <thead><tr><th>Cerró</th><th>Tareas</th><th>A tiempo</th></tr></thead>
                   <tbody>
@@ -529,18 +533,20 @@ watch(() => route.query, () => { if (loadedOnce && route.path.includes('/tareas/
               </div>
 
               <!--
-                En qué listas cayó el trabajo DEL PERÍODO. Es otra pregunta que la del bloque
-                «Tareas por lista» de más abajo, que muestra el panorama completo sin filtrar
-                por fecha: acá solo aparecen las listas donde se cerró algo entre las dos
-                fechas, de mayor a menor. Los encabezados reordenan como en toda tabla.
+                Carga por lista: lo que sigue PENDIENTE hoy contra lo que se CERRÓ en el
+                período. Es otra pregunta que la del bloque «Tareas por lista» de más abajo,
+                que abre por estado y no mira fechas. Quedan afuera las listas sin nada en
+                ninguna de las dos columnas. Los encabezados reordenan como en toda tabla.
               -->
-              <div class="ds-card overflow-auto max-h-[360px]">
-                <table class="ds-table tabla-pegada">
+              <div class="ds-card overflow-auto max-h-[360px] lg:col-span-3">
+                <table class="ds-table tabla-pegada" style="min-width: 460px">
                   <thead>
                     <tr>
                       <ThOrdenable columna="espacio" :activa="ordenPeriodo.columna.value" :dir="ordenPeriodo.dir.value" @ordenar="ordenPeriodo.ordenarPor">Espacio</ThOrdenable>
                       <ThOrdenable columna="lista" :activa="ordenPeriodo.columna.value" :dir="ordenPeriodo.dir.value" @ordenar="ordenPeriodo.ordenarPor">Lista</ThOrdenable>
+                      <ThOrdenable columna="pendientes" :activa="ordenPeriodo.columna.value" :dir="ordenPeriodo.dir.value" @ordenar="ordenPeriodo.ordenarPor">Pendientes</ThOrdenable>
                       <ThOrdenable columna="realizadas" :activa="ordenPeriodo.columna.value" :dir="ordenPeriodo.dir.value" @ordenar="ordenPeriodo.ordenarPor">Realizadas</ThOrdenable>
+                      <ThOrdenable columna="total" :activa="ordenPeriodo.columna.value" :dir="ordenPeriodo.dir.value" @ordenar="ordenPeriodo.ordenarPor">Total</ThOrdenable>
                     </tr>
                   </thead>
                   <tbody>
@@ -551,11 +557,13 @@ watch(() => route.query, () => { if (loadedOnce && route.path.includes('/tareas/
                           {{ f.lista }}
                         </button>
                       </td>
-                      <td class="tnum font-medium text-ink">{{ f.realizadas }}</td>
+                      <td class="tnum" :class="f.pendientes ? 'text-ink-soft' : 'text-ink-faint'">{{ f.pendientes || '—' }}</td>
+                      <td class="tnum" :class="f.realizadas ? 'text-accent-ink font-medium' : 'text-ink-faint'">{{ f.realizadas || '—' }}</td>
+                      <td class="tnum font-medium text-ink">{{ f.total }}</td>
                     </tr>
                     <tr v-if="!filasPeriodo.length">
-                      <td colspan="3" class="text-xs text-ink-faint py-6 text-center">
-                        No se completó ninguna tarea en este período.
+                      <td colspan="5" class="text-xs text-ink-faint py-6 text-center">
+                        Ninguna lista tiene tareas pendientes ni cerradas en este período.
                       </td>
                     </tr>
                   </tbody>

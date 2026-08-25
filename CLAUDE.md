@@ -471,9 +471,13 @@ indexadas y la pantalla se abre a mano, no autorefresca).
   reabierta y vuelta a cerrar cuenta **una vez** y vale su ÚLTIMO cierre del rango. El
   cumplimiento compara el DÍA del cierre contra `fechaVencimiento`; **sin vencimiento va a su
   propia cubeta**, no a «a tiempo». Debajo, DOS agregados: **quién cerró** (por quién marcó
-  completada — dato de la bitácora, no el asignado, que pudo cambiar después) y **en qué
-  listas cayó el trabajo del período** (solo listas con cierres, por total descendente,
-  reordenable desde los encabezados). El detalle tarea por tarea se calcula pero **no se
+  completada — dato de la bitácora, no el asignado, que pudo cambiar después) y la **carga por
+  lista** (`cargaPorLista`: pendientes de HOY + cerradas del período, `total` = la suma y el
+  orden por defecto, reordenable desde los encabezados). Esa carga no cuesta una consulta
+  extra: las pendientes salen de los conteos que ya trajo el bloque «por lista»
+  (`total - completada`). Quedan afuera las listas con las dos columnas en cero. Ojo con el
+  borde: una tarea cerrada en el período y REABIERTA después suma en las dos columnas y el
+  total la cuenta dos veces — las dos cosas son ciertas. El detalle tarea por tarea se calcula pero **no se
   sirve**: la pantalla muestra agregados y devolver cientos de tareas que nadie pinta era peso
   al pedo — si hace falta, sale de `tareas` sin tocar las consultas.
 - **Por lista / por espacio**: conteos por estado **incluyendo completadas** (el resumen del

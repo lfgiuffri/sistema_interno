@@ -293,12 +293,16 @@ test.describe('M14: Tareas y listas', () => {
     expect(rango.aTiempo).toBeGreaterThanOrEqual(1);   // vence en 2030
     // El detalle tarea por tarea NO se sirve: la pantalla muestra agregados.
     expect(rango).not.toHaveProperty('tareas');
-    // Por lista del PERÍODO: solo listas con cierres, de mayor a menor.
+    // Carga por lista del período: pendientes de hoy + cerradas del rango, y total = la suma.
     const enLista = rango.porLista.find((f: { listaId: number }) => f.listaId === listaId);
     expect(enLista.realizadas).toBe(1);
+    expect(enLista.pendientes).toBe(0);        // la única tarea de la lista quedó completada
+    expect(enLista.total).toBe(1);
     expect(enLista.espacioId).toBe(espacio1);
-    const cantidades = rango.porLista.map((f: { realizadas: number }) => f.realizadas);
-    expect([...cantidades].sort((a: number, b: number) => b - a)).toEqual(cantidades);
+    for (const f of rango.porLista) expect(f.total).toBe(f.pendientes + f.realizadas);
+    // Viene ordenada por total descendente.
+    const totales = rango.porLista.map((f: { total: number }) => f.total);
+    expect([...totales].sort((a: number, b: number) => b - a)).toEqual(totales);
     // Quién cerró sigue saliendo de la bitácora.
     expect(rango.porUsuario.length).toBeGreaterThanOrEqual(1);
 
