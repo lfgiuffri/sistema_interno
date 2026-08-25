@@ -1172,13 +1172,18 @@ export const deleteTarea = async (models, user, id) => {
  *
  * `u`: 'todos' = equipo; 'sin' = sin asignar; id numérico ≠ mío = ese usuario; cualquier
  * otra cosa (incluido mi id) = mías. Un parámetro mal escrito nunca amplía lo que se ve.
+ * `e`: ids de espacio separados por coma (filtro MÚLTIPLE). Se INTERSECA con los visibles:
+ * pedir un espacio ajeno no lo muestra, y si no queda ninguno válido se ignora el filtro
+ * (mejor todo que una pantalla vacía sin explicación). El filtro entra también en los
+ * CONTEOS: si no, la solapa diría 12 y la tabla mostraría 3.
  * @param {object} models - Modelos de la app.
  * @param {object} user - Usuario del request.
  * @param {string} f - Categoría (basura → 'pendientes').
  * @param {string} u - Alcance (ver arriba).
- * @returns {Promise<object>} { categoria, alcance, dias, conteos, grupos, usuario }.
+ * @param {string} [e] - Ids de espacio separados por coma (vacío = todos los visibles).
+ * @returns {Promise<object>} { categoria, alcance, dias, conteos, grupos, usuario, espacios, espaciosFiltro }.
  */
-export const resumenCategorias = async (models, user, f, u) => {
+export const resumenCategorias = async (models, user, f, u, e) => {
     const { Tarea, EspacioTrabajo, Lista } = models;
     const dias = await getDiasPorVencer(models);
     const cat = sqlCategorias(dias);
@@ -1207,10 +1212,26 @@ export const resumenCategorias = async (models, user, f, u) => {
     // Derivado de `cat` y no escrito a mano: al sumar una categoría no hay que acordarse de acá.
     const vacio = Object.fromEntries(Object.keys(cat).map(k => [k, 0]));
     if (!visiblesIds.length) {
-        return { categoria, alcance, usuario: usuarioNombre, dias, conteos: vacio, grupos: [] };
+        return {
+            categoria, alcance, usuario: usuarioNombre, dias, conteos: vacio, grupos: [],
+            espacios: [], espaciosFiltro: []
+        };
     }
 
-    const espaciosSql = `\`tareas\`.\`espacioId\` IN (${visiblesIds.join(',')})`;
+    // Catálogo para el selector del frontend: TODOS los visibles (no los filtrados), si no
+    // el filtro se autodestruiría — al elegir uno desaparecerían los demás del selector.
+    const espaciosVisibles = await EspacioTrabajo.findAll({
+        where: { id: { [Op.in]: visiblesIds } },
+        attributes: ['id', 'nombre', 'activo'],
+        order: [['nombre', 'ASC']],
+        raw: true
+    });
+
+    const pedidos = String(e ?? '').split(',').map(v => Number(String(v).trim())).filter(Number.isInteger);
+    const espaciosFiltro = visiblesIds.filter(id => pedidos.includes(id));
+    const alcanceEspacios = espaciosFiltro.length ? espaciosFiltro : visiblesIds;
+
+    const espaciosSql = `\`tareas\`.\`espacioId\` IN (${alcanceEspacios.join(',')})`;
 
     // Conteos de las 4 categorías con las MISMAS condiciones del listado.
     const conteosRow = await Tarea.findOne({
@@ -1263,7 +1284,11 @@ export const resumenCategorias = async (models, user, f, u) => {
     }
     grupos.forEach(g => delete g._listas);
 
-    return { categoria, alcance, usuario: usuarioNombre, dias, conteos, grupos };
+    return {
+        categoria, alcance, usuario: usuarioNombre, dias, conteos, grupos,
+        espacios: espaciosVisibles.map(x => ({ id: x.id, nombre: x.nombre, activo: !!x.activo })),
+        espaciosFiltro
+    };
 };
 
 // ─────────────────────────── Comentarios ───────────────────────────

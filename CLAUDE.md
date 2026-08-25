@@ -260,8 +260,15 @@ Paginación en `meta` (helper `Paginate`). Validación: express-validator → 42
   operación «usar esto como plantilla»—, ahí conservan su nombre (poner «(copia)» a 40 tareas
   sería ruido) y también arrancan abiertas. El nombre se **numera** (`(copia 2)`, `(copia 3)`)
   en vez de fallar con un 409: clonar dos veces lo mismo es normal.
-  **Crear en varias listas** vive colapsado detrás de un botón (un `<select multiple>`, no
-  chips): un espacio con 60 listas llenaba media pantalla por una opción que casi no se usa.
+  **Crear en varias listas** vive colapsado detrás de un botón: un espacio con 60 listas
+  llenaba media pantalla por una opción que casi no se usa. Abierto es una **lista de
+  checkboxes** con `max-h` + scroll (2026-08-25): el `<select multiple>` que había antes se
+  recortaba a la altura fija del `.ds-input` (`h-10`) y en el celular exigía Ctrl/⌘, que no
+  existe. El **resumen** filtra por **espacio de trabajo** (múltiple) con la misma caja:
+  `GET /tareas/resumen?e=1,4` en el query string (compartible por link), se INTERSECA con los
+  espacios visibles (un id ajeno se descarta; si no queda ninguno válido, se ve todo) y entra
+  también en los CONTEOS — si no, la solapa diría 12 y la tabla mostraría 3. La respuesta suma
+  `espacios` (todos los visibles, para el selector) y `espaciosFiltro`.
 - ✅ **Fase 5** — empleados + sueldos: módulo `empleados` (ficha completa, categorías —
   Freelance sin vacaciones —, áreas N:N reemplazo completo, **motor de vacaciones** exacto
   del legado en `vacaciones.service.js`: grants por año con override, vigencia año+1 y

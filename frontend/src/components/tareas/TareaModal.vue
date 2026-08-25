@@ -408,7 +408,7 @@ async function borrarAdjunto(id: number): Promise<void> {
               <!--
                 Repetir en varias listas: solo al crear (editando, mover es otra acción).
                 Va COLAPSADO: es una opción que casi no se usa y un espacio con 60 listas
-                llenaba media pantalla de chips antes de llegar a la descripción.
+                llenaba media pantalla antes de llegar a la descripción.
               -->
               <div v-if="!esEdicion && (listasDelEspacio?.length ?? 0) > 1">
                 <button
@@ -421,20 +421,41 @@ async function borrarAdjunto(id: number): Promise<void> {
                 </button>
 
                 <template v-else>
-                  <label class="ds-label" for="listas-extra">Crear también en</label>
-                  <select
-                    id="listas-extra" v-model="listasExtra" class="ds-input py-1"
-                    multiple :size="Math.min(6, listasDelEspacio!.length - 1)"
+                  <div class="flex items-center justify-between mb-1">
+                    <span class="ds-label mb-0">Crear también en</span>
+                    <button
+                      type="button" class="ds-btn-ghost h-6 px-2 text-2xs"
+                      @click="listasExtra = listasExtra.length === otrasListas.length ? [] : otrasListas.map(l => l.id)"
+                    >
+                      {{ listasExtra.length === otrasListas.length ? 'Ninguna' : 'Todas' }}
+                    </button>
+                  </div>
+                  <!--
+                    Lista de checkboxes, no un <select multiple>: el select nativo se recorta a
+                    la altura del input del DS (y en el celular exige Ctrl/⌘, que no existe).
+                    La caja va acotada con max-h + scroll para que 60 listas no coman la pantalla.
+                  -->
+                  <div
+                    class="rounded-md border border-line bg-surface-3 divide-y divide-line-soft
+                           max-h-48 overflow-y-auto"
+                    role="group" aria-label="Listas donde crear también la tarea"
                   >
-                    <option v-for="l in otrasListas" :key="l.id" :value="l.id">{{ l.nombre }}</option>
-                  </select>
+                    <label
+                      v-for="l in otrasListas" :key="l.id"
+                      class="flex items-center gap-2.5 min-h-[36px] px-3 py-1.5 cursor-pointer
+                             hover:bg-surface-2"
+                    >
+                      <input v-model="listasExtra" type="checkbox" :value="l.id" class="accent-[#0F7660] shrink-0" />
+                      <span class="min-w-0 flex-1 text-sm text-ink break-words">{{ l.nombre }}</span>
+                    </label>
+                  </div>
                   <p class="ds-hint mt-1">
                     <template v-if="listasExtra.length">
                       Se van a crear {{ listasExtra.length + 1 }} tareas independientes, una por
                       lista, cada una con su copia de los adjuntos.
                     </template>
                     <template v-else>
-                      Ctrl (o ⌘) para elegir varias. La tarea siempre se crea en esta lista.
+                      Elegí una o más listas. La tarea siempre se crea, además, en esta lista.
                     </template>
                   </p>
                   <button

@@ -190,6 +190,40 @@ test.describe('M14: Tareas y listas', () => {
     for (const g of body.data.grupos) expect([espacio1, espacio2]).toContain(g.espacioId);
   });
 
+  test('M14.9b - filtro por espacio (múltiple): recorta conteos y listado, y nunca amplía', async ({ adminApi }) => {
+    // Filtrado a UN espacio: solo ese aparece, y el número sigue siendo el del listado.
+    const uno = await tareasApi.get(`${APP_ENDPOINTS.tareas}/resumen?f=pendientes&u=todos&e=${espacio1}`);
+    const b1 = await expectSuccess(uno, 200);
+    for (const g of b1.data.grupos) expect(g.espacioId).toBe(espacio1);
+    expect(b1.data.espaciosFiltro).toEqual([espacio1]);
+    const listadas = b1.data.grupos.flatMap((g: { listas: Array<{ tareas: unknown[] }> }) => g.listas).reduce(
+      (acc: number, l: { tareas: unknown[] }) => acc + l.tareas.length, 0,
+    );
+    expect(b1.data.conteos.pendientes).toBe(listadas);
+    // El catálogo del selector trae TODOS los visibles, no los filtrados.
+    const ids = b1.data.espacios.map((e: { id: number }) => e.id);
+    expect(ids).toEqual(expect.arrayContaining([espacio1, espacio2]));
+
+    // Los dos a la vez = lo mismo que sin filtro.
+    const dos = await expectSuccess(
+      await tareasApi.get(`${APP_ENDPOINTS.tareas}/resumen?f=pendientes&u=todos&e=${espacio1},${espacio2}`), 200,
+    );
+    const sinFiltro = await expectSuccess(
+      await tareasApi.get(`${APP_ENDPOINTS.tareas}/resumen?f=pendientes&u=todos`), 200,
+    );
+    expect(dos.data.conteos.pendientes).toBe(sinFiltro.data.conteos.pendientes);
+
+    // Un espacio AJENO en el filtro no abre nada: se descarta y el resumen queda como estaba.
+    const ajeno = await adminApi.post(APP_ENDPOINTS.espacios, { data: makeNombre('Espacio T3 ajeno') });
+    const espacioAjeno = (await ajeno.json()).data.id;
+    cleanup.push(`espacios/${espacioAjeno}`);
+    const colado = await expectSuccess(
+      await tareasApi.get(`${APP_ENDPOINTS.tareas}/resumen?f=pendientes&u=todos&e=${espacioAjeno}`), 200,
+    );
+    expect(colado.data.espaciosFiltro).toEqual([]);
+    for (const g of colado.data.grupos) expect([espacio1, espacio2]).toContain(g.espacioId);
+  });
+
   test('M14.10 - una lista con tareas no se elimina → 409; tarea inexistente → 404 real', async () => {
     const listas = await tareasApi.get(`${APP_ENDPOINTS.tareas}/espacios/${espacio1}/listas`);
     const conTareas = (await listas.json()).data.listas.find((l: { total: number }) => l.total > 0);

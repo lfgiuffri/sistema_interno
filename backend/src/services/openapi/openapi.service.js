@@ -159,7 +159,7 @@ export const buildOpenApiSpec = () => ({
         },
         '/tareas/espacios': { get: op('Home del módulo: espacios visibles + mi resumen (fuente única)', 'Tareas', auth) },
         '/tareas/asignables': { get: op('Usuarios que pueden recibir tareas y ser mencionados (id, nombre, username)', 'Tareas', auth) },
-        '/tareas/resumen': { get: op('Resumen por categorías (f=pendientes|hoy|por_vencer|vencidas; u=todos|sin|id)', 'Tareas', auth) },
+        '/tareas/resumen': { get: op('Resumen por categorías (f=pendientes|hoy|por_vencer|vencidas; u=todos|sin|id; e=ids de espacio separados por coma)', 'Tareas', auth) },
         '/tareas/espacios/{eid}/listas': {
             get: op('Listas del espacio con agregados (requiere VER el espacio)', 'Tareas', auth),
             post: op('Crear lista (requiere EDITAR el espacio; unicidad por espacio + reactivación)', 'Tareas', auth)

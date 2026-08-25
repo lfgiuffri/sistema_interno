@@ -52,11 +52,13 @@ export const asignables = async (req, res) => {
  * GET /tareas/resumen — resumen por categorías (número y listado con la MISMA condición).
  * @param {import('express').Request} req - Request.
  * @param {import('express').Response} res - Response.
- * @returns {Promise<void>} 200 con { categoria, conteos, grupos }.
+ * @returns {Promise<void>} 200 con { categoria, conteos, grupos, espacios, espaciosFiltro }.
  */
 export const resumen = async (req, res) => {
     try {
-        const data = await tareaService.resumenCategorias(req.models, req.user, req.query.f, req.query.u);
+        const data = await tareaService.resumenCategorias(
+            req.models, req.user, req.query.f, req.query.u, req.query.e
+        );
         return await responseManager(200, data, req, res, false);
     } catch (e) { return bizCatch(e, req, res); }
 };

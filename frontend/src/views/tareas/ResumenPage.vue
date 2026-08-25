@@ -11,7 +11,7 @@ import {
   onIonViewWillEnter, onIonViewWillLeave, IonPage, IonContent, IonHeader, IonToolbar, IonButtons,
   IonMenuButton, IonIcon,
 } from '@ionic/vue'
-import { chevronBackOutline, peopleOutline, personOutline } from 'ionicons/icons'
+import { chevronBackOutline, peopleOutline, personOutline, funnelOutline } from 'ionicons/icons'
 import { useTareasStore, ESTADOS_TAREA } from '@/stores/tareas'
 import ThOrdenable from '@/components/shared/ThOrdenable.vue'
 import { useOrdenTabla } from '@/composables/useOrdenTabla'
@@ -40,6 +40,9 @@ interface Resumen {
   dias: number
   conteos: Record<string, number>
   grupos: Grupo[]
+  /** Catálogo del selector: TODOS los espacios visibles, filtre o no. */
+  espacios: Array<{ id: number; nombre: string; activo: boolean }>
+  espaciosFiltro: number[]
 }
 
 const CATEGORIAS: Record<string, { label: string; vacio: string }> = {
@@ -63,22 +66,61 @@ const categoria = computed(() => String(route.query.f ?? 'pendientes'))
 const alcanceU = computed(() => String(route.query.u ?? ''))
 const esEquipo = computed(() => alcanceU.value === 'todos')
 
+/**
+ * Filtro por espacio: MÚLTIPLE y en el query string (`e=1,4`), como los filtros del listado,
+ * así el recorte se comparte por link. Vacío = todos los visibles.
+ */
+const filtroEspacios = computed<number[]>(() =>
+  String(route.query.e ?? '').split(',').map(Number).filter(n => Number.isInteger(n) && n > 0),
+)
+const panelEspacios = ref(false)
+
 async function load(): Promise<void> {
   loading.value = true
-  const r = await tareasStore.fetchResumen(categoria.value, alcanceU.value).catch(() => null)
+  const r = await tareasStore
+    .fetchResumen(categoria.value, alcanceU.value, filtroEspacios.value.join(','))
+    .catch(() => null)
   loading.value = false
   if (!r) { toast.error('No se pudo cargar el resumen'); return }
   data.value = r
 }
 
-function ir(f: string): void {
-  void router.replace({ query: { ...route.query, f } })
-}
-function toggleEquipo(): void {
-  const q: Record<string, string> = { f: categoria.value }
-  if (!esEquipo.value) q.u = 'todos'
+/** Cambia una clave del query conservando el resto (el filtro de espacios sobrevive). */
+function setQuery(cambios: Record<string, string | undefined>): void {
+  const q: Record<string, string> = {}
+  for (const [k, v] of Object.entries({ ...route.query, ...cambios })) {
+    if (v !== undefined && v !== null && v !== '') q[k] = String(v)
+  }
   void router.replace({ query: q })
 }
+
+function ir(f: string): void {
+  setQuery({ f })
+}
+function toggleEquipo(): void {
+  setQuery({ f: categoria.value, u: esEquipo.value ? undefined : 'todos' })
+}
+
+function toggleEspacio(id: number): void {
+  const act = filtroEspacios.value.includes(id)
+    ? filtroEspacios.value.filter(x => x !== id)
+    : [...filtroEspacios.value, id]
+  setQuery({ e: act.join(',') || undefined })
+}
+function limpiarEspacios(): void {
+  setQuery({ e: undefined })
+}
+
+/** Etiqueta del botón: sin filtro se dice «todos», con filtro se nombra el único elegido. */
+const etiquetaEspacios = computed(() => {
+  const n = filtroEspacios.value.length
+  if (!n) return 'Todos los espacios'
+  if (n === 1) {
+    const e = data.value?.espacios.find(x => x.id === filtroEspacios.value[0])
+    return e ? e.nombre : '1 espacio'
+  }
+  return `${n} espacios`
+})
 
 const mensajeVacio = computed(() => {
   if (!data.value) return ''
@@ -142,11 +184,51 @@ watch(() => route.query, () => { if (loadedOnce && route.path.includes('/tareas/
               — solo lectura.
             </p>
           </div>
-          <button v-if="categoria !== 'sin_asignar'" class="ds-btn-secondary h-8" @click="toggleEquipo">
-            <IonIcon :icon="esEquipo ? personOutline : peopleOutline" class="text-[14px]" />
-            {{ esEquipo ? 'Ver las mías' : 'Ver el equipo' }}
-          </button>
+          <div class="flex flex-wrap items-center gap-2">
+            <button
+              v-if="(data?.espacios.length ?? 0) > 1"
+              class="ds-btn-secondary h-8"
+              :class="{ 'border-accent/40 text-accent-ink bg-accent-soft': filtroEspacios.length }"
+              :aria-expanded="panelEspacios" aria-controls="panel-espacios"
+              @click="panelEspacios = !panelEspacios"
+            >
+              <IonIcon :icon="funnelOutline" class="text-[14px]" />
+              {{ etiquetaEspacios }}
+            </button>
+            <button v-if="categoria !== 'sin_asignar'" class="ds-btn-secondary h-8" @click="toggleEquipo">
+              <IonIcon :icon="esEquipo ? personOutline : peopleOutline" class="text-[14px]" />
+              {{ esEquipo ? 'Ver las mías' : 'Ver el equipo' }}
+            </button>
+          </div>
         </header>
+
+        <!--
+          Filtro por espacio: checkboxes en una caja acotada (no un <select multiple>, que se
+          recorta y en el celular exige Ctrl). Aplica al toque: recorta CONTEOS y listado a la
+          vez, así el número de la solapa sigue siendo el de la tabla.
+        -->
+        <div v-if="panelEspacios && data" id="panel-espacios" class="ds-card p-4 mb-4 ds-enter">
+          <div class="flex items-center justify-between mb-2">
+            <span class="ds-label mb-0">Espacios de trabajo</span>
+            <button class="ds-btn-ghost h-7 px-2 text-xs" :disabled="!filtroEspacios.length" @click="limpiarEspacios">
+              Todos
+            </button>
+          </div>
+          <div class="divide-y divide-line-soft max-h-56 overflow-y-auto -mx-1 px-1">
+            <label
+              v-for="e in data.espacios" :key="e.id"
+              class="flex items-center gap-2.5 min-h-[36px] py-1.5 cursor-pointer"
+            >
+              <input
+                type="checkbox" class="accent-[#0F7660] shrink-0"
+                :checked="filtroEspacios.includes(e.id)" @change="toggleEspacio(e.id)"
+              />
+              <span class="min-w-0 flex-1 text-sm text-ink break-words">{{ e.nombre }}</span>
+              <span v-if="!e.activo" class="ds-badge-neutral shrink-0">inactivo</span>
+            </label>
+          </div>
+          <p class="ds-hint">Sin nada tildado se ven todos los espacios que podés ver.</p>
+        </div>
 
         <!-- Navegación entre categorías -->
         <div v-if="data" class="flex flex-wrap gap-1.5 mb-5">
@@ -220,6 +302,10 @@ watch(() => route.query, () => { if (loadedOnce && route.path.includes('/tareas/
 
           <div v-else class="ds-card px-6 py-12 text-center">
             <p class="text-sm font-medium text-ink">{{ mensajeVacio }}</p>
+            <p v-if="filtroEspacios.length" class="mt-1 text-xs text-ink-faint">
+              Estás filtrando por {{ etiquetaEspacios.toLowerCase() }}.
+              <button class="text-accent hover:underline" @click="limpiarEspacios">Ver todos</button>
+            </p>
           </div>
         </template>
       </div>

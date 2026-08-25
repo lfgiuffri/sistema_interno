@@ -207,8 +207,9 @@ export const useTareasStore = defineStore('tareas', () => {
     return data.success ? data.data : []
   }
 
-  async function fetchResumen(f: string, u: string) {
-    const { data } = await api.get('/tareas/resumen', { params: { f, u } })
+  /** `e`: ids de espacio separados por coma (filtro múltiple; vacío = todos los visibles). */
+  async function fetchResumen(f: string, u: string, e = '') {
+    const { data } = await api.get('/tareas/resumen', { params: { f, u, e } })
     return data.success ? data.data : null
   }
 
