@@ -18,8 +18,8 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  onIonViewWillEnter, IonPage, IonContent, IonHeader, IonToolbar, IonButtons,
-  IonMenuButton, IonIcon,
+  onIonViewWillEnter, onIonViewWillLeave, IonPage, IonContent, IonHeader, IonToolbar,
+  IonButtons, IonMenuButton, IonIcon,
 } from '@ionic/vue'
 import {
   chevronBackOutline, funnelOutline, downloadOutline, peopleOutline, calendarOutline,
@@ -31,6 +31,7 @@ import BanderaPrioridad from '@/components/tareas/BanderaPrioridad.vue'
 import GraficoLinea from '@/components/dashboard/GraficoLinea.vue'
 import { useOrdenTabla } from '@/composables/useOrdenTabla'
 import { useToast } from '@/composables/useToast'
+import { useTareasEnVivo } from '@/composables/useTareasEnVivo'
 import { descargarCsv } from '@/composables/useCsv'
 import { fecha as fmtFecha, fechaHora, duracion, MESES } from '@/composables/useFormato'
 
@@ -290,9 +291,24 @@ const irALista = (espacioId: number, listaId: number): void => {
   void router.push(`/tareas/espacios/${espacioId}/listas/${listaId}`)
 }
 
+/**
+ * En vivo: cualquier mutación de tarea o lista (de quien sea) vuelve a pedir el análisis, así
+ * los números no quedan viejos mientras la pantalla está abierta.
+ *
+ * Ventana de agrupación más larga que en los listados: acá cada recarga son una decena de
+ * agregados, y una estadística no necesita estar fresca al instante como un tablero. Sin
+ * permiso no se recarga: sería insistir contra un 403.
+ *
+ * No parpadea: el esqueleto solo aparece cuando todavía NO hay datos, así que la recarga en
+ * vivo repinta sobre lo que ya está en pantalla, sin perder el orden ni los filtros (viven en
+ * refs locales y en el query string).
+ */
+const enVivo = useTareasEnVivo(() => { if (!sinPermiso.value) return load() }, 1500)
+
 let loadedOnce = false
-onMounted(() => { loadedOnce = true; void load() })
-onIonViewWillEnter(() => { if (loadedOnce) void load() })
+onMounted(() => { loadedOnce = true; void load(); enVivo.escuchar() })
+onIonViewWillEnter(() => { if (loadedOnce) void load(); enVivo.escuchar() })
+onIonViewWillLeave(() => enVivo.pausar())
 watch(() => route.query, () => { if (loadedOnce && route.path.includes('/tareas/analisis')) void load() })
 </script>
 

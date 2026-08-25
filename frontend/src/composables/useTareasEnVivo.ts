@@ -21,10 +21,16 @@ const EVENTOS = [
   'lista:created', 'lista:updated', 'lista:deleted',
 ]
 
-/** Ventana para juntar eventos seguidos (ms). */
+/** Ventana por defecto para juntar eventos seguidos (ms). */
 const AGRUPAR_MS = 400
 
-export function useTareasEnVivo(recargar: () => void | Promise<void>) {
+/**
+ * @param recargar - Qué volver a pedir cuando algo cambió.
+ * @param agruparMs - Ventana para juntar ráfagas. La suben las vistas cuyo pedido es CARO
+ *   (Análisis de tareas hace una decena de agregados): ahí no hace falta la frescura al
+ *   instante de un tablero, y esperar un poco más evita recalcular todo por cada clic ajeno.
+ */
+export function useTareasEnVivo(recargar: () => void | Promise<void>, agruparMs = AGRUPAR_MS) {
   let timer: ReturnType<typeof setTimeout> | null = null
   let activo = false
   let enganchado = false
@@ -32,7 +38,7 @@ export function useTareasEnVivo(recargar: () => void | Promise<void>) {
   const alEvento = (): void => {
     if (!activo) return
     if (timer) clearTimeout(timer)
-    timer = setTimeout(() => { void recargar() }, AGRUPAR_MS)
+    timer = setTimeout(() => { void recargar() }, agruparMs)
   }
 
   /** Empieza a escuchar (llamalo al entrar a la vista). */

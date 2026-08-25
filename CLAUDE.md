@@ -489,6 +489,12 @@ indexadas y la pantalla se abre a mano, no autorefresca).
   marcando las que no tienen responsable.
 - **Filtro por espacio múltiple** (`e=1,4`) que recorta TODOS los bloques, y todo el estado en
   el query string (rango, año, espacios, días) para compartir una vista por link.
+- **En vivo**: usa `useTareasEnVivo` como el resto de las vistas de tareas (socket ya abierto,
+  eventos `tarea:*` / `lista:*`), pero con la ventana de agrupación en **1500 ms** en vez de
+  400 — el composable la recibe por parámetro desde este cambio. Cada recarga son una decena
+  de agregados y una estadística no necesita la frescura instantánea de un tablero. No
+  parpadea (el esqueleto solo aparece sin datos) y conserva el orden de las tablas y los
+  filtros; sin permiso no reintenta contra el 403.
 - Helpers compartidos con el resumen en `tarea.service.js`: `alcanceEspacios()` (interseca el
   filtro contra lo visible; nunca amplía) y `catalogoEspacios()`.
 
