@@ -298,6 +298,7 @@ curl https://sys.positivemedia.com.ar/api/health   # → { "ok": true, "baseMs":
 | `no: 1045 ... Access denied for user 'sistema'@'127.0.0.1'` | El host SÍ está permitido pero la contraseña no coincide: `ALTER USER 'sistema'@'127.0.0.1' IDENTIFIED BY '<password>'` y revisar `DB_PASS` del `.env`. |
 | `no: 1049 ... Unknown database` | Falta crear la base (paso 4) o `DB_NAME` no coincide. |
 | `ECONNREFUSED 127.0.0.1:3306` | MySQL no está corriendo (`systemctl status mysql`) o escucha en otra interfaz (`bind-address` en `/etc/mysql/mysql.conf.d/mysqld.cnf` debe incluir `127.0.0.1`). |
+| `no: 45044 ... RSA public key is not available client side` (`ER_CANNOT_RETRIEVE_RSA_KEY`) | El `.env` quedó con `DBDRIVER=mariadb` (el default de `.env.example`) pero **el servidor es MySQL 8**, que autentica con `caching_sha2_password`; el conector de MariaDB no pide la clave RSA y aborta. Ojo: **no falla al arrancar** — mientras MySQL tenga al usuario en cache anda por el camino rápido, y explota más tarde (al reiniciar MySQL, con `FLUSH PRIVILEGES` o al cambiar la contraseña), así que parece un problema nuevo. Arreglo: `DBDRIVER=mysql` en el `.env` + `sudo systemctl restart sistema-interno`. El backend avisa el cruce al boot con `⚠️ [DB] DBDRIVER=...`. |
 | `JWT_SECRET` | En producción el backend NO arranca sin `JWT_SECRET` en el `.env`. |
 
 Después de tocar grants: `FLUSH PRIVILEGES` y `sudo systemctl restart sistema-interno`.
