@@ -15,7 +15,7 @@
 import crypto from 'crypto';
 import { Op } from 'sequelize';
 import { getAppConfigNumber } from '../../../kernel/index.js';
-import { abrirIncidente, resolverIncidente } from './alerta.service.js';
+import { abrirIncidente, resolverIncidente, CAMPO_ALERTA } from './alerta.service.js';
 
 /**
  * Error de negocio con status (el controller lo mapea al envelope).
@@ -161,13 +161,19 @@ export const createServidor = async (models, data) => {
 
 /**
  * Actualiza un servidor.
+ *
+ * Al APAGAR una alerta se cierra el incidente que hubiera abierto de ese tipo, en silencio.
+ * Sin esto quedaría abierto para siempre: el incidente se cierra cuando el valor vuelve a la
+ * normalidad, y si el servidor sigue con el disco al 95% eso no pasa nunca — el contador de
+ * «incidentes abiertos» del panel quedaría clavado por algo que se decidió ignorar. Se cierra
+ * sin avisar a propósito: no se recuperó nada, lo apagó una persona.
  * @param {object} models - Modelos de la app.
  * @param {number} id - Servidor.
  * @param {object} data - Campos a actualizar.
  * @returns {Promise<object|null>} El servidor actualizado o null si no existe.
  */
 export const updateServidor = async (models, id, data) => {
-    const { Servidor } = models;
+    const { Servidor, ServidorIncidente } = models;
     const servidor = await Servidor.findByPk(id);
     if (!servidor) return null;
 
@@ -175,7 +181,19 @@ export const updateServidor = async (models, id, data) => {
         const existe = await Servidor.findOne({ where: { ip: data.ip, id: { [Op.ne]: id } } });
         if (existe) throw bizError(400, `Ya hay un servidor cargado con la IP ${data.ip}`);
     }
+
+    const apagadas = Object.entries(CAMPO_ALERTA)
+        .filter(([, campo]) => data[campo] === false && servidor[campo] !== false)
+        .map(([tipo]) => tipo);
+
     await servidor.update(data);
+
+    if (apagadas.length && ServidorIncidente) {
+        await ServidorIncidente.update(
+            { resueltoAt: new Date() },
+            { where: { servidorId: servidor.id, tipo: { [Op.in]: apagadas }, resueltoAt: null } }
+        );
+    }
     return servidor;
 };
 

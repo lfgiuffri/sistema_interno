@@ -401,6 +401,12 @@ Monitoreo de los VPS de la empresa. Doc completa en `docs/modules/mantenimiento.
 - **Anti-spam**: un incidente abierto por servidor y tipo; se avisa al abrir y al resolver.
   Destinatarios = quienes tengan `servidores:read`; canales campana + email + push (los que
   no estén configurados se saltean solos).
+- **Qué alertas crea cada servidor** (2026-08-28): `alertaOffline/Cpu/Ram/Disco` en
+  `servidores`, todas true por defecto (migración `0008`). El umbral corre la línea, esto
+  APAGA el aviso — y apagar el aviso NO apaga el monitoreo (la métrica y el estado siguen).
+  El corte vive en `abrirIncidente` (un solo lugar, lo respetan las tres formas de detectar),
+  y apagar una alerta cierra en silencio su incidente abierto: si no, quedaría trabado para
+  siempre en el servidor que vive alto a propósito.
 - **Historial**: detalle por minuto 30 días + resumen diario permanente (rollup y purga en el
   scheduler). Umbrales globales en Configuración con override por servidor.
 - **Chequeo externo de corroboración**: cuando un agente se calla, antes de abrir el incidente

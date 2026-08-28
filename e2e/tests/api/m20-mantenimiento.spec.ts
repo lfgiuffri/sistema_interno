@@ -114,6 +114,57 @@ test.describe('M20: Mantenimiento — Servidores', () => {
     await agente.dispose();
   });
 
+  test('M20.5b - alertas por servidor: apagar una silencia SOLO esa y cierra su incidente', async ({ adminApi, playwright }) => {
+    const agente = await playwright.request.newContext({ baseURL: `${API_BASE}/` });
+    const base = { ...makeNombre('VPS'), ip: ipUnica(), umbralCpu: 50, umbralRam: 50 };
+    const reportar = (cpu: number, ram = 5) => agente.post('agente/metricas', {
+      headers: { 'x-agent-token': token },
+      data: { cpu, ram, disco: 5 },
+    });
+    const abiertos = async (): Promise<string[]> => {
+      const ficha = (await expectSuccess(await adminApi.get(`${APP_ENDPOINTS.servidores}/${servidorId}`), 200)).data;
+      return (ficha.incidentes as Array<{ tipo: string; resueltoAt: string | null }>)
+        .filter(i => !i.resueltoAt).map(i => i.tipo);
+    };
+
+    // Compatibilidad: un servidor nace con las cuatro alertas prendidas.
+    const previo = (await expectSuccess(await adminApi.get(`${APP_ENDPOINTS.servidores}/${servidorId}`), 200)).data;
+    expect(previo.alertaOffline).toBe(true);
+    expect(previo.alertaCpu).toBe(true);
+
+    // 1. Con la alerta prendida, la CPU alta abre incidente.
+    await adminApi.put(`${APP_ENDPOINTS.servidores}/${servidorId}`, { data: base });
+    expect((await expectSuccess(await reportar(95), 200)).data.alertas).toContain('cpu');
+    expect(await abiertos()).toContain('cpu');
+
+    // 2. Apagarla cierra el incidente que estaba abierto: si no, quedaría trabado para
+    //    siempre (el valor sigue alto, así que nunca vuelve «a la normalidad»).
+    await expectSuccess(await adminApi.put(`${APP_ENDPOINTS.servidores}/${servidorId}`, {
+      data: { ...base, alertaCpu: false },
+    }), 200);
+    expect(await abiertos()).not.toContain('cpu');
+
+    // 3. Sigue reportando CPU alta y ya no alerta...
+    expect((await expectSuccess(await reportar(97), 200)).data.alertas).toEqual([]);
+    expect(await abiertos()).not.toContain('cpu');
+
+    // 4. ...pero la RAM, que quedó prendida, sí: se silenció UNA alerta, no el servidor.
+    expect((await expectSuccess(await reportar(97, 90), 200)).data.alertas).toContain('ram');
+
+    // 5. Apagar la alerta NO apaga el monitoreo: la métrica se guardó y el estado se actualizó.
+    const ficha = (await expectSuccess(await adminApi.get(`${APP_ENDPOINTS.servidores}/${servidorId}`), 200)).data;
+    expect(ficha.estado).toBe('online');
+    expect(ficha.ultima.cpu).toBe(97);
+    expect(ficha.alertaCpu).toBe(false);
+    // Y el incidente silenciado queda en el historial, no se borra.
+    expect((ficha.incidentes as Array<{ tipo: string }>).some(i => i.tipo === 'cpu')).toBe(true);
+
+    // Se deja como estaba para los tests que siguen.
+    await adminApi.put(`${APP_ENDPOINTS.servidores}/${servidorId}`, { data: { ...base, alertaCpu: true } });
+    await reportar(5);
+    await agente.dispose();
+  });
+
   test('M20.6 - regenerar el token invalida el anterior', async ({ adminApi, playwright }) => {
     const nuevo = await adminApi.post(`${APP_ENDPOINTS.servidores}/${servidorId}/token`);
     const nuevoToken = (await expectSuccess(nuevo, 200)).data.token;

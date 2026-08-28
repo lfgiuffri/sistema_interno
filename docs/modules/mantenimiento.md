@@ -70,6 +70,27 @@ unshare -rm bash -c 'mount -o remount,ro,bind /tmp; AGENTE_CONFIG=/etc/sistema-i
 
 Los umbrales globales se configuran en **Configuración → Negocio** (`MANTENIMIENTO_UMBRAL_CPU` 90, `_RAM` 90, `_DISCO` 85) y cada servidor puede tener el suyo, para el que legítimamente vive alto.
 
+**Qué avisa cada servidor** (2026-08-28): además del umbral, cada servidor elige CUÁLES de las
+cuatro alertas crea — `alertaOffline`, `alertaCpu`, `alertaRam`, `alertaDisco`, todas `true`
+por defecto (migración `0008`, así que al desplegar nadie deja de recibir lo que recibía). Son
+dos cosas distintas: el **umbral corre la línea**, esto **apaga el aviso**. Sirve para el
+servidor que vive con el disco al 95% a propósito, o para el de pruebas que se apaga los fines
+de semana; antes la única salida era sacarlo del monitoreo y perder también las métricas.
+
+- **Apagar una alerta NO apaga el monitoreo**: la métrica se sigue guardando, el estado se
+  sigue actualizando y el servidor se ve caído en la pantalla. Lo único que no pasa es que se
+  abra el incidente y se le escriba a alguien.
+- El corte está en **un solo lugar** (`abrirIncidente`), así que da igual quién detecte el
+  problema —el reporte del agente, el tick de caídas o el chequeo TCP de los de terceros—: la
+  decisión se respeta igual.
+- **Al apagar una alerta se cierra su incidente abierto**, en silencio (`updateServidor`). Si
+  no, quedaría trabado para siempre: un incidente se cierra cuando el valor vuelve a la
+  normalidad, y en el servidor que vive alto eso no pasa nunca. Se cierra sin notificar a
+  propósito — no se recuperó nada, lo apagó una persona. El historial queda.
+- Sin dato = habilitada: callarse por omisión es el peor default posible en un monitoreo.
+- En el listado, un servidor con alguna alerta apagada lleva el badge **«sin aviso»**: si se
+  cae y no llega nada, la explicación tiene que estar a la vista.
+
 **Anti-spam:** mientras un problema sigue abierto NO se vuelve a notificar. Se avisa dos veces —al abrirse y al resolverse— y queda el incidente en la bitácora con su duración (`servidor_incidentes`, un incidente abierto por servidor y tipo).
 
 Los avisos van a los usuarios cuyo rol tenga `servidores:read`, por **tres canales**:

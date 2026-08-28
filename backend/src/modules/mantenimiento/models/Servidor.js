@@ -13,6 +13,13 @@ import { DataTypes } from 'sequelize';
  *
  * Los umbrales en null significan "usar el global" (`MANTENIMIENTO_UMBRAL_*` de configuración):
  * solo se completan en el servidor que legítimamente vive alto y no debe alertar.
+ *
+ * Los `alerta*` dicen QUÉ avisa cada servidor. Es distinto del umbral: el umbral corre la
+ * línea, esto apaga el aviso del todo. Sirve para el servidor de pruebas que se apaga los
+ * fines de semana, o para el que vive con el disco al 95% a propósito. Apagar una alerta NO
+ * apaga el monitoreo: la métrica se sigue guardando y el estado se sigue actualizando (el
+ * servidor se ve offline en la pantalla), lo único que no pasa es que se abra el incidente y
+ * se le escriba a nadie.
  * @param {import('sequelize').Sequelize} db - Conexión única de la app.
  * @returns {import('sequelize').ModelStatic<any>} El modelo Servidor.
  */
@@ -31,6 +38,11 @@ export const defineServidorModel = (db) => {
         umbralCpu: { type: DataTypes.INTEGER, allowNull: true },
         umbralRam: { type: DataTypes.INTEGER, allowNull: true },
         umbralDisco: { type: DataTypes.INTEGER, allowNull: true },
+        // Qué alertas crea este servidor. Todas prendidas por defecto: apagar es la excepción.
+        alertaOffline: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+        alertaCpu: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+        alertaRam: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+        alertaDisco: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
         // Última señal de vida (reporte del agente o chequeo TCP exitoso).
         ultimoContactoAt: { type: DataTypes.DATE, allowNull: true },
         estado: { type: DataTypes.ENUM('online', 'offline', 'desconocido'), allowNull: false, defaultValue: 'desconocido' },

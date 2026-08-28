@@ -32,6 +32,11 @@ export interface Servidor {
   umbralCpu: number | null
   umbralRam: number | null
   umbralDisco: number | null
+  /** Qué alertas crea este servidor (el umbral corre la línea; esto apaga el aviso). */
+  alertaOffline: boolean
+  alertaCpu: boolean
+  alertaRam: boolean
+  alertaDisco: boolean
   tieneToken: boolean
   ultima: MetricaActual | null
   incidentes: string[]
@@ -70,6 +75,10 @@ export interface ServidorInput {
   umbralCpu?: number | null
   umbralRam?: number | null
   umbralDisco?: number | null
+  alertaOffline?: boolean
+  alertaCpu?: boolean
+  alertaRam?: boolean
+  alertaDisco?: boolean
   observaciones?: string | null
 }
 

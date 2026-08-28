@@ -87,8 +87,35 @@ export const avisar = async (models, io, aviso, capability = CAPABILITY_ALERTAS)
     return users.length;
 };
 
+/** Columna de `servidores` que habilita cada tipo de alerta. */
+export const CAMPO_ALERTA = {
+    offline: 'alertaOffline',
+    cpu: 'alertaCpu',
+    ram: 'alertaRam',
+    disco: 'alertaDisco',
+};
+
+/**
+ * ¿Este servidor tiene habilitada la alerta de ese tipo?
+ *
+ * Falta de dato = habilitada: un servidor viejo (o un objeto parcial que no trajo la columna)
+ * tiene que seguir avisando. Callarse por omisión es el peor default posible en un monitoreo.
+ * @param {object} servidor - Servidor.
+ * @param {string} tipo - offline | cpu | ram | disco.
+ * @returns {boolean} true si corresponde alertar.
+ */
+export const alertaHabilitada = (servidor, tipo) => {
+    const campo = CAMPO_ALERTA[tipo];
+    if (!campo) return true;                       // tipo desconocido: no se silencia solo
+    return servidor?.[campo] !== false;
+};
+
 /**
  * Abre un incidente si no había uno abierto de ese tipo, y avisa UNA sola vez.
+ *
+ * Si el servidor tiene esa alerta APAGADA no se abre incidente ni se avisa: es el único
+ * lugar donde se corta, así que da igual quién detecte el problema (el reporte del agente,
+ * el tick de caídas o el chequeo TCP), la decisión se respeta igual.
  * @param {object} models - Modelos de la app.
  * @param {object|null} io - Socket.IO.
  * @param {object} servidor - Servidor afectado.
@@ -97,6 +124,8 @@ export const avisar = async (models, io, aviso, capability = CAPABILITY_ALERTAS)
  */
 export const abrirIncidente = async (models, io, servidor, datos) => {
     const { ServidorIncidente } = models;
+
+    if (!alertaHabilitada(servidor, datos.tipo)) return false;
 
     const abierto = await ServidorIncidente.findOne({
         where: { servidorId: servidor.id, tipo: datos.tipo, resueltoAt: null },

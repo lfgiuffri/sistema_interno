@@ -18,6 +18,11 @@ const camposServidor = [
     body('umbralCpu').optional({ nullable: true }).isInt({ min: 50, max: 100 }).toInt(),
     body('umbralRam').optional({ nullable: true }).isInt({ min: 50, max: 100 }).toInt(),
     body('umbralDisco').optional({ nullable: true }).isInt({ min: 50, max: 100 }).toInt(),
+    // Qué alertas crea este servidor (todas true por defecto en el modelo).
+    body('alertaOffline').optional().isBoolean().toBoolean(),
+    body('alertaCpu').optional().isBoolean().toBoolean(),
+    body('alertaRam').optional().isBoolean().toBoolean(),
+    body('alertaDisco').optional().isBoolean().toBoolean(),
     body('observaciones').optional({ nullable: true }).isString().trim(),
 ];
 

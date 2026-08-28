@@ -281,7 +281,7 @@ export const buildOpenApiSpec = () => ({
         },
         '/mantenimiento/servidores/{id}': {
             get: op('Ficha: métricas actuales, series (fina y diaria) e incidentes', 'Mantenimiento', auth),
-            put: op('Editar servidor (incluye umbrales propios)', 'Mantenimiento', auth),
+            put: op('Editar servidor (umbrales propios y qué alertas crea: alertaOffline/Cpu/Ram/Disco)', 'Mantenimiento', auth),
             delete: op('Eliminar servidor (baja lógica; borra su historial)', 'Mantenimiento', auth)
         },
         '/mantenimiento/servidores/{id}/token': { post: op('Regenerar el token del agente (invalida el anterior)', 'Mantenimiento', auth) },

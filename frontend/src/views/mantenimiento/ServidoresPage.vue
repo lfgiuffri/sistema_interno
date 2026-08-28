@@ -14,7 +14,7 @@ import {
 } from '@ionic/vue'
 import {
   addOutline, createOutline, trashOutline, powerOutline, serverOutline,
-  copyOutline, keyOutline, alertCircleOutline,
+  copyOutline, keyOutline, alertCircleOutline, notificationsOffOutline,
 } from 'ionicons/icons'
 import IndicadorAutoRefresh from '@/components/shared/IndicadorAutoRefresh.vue'
 import { useAutoRefresh } from '@/composables/useAutoRefresh'
@@ -66,15 +66,49 @@ function claseMetrica(valor: number | undefined, umbral: number | null, global =
   return valor >= (umbral ?? global) ? 'text-danger font-semibold' : 'text-ink'
 }
 
+/**
+ * Las cuatro alertas que puede crear un servidor. `offline` aplica siempre (con agente o de
+ * un tercero); las de consumo solo existen si hay agente reportando.
+ */
+const ALERTAS = [
+  { campo: 'alertaOffline', label: 'Se cayó / dejó de responder', ayuda: 'El agente dejó de reportar, o el servidor no abre el puerto.', soloAgente: false },
+  { campo: 'alertaCpu', label: 'CPU alta', ayuda: 'El uso de CPU superó el umbral.', soloAgente: true },
+  { campo: 'alertaRam', label: 'Memoria alta', ayuda: 'El uso de RAM superó el umbral.', soloAgente: true },
+  { campo: 'alertaDisco', label: 'Disco casi lleno', ayuda: 'El uso de disco superó el umbral.', soloAgente: true },
+] as const
+
+/**
+ * Alertas apagadas de un servidor ya guardado (para marcarlo en el listado).
+ * @param s - Servidor.
+ * @returns Etiquetas de las que no avisan.
+ */
+function alertasSilenciadas(s: Servidor): string[] {
+  return ALERTAS
+    .filter(a => (s.monitorea || !a.soloAgente) && s[a.campo] === false)
+    .map(a => a.label.toLowerCase())
+}
+
+/** Sin agente no hay métricas de consumo: mostrar esas tres opciones sería mentir. */
+const alertasDisponibles = computed(() => ALERTAS.filter(a => form.value.monitorea || !a.soloAgente))
+/** Nombres de las que quedaron apagadas, para avisarlo antes de guardar. */
+const alertasApagadas = computed(() =>
+  alertasDisponibles.value.filter(a => form.value[a.campo] === false).map(a => a.label.toLowerCase()),
+)
+
 function abrirForm(s?: Servidor): void {
   editando.value = s ?? null
   form.value = s
     ? {
       nombre: s.nombre, ip: s.ip, monitorea: s.monitorea, puertoChequeo: s.puertoChequeo,
       umbralCpu: s.umbralCpu, umbralRam: s.umbralRam, umbralDisco: s.umbralDisco,
+      alertaOffline: s.alertaOffline, alertaCpu: s.alertaCpu,
+      alertaRam: s.alertaRam, alertaDisco: s.alertaDisco,
       observaciones: s.observaciones,
     }
-    : { nombre: '', ip: '', monitorea: true, puertoChequeo: 443 }
+    : {
+      nombre: '', ip: '', monitorea: true, puertoChequeo: 443,
+      alertaOffline: true, alertaCpu: true, alertaRam: true, alertaDisco: true,
+    }
   formError.value = ''
   modalForm.value = true
 }
@@ -198,6 +232,17 @@ onIonViewWillLeave(() => auto.parar())
                       <span class="w-2 h-2 rounded-full shrink-0" :class="colorEstado(s)" :title="s.estado"></span>
                       <span class="font-medium text-ink group-hover:text-accent transition-colors">{{ s.nombre }}</span>
                       <span v-if="!s.monitorea" class="ds-badge-neutral">solo disponibilidad</span>
+                      <!--
+                        Se avisa en la fila y no solo en el form: si este servidor se cae y
+                        nadie recibe nada, la explicación tiene que estar a la vista.
+                      -->
+                      <span
+                        v-if="alertasSilenciadas(s).length" class="ds-badge-warn"
+                        :title="`No avisa: ${alertasSilenciadas(s).join(', ')}`"
+                      >
+                        <IonIcon :icon="notificationsOffOutline" class="text-[11px]" />
+                        sin aviso
+                      </span>
                       <span v-if="s.incidentes.length" class="ds-badge-danger">
                         <IonIcon :icon="alertCircleOutline" class="text-[11px]" />
                         {{ s.incidentes.join(', ') }}
@@ -300,6 +345,32 @@ onIonViewWillLeave(() => auto.parar())
                   <input v-model.number="form.umbralDisco" class="ds-input" type="number" min="50" max="100" placeholder="Disco" />
                 </div>
                 <p class="ds-hint">Vacío = usa el umbral general. Completalo solo si este servidor vive alto a propósito.</p>
+              </div>
+
+              <!--
+                Qué avisa este servidor. Es otra cosa que el umbral: el umbral corre la línea,
+                esto apaga el aviso. Apagar no apaga el monitoreo — la métrica se sigue
+                guardando y el estado se sigue viendo en la tabla.
+              -->
+              <div>
+                <span class="ds-label">Alertas de este servidor</span>
+                <div class="rounded-md border border-line bg-surface-3 divide-y divide-line-soft">
+                  <label
+                    v-for="a in alertasDisponibles" :key="a.campo"
+                    class="flex items-start gap-2.5 px-3 py-2 cursor-pointer hover:bg-surface-2"
+                  >
+                    <input v-model="form[a.campo]" type="checkbox" class="accent-[#0F7660] mt-0.5 shrink-0" />
+                    <span class="min-w-0">
+                      <span class="text-sm text-ink">{{ a.label }}</span>
+                      <span class="block text-2xs text-ink-faint">{{ a.ayuda }}</span>
+                    </span>
+                  </label>
+                </div>
+                <p v-if="alertasApagadas.length" class="ds-hint text-warn">
+                  Sin aviso: {{ alertasApagadas.join(', ') }}. El problema se va a ver en la pantalla, pero no
+                  va a notificar a nadie.
+                </p>
+                <p v-else class="ds-hint">Destildá solo lo que este servidor no tiene que avisar nunca.</p>
               </div>
 
               <div>
