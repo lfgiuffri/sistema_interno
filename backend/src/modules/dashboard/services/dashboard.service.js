@@ -10,11 +10,11 @@
 
 import { Op } from 'sequelize';
 import { getRoleCapabilities } from '../../../kernel/index.js';
-import { getConfigAbonos, precioEnPesos } from '../../abonos/services/abono.service.js';
+import {
+    getConfigAbonos, precioEnPesos, estadoActualizacion, SQL_DIAS_ACTUALIZACION
+} from '../../abonos/services/abono.service.js';
 import { aniosDisponibles, serieMensual, porServicio, porArea } from './estadisticas.service.js';
 
-/** Ventana de "próximo a actualizar" en días (regla del legado). */
-const VENTANA_ABONOS = 30;
 /** Ventana de "próximo a entregar" en días para proyectos (regla del legado). */
 const VENTANA_PROYECTOS = 5;
 /** Estados que cierran un proyecto (sin alertas de entrega). */
@@ -36,7 +36,9 @@ const puede = (caps, cap) => caps.includes('*') || caps.includes(cap);
  */
 const bloqueAbonos = async (models, config) => {
     const { Abono } = models;
-    const SQL_DIAS = 'DATEDIFF(DATE_ADD(COALESCE(`abonos`.`fechaUltimaActualizacion`, `abonos`.`fechaInicio`), INTERVAL `abonos`.`periodoMeses` MONTH), CURDATE())';
+    // El fragmento y la clasificación salen del módulo abonos: el panel y el listado tienen
+    // que decir lo MISMO sobre el mismo abono.
+    const SQL_DIAS = SQL_DIAS_ACTUALIZACION;
 
     const rows = await Abono.findAll({
         where: { activo: true },
@@ -66,8 +68,9 @@ const bloqueAbonos = async (models, config) => {
             fechaUltimaActualizacion: abono.fechaUltimaActualizacion,
             dias,
         };
-        if (dias < 0) vencidos.push(item);
-        else if (dias <= VENTANA_ABONOS) proximos.push(item);
+        const estado = estadoActualizacion(dias);
+        if (estado === 'vencido') vencidos.push(item);
+        else if (estado === 'proximo') proximos.push(item);
     }
 
     return { activos: rows.length, totalPesos, vencidos, proximos };

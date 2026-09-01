@@ -220,7 +220,12 @@ Paginación en `meta` (helper `Paginate`). Validación: express-validator → 42
   frontend genérico de catálogo (`useCatalogo` + `CatalogoPage.vue` — REUSALO para todo
   ABM chico nuevo), seeds de áreas y formas.
 - ✅ **Fase 2** — abonos: módulo completo (ARS/USD, `periodoMeses` = período de ACTUALIZACIÓN
-  de precio, nace inactivo, estado vencido/próximo/al-día en SQL), actualización de precios
+  de precio, nace inactivo, estado vencido/próximo/al-día en SQL — **corte en `dias <= 0`**:
+  el día que TOCA actualizar ya es vencido, no «próximo»; el PHP legado cortaba en `< 0` y
+  escondía el abono en la cubeta equivocada justo el día que importaba. La regla vive en
+  `estadoActualizacion()` + `SQL_DIAS_ACTUALIZACION` del service de abonos, y de ahí la toman
+  el listado, el panel y los avisos diarios: estaba escrita en tres lugares y era cuestión de
+  tiempo que se desalinearan), actualización de precios
   preview→aplicar IDEMPOTENTE (operationId), facturación mensual con montos congelados +
   anulación auditada re-facturable, `/app-config` (COTIZACION_DOLAR, REDONDEO_ABONOS —
   helpers `getAppConfigNumber` en el barrel), módulo `dashboard` (bloques calculados solo

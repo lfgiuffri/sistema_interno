@@ -53,7 +53,11 @@ export const avisosHandler = {
 
         // 1) Abonos vencidos o por vencer (≤ 7 días) → quienes pueden actualizar precios.
         if (Abono) {
-            const SQL_DIAS = 'DATEDIFF(DATE_ADD(COALESCE(`abonos`.`fechaUltimaActualizacion`, `abonos`.`fechaInicio`), INTERVAL `abonos`.`periodoMeses` MONTH), CURDATE())';
+            // Import diferido y el MISMO fragmento/clasificación que usan el listado y el
+            // panel: los tres tienen que estar de acuerdo en qué abono está vencido.
+            const { SQL_DIAS_ACTUALIZACION, estadoActualizacion } =
+                await import('../../modules/abonos/services/abono.service.js');
+            const SQL_DIAS = SQL_DIAS_ACTUALIZACION;
             const abonos = await Abono.findAll({
                 where: { activo: true },
                 attributes: { include: [[Abono.sequelize.literal(SQL_DIAS), 'dias']] },
@@ -61,7 +65,7 @@ export const avisosHandler = {
             });
             const urgentes = abonos.map(a => a.toJSON()).filter(a => a.dias !== null && a.dias <= 7);
             if (urgentes.length) {
-                const vencidos = urgentes.filter(a => a.dias < 0).length;
+                const vencidos = urgentes.filter(a => estadoActualizacion(a.dias) === 'vencido').length;
                 const destinatarios = await usuariosConCapability(models, 'abonos:actualizar-precio');
                 for (const userId of destinatarios) {
                     await crearNotificacion(models, io, {

@@ -104,11 +104,18 @@ async function confirmDelete(abono: Abono): Promise<void> {
   await alert.present()
 }
 
-/** Badge de estado de actualización según los días calculados. */
+/**
+ * Badge de estado de actualización según los días calculados.
+ *
+ * El corte de vencido es `<= 0` (mismo que el backend en `estadoActualizacion`): el día que
+ * toca actualizar el abono ya está pendiente, no «por vencer». Ese día tiene texto propio —
+ * «Vencido hace 0 d» no lo diría nadie.
+ */
 function estadoActualizacion(abono: Abono): { clase: string; texto: string } | null {
   const dias = abono.diasParaActualizar
   if (dias === null || dias === undefined) return null
   if (dias < 0) return { clase: 'ds-badge-danger', texto: `Vencido hace ${Math.abs(dias)} d` }
+  if (dias === 0) return { clase: 'ds-badge-danger', texto: 'Hay que actualizarlo hoy' }
   if (dias <= 30) return { clase: 'ds-badge-warn', texto: `En ${dias} d` }
   return null
 }

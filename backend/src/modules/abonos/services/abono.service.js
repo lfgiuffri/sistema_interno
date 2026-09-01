@@ -11,7 +11,10 @@
  *    cotización y se reinicia el reloj de actualización.
  *  - Toda actualización fija `fechaUltimaActualizacion` al DÍA 1 del mes corriente.
  *  - Facturar congela precio + cotización + montoPesos; una por (abono, año, mes) vigente.
- *  - Estados: vencido (días < 0) · próximo (0..30) · al día (> 30) · sin datos (null).
+ *  - Estados: vencido (días <= 0) · próximo (1..30) · al día (> 30) · sin datos (null).
+ *    El día que TOCA actualizar ya cuenta como vencido: si hay que hacerlo hoy, no es algo
+ *    «próximo», es algo pendiente. (El PHP legado ponía el corte en `< 0` y mandaba el abono
+ *    del día a la cubeta de próximos, donde pasaba desapercibido justo el día que importaba.)
  */
 
 import { Op } from 'sequelize';
@@ -43,8 +46,30 @@ export const redondear = (monto, redondeo) => {
 
 /** Fragmento SQL de la fecha de próxima actualización (base + periodoMeses meses). */
 const SQL_PROXIMA = '(DATE_ADD(COALESCE(`abonos`.`fechaUltimaActualizacion`, `abonos`.`fechaInicio`), INTERVAL `abonos`.`periodoMeses` MONTH))';
-/** Fragmento SQL de los días hasta la próxima actualización (negativo = vencida). */
-const SQL_DIAS = `DATEDIFF(${SQL_PROXIMA}, CURDATE())`;
+/**
+ * Días hasta la próxima actualización: negativo = atrasada, **0 = hay que hacerla hoy**.
+ * Se exporta porque el panel y los avisos diarios miran lo mismo: tenerlo escrito en tres
+ * lados fue justamente lo que permitió que el corte de «vencido» quedara distinto en cada uno.
+ */
+export const SQL_DIAS_ACTUALIZACION = `DATEDIFF(${SQL_PROXIMA}, CURDATE())`;
+const SQL_DIAS = SQL_DIAS_ACTUALIZACION;
+
+/** Ventana de «próximo a actualizar», en días (regla del legado). */
+export const VENTANA_ACTUALIZACION = 30;
+
+/**
+ * Estado de actualización de un abono a partir de sus días — FUENTE ÚNICA de la regla.
+ *
+ * El corte de vencido es `<= 0`, no `< 0`: el día en que toca actualizar el abono ya está
+ * pendiente, no «por vencer». Es lo que se ve todos los días 1 del mes.
+ * @param {number|null|undefined} dias - Días hasta la actualización (de `SQL_DIAS_ACTUALIZACION`).
+ * @returns {'vencido'|'proximo'|'al_dia'|null} El estado, o null si no hay datos para calcularlo.
+ */
+export const estadoActualizacion = (dias) => {
+    if (dias === null || dias === undefined) return null;
+    if (dias <= 0) return 'vencido';
+    return dias <= VENTANA_ACTUALIZACION ? 'proximo' : 'al_dia';
+};
 
 /**
  * Cotización y redondeo vigentes (configuración de negocio).
@@ -153,9 +178,10 @@ const buildAbonoFilters = (models, query) => {
 
     // Estado de actualización, resuelto en SQL (paginable).
     let literalWhere = null;
-    if (query.estado === 'vencido') literalWhere = Abono.sequelize.literal(`${SQL_DIAS} < 0`);
-    else if (query.estado === 'proximo') literalWhere = Abono.sequelize.literal(`${SQL_DIAS} BETWEEN 0 AND 30`);
-    else if (query.estado === 'aldia') literalWhere = Abono.sequelize.literal(`${SQL_DIAS} > 30`);
+    // Los cortes son los mismos que los de `estadoActualizacion`, pero en SQL para poder paginar.
+    if (query.estado === 'vencido') literalWhere = Abono.sequelize.literal(`${SQL_DIAS} <= 0`);
+    else if (query.estado === 'proximo') literalWhere = Abono.sequelize.literal(`${SQL_DIAS} BETWEEN 1 AND ${VENTANA_ACTUALIZACION}`);
+    else if (query.estado === 'aldia') literalWhere = Abono.sequelize.literal(`${SQL_DIAS} > ${VENTANA_ACTUALIZACION}`);
     return { where, literalWhere };
 };
 
@@ -180,10 +206,9 @@ export const resumenAbonos = async (models, query = {}) => {
     let totalPesos = 0, proximos = 0, vencidos = 0;
     for (const abono of rows) {
         totalPesos += precioEnPesos(abono, cotizacion, redondeo);
-        const dias = abono.diasParaActualizar;
-        if (dias === null || dias === undefined) continue;
-        if (dias < 0) vencidos++;
-        else if (dias <= 30) proximos++;
+        const estado = estadoActualizacion(abono.diasParaActualizar);
+        if (estado === 'vencido') vencidos++;
+        else if (estado === 'proximo') proximos++;
     }
     return { activos: rows.length, totalPesos, proximos, vencidos, cotizacion };
 };

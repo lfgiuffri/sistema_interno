@@ -160,6 +160,56 @@ test.describe('M11: Abonos', () => {
     expect((await third.json()).data.facturados).toBe(1);
   });
 
+  test('M11.15 - el abono que toca actualizar HOY cuenta como vencido, no como próximo', async ({ adminApi }) => {
+    // Se construye `fechaUltimaActualizacion` para que la próxima caiga exactamente hoy,
+    // ayer y mañana (período de 1 mes): son los tres días del borde.
+    const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const baseParaVencerEn = (offsetDias: number) => {
+      const d = new Date();
+      d.setDate(d.getDate() + offsetDias);
+      d.setMonth(d.getMonth() - 1);
+      return iso(d);
+    };
+
+    const hoyMismo = await createAbono(adminApi, {
+      descripcion: 'Vence hoy', periodoMeses: 1, fechaUltimaActualizacion: baseParaVencerEn(0),
+    });
+    const ayer = await createAbono(adminApi, {
+      descripcion: 'Vencido ayer', periodoMeses: 1, fechaUltimaActualizacion: baseParaVencerEn(-1),
+    });
+    const manana = await createAbono(adminApi, {
+      descripcion: 'Vence mañana', periodoMeses: 1, fechaUltimaActualizacion: baseParaVencerEn(1),
+    });
+
+    const dias = async (id: number): Promise<number> => {
+      const res = await adminApi.get(`${APP_ENDPOINTS.abonos}/${id}`);
+      return (await expectSuccess(res, 200)).data.diasParaActualizar;
+    };
+    expect(await dias(hoyMismo.id)).toBe(0);
+    expect(await dias(ayer.id)).toBe(-1);
+    expect(await dias(manana.id)).toBe(1);
+
+    const idsCon = async (estado: string): Promise<number[]> => {
+      const res = await adminApi.get(`${APP_ENDPOINTS.abonos}?estado=${estado}&limit=200`);
+      return (await expectSuccess(res, 200)).data.map((a: { id: number }) => a.id);
+    };
+    // El corte es `<= 0`: el día en que toca actualizarlo ya está pendiente, no «por vencer».
+    const vencidos = await idsCon('vencido');
+    expect(vencidos).toContain(hoyMismo.id);
+    expect(vencidos).toContain(ayer.id);
+    expect(vencidos).not.toContain(manana.id);
+
+    const proximos = await idsCon('proximo');
+    expect(proximos).toContain(manana.id);
+    expect(proximos).not.toContain(hoyMismo.id);   // ← lo que estaba mal
+
+    // El PANEL tiene que decir lo mismo que el listado sobre el mismo abono.
+    const panel = (await expectSuccess(await adminApi.get('dashboard'), 200)).data;
+    const enPanel = (lista: Array<{ id: number }>) => lista.map(a => a.id);
+    expect(enPanel(panel.abonos.vencidos)).toContain(hoyMismo.id);
+    expect(enPanel(panel.abonos.proximos)).not.toContain(hoyMismo.id);
+  });
+
   test('M11.9 - resumen: totales en pesos con cotización', async ({ adminApi }) => {
     const res = await adminApi.get(`${APP_ENDPOINTS.abonos}/resumen?clienteId=${clienteId}`);
     const body = await expectSuccess(res, 200);
