@@ -535,8 +535,14 @@ export const listTareas = async (models, user, espacioId, listaId, q = {}) => {
         where,
         include: tareaIncludes(models),
         order: [
-            // Orden del legado, tal cual (§2.4).
+            // 1. Las completadas SIEMPRE al fondo (regla del legado §2.4 y pedido explícito):
+            //    el orden manual solo acomoda lo que sigue abierto.
             [Tarea.sequelize.literal(`\`tareas\`.\`estado\` = 'completada'`), 'ASC'],
+            // 2. Orden MANUAL (arrastrar y soltar). Las que nunca se acomodaron valen 0 y
+            //    empatan, así que las desempata el orden automático de abajo: una lista que
+            //    nadie tocó a mano se ve igual que siempre.
+            ['orden', 'ASC'],
+            // 3. Orden automático del legado, como desempate (§2.4).
             [Tarea.sequelize.literal(`FIELD(\`tareas\`.\`prioridad\`, 'rojo', 'naranja', 'amarillo', 'verde')`), 'ASC'],
             [Tarea.sequelize.literal('`tareas`.`fechaVencimiento` IS NULL'), 'ASC'],
             ['fechaVencimiento', 'ASC'],
@@ -1201,6 +1207,182 @@ export const deleteTarea = async (models, user, id) => {
     await exigirEspacioEditar(models, user, tarea.espacioId);
     await tarea.destroy();
     return true;
+};
+
+// ─────────────────────────── Orden manual y acciones en lote ───────────────────────────
+
+/**
+ * Reordena a mano las tareas ABIERTAS de una lista (arrastrar y soltar).
+ *
+ * `ids` es el orden completo de lo que se ve en pantalla; se renumeran en múltiplos de 10,
+ * igual que las listas y los documentos de documentación. Se filtra contra las tareas que
+ * REALMENTE están en esa lista, así un id de otra lista (o inventado) se descarta en vez de
+ * mover algo que el usuario no está viendo.
+ *
+ * Las COMPLETADAS se descartan: van al fondo por estado y aceptarlas solo ensuciaría su
+ * `orden` sin cambiar nada de lo que se ve.
+ * @param {object} models - Modelos de la app.
+ * @param {object} user - Usuario del request.
+ * @param {number} espacioId - Espacio de la lista.
+ * @param {number} listaId - Lista a reordenar.
+ * @param {number[]} ids - Ids en el orden nuevo.
+ * @returns {Promise<number>} Cuántas tareas quedaron reordenadas.
+ * @throws {Error} 403 sin permiso de edición del espacio; 404 si la lista no es del espacio.
+ */
+export const reordenarTareas = async (models, user, espacioId, listaId, ids) => {
+    const { Tarea, Lista } = models;
+    await exigirEspacioEditar(models, user, espacioId);
+    const lista = await Lista.findOne({ where: { id: listaId, espacioId } });
+    if (!lista) throw bizError(404, 'Lista no encontrada en este espacio');
+
+    const propias = await Tarea.findAll({
+        where: { listaId, espacioId, estado: { [Op.in]: ESTADOS_PENDIENTES } },
+        attributes: ['id'],
+        raw: true
+    });
+    const validas = new Set(propias.map(t => t.id));
+    const orden = ids.map(Number).filter(id => validas.has(id));
+
+    await Tarea.sequelize.transaction(async (t) => {
+        for (const [i, id] of orden.entries()) {
+            await Tarea.update({ orden: (i + 1) * 10 }, { where: { id }, transaction: t });
+        }
+    });
+    return orden.length;
+};
+
+/**
+ * Trae las tareas de un lote y exige poder editar TODOS los espacios involucrados.
+ *
+ * El permiso se pide UNA vez por espacio distinto, no por tarea: son consultas de rol y
+ * accesos, y un lote de 40 tareas de la misma lista no tiene por qué pagarlas 40 veces.
+ * @param {object} models - Modelos de la app.
+ * @param {object} user - Usuario del request.
+ * @param {number[]} ids - Ids del lote.
+ * @returns {Promise<object[]>} Las tareas encontradas (las que no existen se ignoran).
+ * @throws {Error} 403 si no puede editar alguno de los espacios.
+ */
+const tareasDelLote = async (models, user, ids) => {
+    const tareas = await models.Tarea.findAll({ where: { id: { [Op.in]: ids.map(Number) } } });
+    for (const espacioId of new Set(tareas.map(t => t.espacioId))) {
+        await exigirEspacioEditar(models, user, espacioId);
+    }
+    return tareas;
+};
+
+/**
+ * Avisa a los asignados de un lote, UNA notificación por persona.
+ *
+ * Cambiar el estado de 20 tareas de alguien no puede dejarle 20 campanazos: si le tocaron
+ * más de una, se le manda un resumen. La tarea suelta conserva su mensaje de siempre.
+ * @param {object} models - Modelos de la app.
+ * @param {object|null} io - Socket.IO.
+ * @param {object} user - Quién hizo el cambio (no se autonotifica).
+ * @param {object[]} tareas - Tareas afectadas.
+ * @param {string} estado - Estado nuevo.
+ * @returns {Promise<void>}
+ */
+const avisarLoteEstado = async (models, io, user, tareas, estado) => {
+    const porUsuario = new Map();
+    for (const t of tareas) {
+        if (!t.asignadoA || t.asignadoA === user.id) continue;
+        if (!porUsuario.has(t.asignadoA)) porUsuario.set(t.asignadoA, []);
+        porUsuario.get(t.asignadoA).push(t);
+    }
+    for (const [userId, suyas] of porUsuario) {
+        const varias = suyas.length > 1;
+        await notificar(models, io, {
+            userId,
+            tipo: 'tarea-estado',
+            titulo: varias
+                ? `${suyas.length} de tus tareas pasaron a ${estado.replace('_', ' ')}`
+                : `Tu tarea pasó a ${estado.replace('_', ' ')}`,
+            cuerpo: varias ? suyas.map(t => t.nombre).join(', ').slice(0, 250) : suyas[0].nombre,
+            url: urlDeTarea(suyas[0])
+        });
+    }
+};
+
+/**
+ * Cambia el estado de VARIAS tareas de una vez.
+ *
+ * Mismas reglas que de a una: permiso de edición del espacio y una fila de bitácora por
+ * tarea que efectivamente cambió (la que ya estaba en ese estado no anota nada — §5.15).
+ * Todo en UNA transacción: o se aplican todas o ninguna, para no dejar medio lote hecho.
+ * @param {object} models - Modelos de la app.
+ * @param {object} user - Usuario del request.
+ * @param {number[]} ids - Tareas del lote.
+ * @param {string} estado - Estado nuevo (ya validado por el validator).
+ * @param {object|null} io - Socket.IO.
+ * @returns {Promise<{total: number, cambiadas: number}>} Cuántas se tocaron y cuántas cambiaron.
+ */
+export const cambiarEstadoLote = async (models, user, ids, estado, io = null) => {
+    const { Tarea } = models;
+    const tareas = await tareasDelLote(models, user, ids);
+    if (!tareas.length) return { total: 0, cambiadas: 0 };
+
+    const cambiadas = tareas.filter(t => t.estado !== estado);
+    await Tarea.sequelize.transaction(async (t) => {
+        for (const tarea of cambiadas) {
+            const anterior = tarea.estado;
+            await tarea.update({ estado }, { transaction: t });
+            await registrarEstado(models, tarea.id, anterior, estado, user.id, { transaction: t });
+        }
+    });
+    await avisarLoteEstado(models, io, user, cambiadas, estado);
+    return { total: tareas.length, cambiadas: cambiadas.length };
+};
+
+/**
+ * Mueve VARIAS tareas a otra lista.
+ *
+ * Si la lista destino es de otro espacio se exige editar TAMBIÉN allá (misma regla que mover
+ * de a una, §10.5). Las que ya están en la lista destino se saltean: mover algo a donde ya
+ * está no es un error, simplemente no hace nada.
+ * @param {object} models - Modelos de la app.
+ * @param {object} user - Usuario del request.
+ * @param {number[]} ids - Tareas del lote.
+ * @param {number} listaDestinoId - Lista destino.
+ * @returns {Promise<{total: number, movidas: number, destino: object}>} Resumen.
+ * @throws {Error} 404 si la lista destino no existe; 403 sin permiso en origen o destino.
+ */
+export const moverTareasLote = async (models, user, ids, listaDestinoId) => {
+    const { Tarea, Lista } = models;
+    const destino = await Lista.findByPk(listaDestinoId);
+    if (!destino) throw bizError(404, 'Lista destino no encontrada');
+
+    const tareas = await tareasDelLote(models, user, ids);
+    if (!tareas.length) return { total: 0, movidas: 0, destino: { id: destino.id, nombre: destino.nombre } };
+    await exigirEspacioEditar(models, user, destino.espacioId);
+
+    const aMover = tareas.filter(t => t.listaId !== destino.id);
+    await Tarea.sequelize.transaction(async (t) => {
+        for (const tarea of aMover) {
+            // El orden manual es de la lista de ORIGEN: en la lista nueva la tarea entra
+            // arriba (0) hasta que alguien la acomode, como cualquier tarea recién llegada.
+            await tarea.update({ listaId: destino.id, espacioId: destino.espacioId, orden: 0 }, { transaction: t });
+        }
+    });
+    return { total: tareas.length, movidas: aMover.length, destino: { id: destino.id, nombre: destino.nombre } };
+};
+
+/**
+ * Elimina (soft) VARIAS tareas.
+ * @param {object} models - Modelos de la app.
+ * @param {object} user - Usuario del request.
+ * @param {number[]} ids - Tareas del lote.
+ * @returns {Promise<{total: number, eliminadas: number}>} Resumen.
+ * @throws {Error} 403 si no puede editar alguno de los espacios involucrados.
+ */
+export const eliminarTareasLote = async (models, user, ids) => {
+    const { Tarea } = models;
+    const tareas = await tareasDelLote(models, user, ids);
+    if (!tareas.length) return { total: 0, eliminadas: 0 };
+
+    await Tarea.sequelize.transaction(async (t) => {
+        for (const tarea of tareas) await tarea.destroy({ transaction: t });
+    });
+    return { total: tareas.length, eliminadas: tareas.length };
 };
 
 // ─────────────────────────── Resumen por categorías ───────────────────────────

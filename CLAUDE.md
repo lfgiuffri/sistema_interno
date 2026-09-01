@@ -261,6 +261,22 @@ Paginación en `meta` (helper `Paginate`). Validación: express-validator → 42
   operación «usar esto como plantilla»—, ahí conservan su nombre (poner «(copia)» a 40 tareas
   sería ruido) y también arrancan abiertas. El nombre se **numera** (`(copia 2)`, `(copia 3)`)
   en vez de fallar con un 409: clonar dos veces lo mismo es normal.
+  **Orden manual + acciones en lote** (2026-09-01): la tabla de una lista se acomoda
+  **arrastrando** (columna `tareas.orden` en múltiplos de 10, migración `0009`). El orden del
+  listado pasa a ser: completadas al fondo → `orden` → el orden automático del legado como
+  DESEMPATE. Como `orden` nace en 0 y ahí empatan todas, una lista que nadie tocó a mano se ve
+  igual que siempre — no hizo falta sembrar nada. Las **completadas no se arrastran**: viven al
+  fondo por su estado (`reordenarTareas` las descarta). El arrastre se apaga con un filtro
+  puesto o con la tabla ordenada por una columna, y la manija dice por qué: si no, se estaría
+  reordenando un subconjunto y las ocultas quedarían intercaladas de cualquier manera. La UI usa
+  `composables/useArrastrarFilas.ts`, con **pointer events y no el DnD nativo de HTML5**, que
+  en el celular no existe (`touch-action: none` en la manija para que el dedo mueva la fila en
+  vez de scrollear). **Selección múltiple** con checkboxes y barra de acciones:
+  `PATCH /tareas/lote/estado`, `PATCH /tareas/lote/mover`, `POST /tareas/lote/eliminar`
+  (POST y no DELETE porque los ids van en el body). Cada una pide la MISMA capability que su
+  versión de a una y pasa por las mismas reglas — permiso de espacio (una vez por espacio, no
+  por tarea), bitácora solo de lo que cambió, y todo en UNA transacción. El aviso al asignado
+  se AGRUPA: 20 tareas de la misma persona son una notificación, no 20 campanazos.
   **Crear en varias listas** vive colapsado detrás de un botón: un espacio con 60 listas
   llenaba media pantalla por una opción que casi no se usa. Abierto es una **lista de
   checkboxes** con `max-h` + scroll (2026-08-25): el `<select multiple>` que había antes se

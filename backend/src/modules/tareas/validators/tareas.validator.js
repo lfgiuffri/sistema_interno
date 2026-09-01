@@ -65,6 +65,35 @@ export const validateAnalisis = [
     validator
 ];
 
+/** Orden manual de las tareas de una lista: `ids` en el orden nuevo. */
+export const validateOrdenTareas = [
+    param('eid').isInt({ min: 1 }).toInt(),
+    param('lid').isInt({ min: 1 }).toInt(),
+    body('ids').isArray({ min: 1 }).withMessage('ids debe ser una lista de identificadores'),
+    body('ids.*').isInt({ min: 1 }).toInt(),
+    validator
+];
+
+/** Ids de un lote (tope 200: más que eso es un script, no un usuario seleccionando). */
+const idsDelLote = [
+    body('ids').isArray({ min: 1, max: 200 }).withMessage('Elegí al menos una tarea'),
+    body('ids.*').isInt({ min: 1 }).toInt()
+];
+
+export const validateLoteEstado = [
+    ...idsDelLote,
+    body('estado').isIn(ESTADOS_TAREA).withMessage('Estado inválido'),
+    validator
+];
+
+export const validateLoteMover = [
+    ...idsDelLote,
+    body('listaId').isInt({ min: 1 }).toInt(),
+    validator
+];
+
+export const validateLoteEliminar = [...idsDelLote, validator];
+
 /** Campos comunes de alta/edición completa. */
 const camposTarea = [
     body('nombre').isString().trim().notEmpty().withMessage('El nombre de la tarea es obligatorio').isLength({ max: 200 }),

@@ -13,6 +13,7 @@ import {
 import {
   chevronBackOutline, addOutline, funnelOutline, createOutline, trashOutline,
   documentTextOutline, swapHorizontalOutline, checkboxOutline, listOutline, appsOutline, copyOutline,
+  reorderThreeOutline, closeOutline,
 } from 'ionicons/icons'
 import { useTareasStore, ESTADOS_TAREA, PRIORIDADES, type TareaRow, type FiltrosTareas } from '@/stores/tareas'
 import { useMeStore } from '@/stores/me'
@@ -21,6 +22,7 @@ import { useOrdenTabla } from '@/composables/useOrdenTabla'
 import { useToast } from '@/composables/useToast'
 import { useTareasEnVivo } from '@/composables/useTareasEnVivo'
 import { useEscapeToClose } from '@/composables/useEscapeToClose'
+import { useArrastrarFilas } from '@/composables/useArrastrarFilas'
 import { fecha as fmtFecha } from '@/composables/useFormato'
 import BanderaPrioridad from '@/components/tareas/BanderaPrioridad.vue'
 import EstadoMenu from '@/components/tareas/EstadoMenu.vue'
@@ -139,6 +141,7 @@ async function load(): Promise<void> {
   puedeEditar.value = data.puedeEditar
   tareas.value = data.tareas
   total.value = data.total
+  podarSeleccion()
 }
 
 /** Aplica filtros: actualiza la URL (replace) y recarga. */
@@ -197,6 +200,110 @@ async function kanbanDrop(estado: string): Promise<void> {
   await cambiarEstado(t, estado)
 }
 
+// ── Selección múltiple + acciones en lote ──
+const seleccion = ref<Set<number>>(new Set())
+
+/** Al recargar, se descartan de la selección las tareas que ya no están en pantalla. */
+function podarSeleccion(): void {
+  const vivas = new Set(tareas.value.map(t => t.id))
+  seleccion.value = new Set([...seleccion.value].filter(id => vivas.has(id)))
+}
+function toggleSeleccion(id: number): void {
+  const s = new Set(seleccion.value)
+  if (s.has(id)) s.delete(id)
+  else s.add(id)
+  seleccion.value = s
+}
+const visiblesIds = computed(() => orden.ordenadas.value.map(t => t.id))
+const todasSeleccionadas = computed(() =>
+  visiblesIds.value.length > 0 && visiblesIds.value.every(id => seleccion.value.has(id)),
+)
+function toggleTodas(): void {
+  seleccion.value = todasSeleccionadas.value ? new Set() : new Set(visiblesIds.value)
+}
+const idsSeleccionados = computed(() => [...seleccion.value])
+
+
+/** ¿Puede hacer ALGO en lote? Si no, ni se muestran los checkboxes. */
+const puedeLote = computed(() => puedeEditar.value && (
+  meStore.can('tareas:estado') || meStore.can('tareas:update') || meStore.can('tareas:delete')
+))
+
+const enLote = ref(false)   // deshabilita la barra mientras el pedido está en vuelo
+
+/** Columnas de la tabla (para el colspan de los estados vacío y de carga). */
+const columnas = computed(() => 7 + (puedeLote.value ? 1 : 0) + (puedeEditar.value && meStore.can('tareas:update') ? 1 : 0))
+
+/** Cierra la acción: recarga, limpia la selección y avisa. */
+async function trasLote(mensaje: string): Promise<void> {
+  seleccion.value = new Set()
+  await load()
+  toast.success(mensaje)
+}
+
+async function loteEstado(estado: string): Promise<void> {
+  enLote.value = true
+  const r = await tareasStore.estadoLote(idsSeleccionados.value, estado)
+  enLote.value = false
+  if (!r.ok) { toast.error(r.message); return }
+  const d = r.data as { cambiadas: number } | undefined
+  await trasLote(`${d?.cambiadas ?? 0} tarea(s) a ${ESTADOS_TAREA[estado]?.label ?? estado}`)
+}
+
+async function loteEliminar(): Promise<void> {
+  const n = seleccion.value.size
+  const alert = await alertController.create({
+    header: `Eliminar ${n} tarea(s)`,
+    message: 'Se eliminan las tareas seleccionadas. Esta acción no se puede deshacer desde la pantalla.',
+    buttons: [
+      { text: 'Cancelar', role: 'cancel' },
+      {
+        text: 'Eliminar', role: 'destructive',
+        handler: async () => {
+          enLote.value = true
+          const r = await tareasStore.eliminarLote(idsSeleccionados.value)
+          enLote.value = false
+          if (!r.ok) { toast.error(r.message); return }
+          await trasLote(`${n} tarea(s) eliminada(s)`)
+        },
+      },
+    ],
+  })
+  await alert.present()
+}
+
+// ── Orden manual (arrastrar y soltar) ──
+/**
+ * Solo se puede acomodar a mano cuando lo que se ve ES el orden guardado: con un filtro
+ * puesto se estaría reordenando un subconjunto (las tareas ocultas quedarían intercaladas
+ * de cualquier manera), y con la tabla ordenada por una columna el arrastre pelearía contra
+ * ese orden. En esos casos la manija se ve apagada y dice por qué.
+ */
+const puedeOrdenar = computed(() =>
+  vista.value === 'tabla' && puedeEditar.value && meStore.can('tareas:update')
+  && filtrosActivos.value === 0 && orden.columna.value === '',
+)
+const motivoSinOrdenar = computed(() => {
+  if (orden.columna.value !== '') return 'Quitá el orden por columna para acomodar a mano'
+  if (filtrosActivos.value > 0) return 'Limpiá los filtros para acomodar a mano'
+  return ''
+})
+
+/** Una completada no se acomoda: vive al fondo del listado por su estado. */
+const movible = (t: TareaRow): boolean => t.estado !== 'completada'
+
+const arrastre = useArrastrarFilas<TareaRow>({
+  filas: () => tareas.value,
+  aplicar: (filas) => { tareas.value = filas },
+  movible,
+  guardar: async (filas) => {
+    const ids = filas.filter(movible).map(t => t.id)
+    const r = await tareasStore.reordenarTareas(espacioId.value, listaId.value, ids)
+    if (!r.ok) { toast.error(r.message); await load(); return false }
+    return true
+  },
+})
+
 // ── Modal tarea ──
 const modalTarea = ref(false)
 const tareaEditando = ref<number | null>(null)
@@ -233,7 +340,12 @@ async function clonar(t: TareaRow): Promise<void> {
   await load()
 }
 
-async function abrirMover(t: TareaRow): Promise<void> {
+/**
+ * Abre el modal de mover. Sin argumento mueve la SELECCIÓN: es el mismo modal y el mismo
+ * selector de destino, así que no hay dos pantallas que mantener sincronizadas.
+ * @param t - Tarea suelta, o null para mover el lote seleccionado.
+ */
+async function abrirMover(t: TareaRow | null = null): Promise<void> {
   tareaMoviendo.value = t
   moverError.value = ''
   if (!tareasStore.homeEspacios.length) await tareasStore.fetchHome()
@@ -250,12 +362,18 @@ async function cargarListasDestino(): Promise<void> {
 }
 
 async function confirmarMover(): Promise<void> {
-  if (!tareaMoviendo.value || !destino.value.listaId) return
-  const r = await tareasStore.moverTarea(tareaMoviendo.value.id, destino.value.listaId)
+  if (!destino.value.listaId) return
+  const t = tareaMoviendo.value
+  enLote.value = true
+  const r = t
+    ? await tareasStore.moverTarea(t.id, destino.value.listaId)
+    : await tareasStore.moverLote(idsSeleccionados.value, destino.value.listaId)
+  enLote.value = false
   if (!r.ok) { moverError.value = r.message; return }
-  toast.success('Tarea movida')
   modalMover.value = false
-  await load()
+  if (t) { toast.success('Tarea movida'); await load(); return }
+  const d = r.data as { movidas: number; destino: { nombre: string } } | undefined
+  await trasLote(`${d?.movidas ?? 0} tarea(s) movidas a «${d?.destino?.nombre ?? ''}»`)
 }
 
 // ── Acciones de fila ──
@@ -477,11 +595,53 @@ watch([espacioId, listaId], () => { if (loadedOnce && espacioId.value && listaId
           </div>
         </div>
 
+        <!--
+          Barra de acciones en lote. Aparece sola al seleccionar y cada botón se gatea con la
+          MISMA capability que su acción de a una: hacerlo masivo no relaja el permiso.
+        -->
+        <div
+          v-if="vista === 'tabla' && seleccion.size > 0"
+          class="flex flex-wrap items-center gap-2 mb-3 px-4 py-2 rounded-lg bg-accent-soft border border-accent/20 ds-enter"
+        >
+          <span class="text-sm font-medium text-accent-ink tnum">{{ seleccion.size }} tarea(s)</span>
+          <div v-if="meStore.can('tareas:estado')" class="flex flex-wrap items-center gap-1">
+            <span class="text-xs text-ink-soft ml-1">Pasar a</span>
+            <button
+              v-for="(meta, key) in ESTADOS_TAREA" :key="key" type="button"
+              class="pill-mini" :style="{ '--c': meta.color }" :disabled="enLote"
+              @click="loteEstado(key as string)"
+            >{{ meta.label }}</button>
+          </div>
+          <div class="flex-1"></div>
+          <button
+            v-if="meStore.can('tareas:update')" class="ds-btn-secondary h-7 px-2.5 text-xs"
+            :disabled="enLote" @click="abrirMover()"
+          >
+            <IonIcon :icon="swapHorizontalOutline" class="text-[13px]" /> Mover
+          </button>
+          <button
+            v-if="meStore.can('tareas:delete')" class="ds-btn-danger h-7 px-2.5 text-xs"
+            :disabled="enLote" @click="loteEliminar"
+          >
+            <IonIcon :icon="trashOutline" class="text-[13px]" /> Eliminar
+          </button>
+          <button class="row-action" title="Quitar la selección" aria-label="Quitar la selección" @click="seleccion = new Set()">
+            <IonIcon :icon="closeOutline" class="text-[15px]" />
+          </button>
+        </div>
+
         <!-- Tabla -->
         <div v-if="vista === 'tabla'" class="ds-card overflow-x-auto">
           <table class="ds-table">
             <thead>
               <tr>
+                <th v-if="puedeLote" class="w-8">
+                  <input
+                    type="checkbox" class="accent-[#0F7660]" :checked="todasSeleccionadas"
+                    aria-label="Seleccionar todas" title="Seleccionar todas" @change="toggleTodas"
+                  />
+                </th>
+                <th v-if="puedeEditar && meStore.can('tareas:update')" class="w-7"><span class="sr-only">Reordenar</span></th>
                 <th class="w-9"><span class="sr-only">Prioridad</span></th>
                 <ThOrdenable columna="nombre" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Tarea</ThOrdenable>
                 <ThOrdenable columna="asignado" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Asignada a</ThOrdenable>
@@ -493,15 +653,43 @@ watch([espacioId, listaId], () => { if (loadedOnce && espacioId.value && listaId
             </thead>
 
             <tbody v-if="loading && !tareas.length">
-              <tr v-for="i in 5" :key="i"><td colspan="7" class="!px-3"><div class="ds-skeleton h-5 w-full my-2"></div></td></tr>
+              <tr v-for="i in 5" :key="i"><td :colspan="columnas" class="!px-3"><div class="ds-skeleton h-5 w-full my-2"></div></td></tr>
             </tbody>
 
             <tbody v-else-if="tareas.length">
               <tr
-                v-for="t in orden.ordenadas.value" :key="t.id"
-                class="fila-estado" :class="{ 'opacity-55': t.estado === 'completada' }"
+                v-for="(t, i) in orden.ordenadas.value" :key="t.id"
+                class="fila-estado"
+                :class="{
+                  'opacity-55': t.estado === 'completada',
+                  'fila-arrastrando': arrastre.arrastrando.value === i,
+                  'bg-accent-soft/40': seleccion.has(t.id),
+                }"
                 :style="{ '--fila': ESTADOS_TAREA[t.estado]?.color }"
+                :data-fila="i"
               >
+                <td v-if="puedeLote">
+                  <input
+                    type="checkbox" class="accent-[#0F7660]" :checked="seleccion.has(t.id)"
+                    :aria-label="`Seleccionar ${t.nombre}`" @change="toggleSeleccion(t.id)"
+                  />
+                </td>
+                <td v-if="puedeEditar && meStore.can('tareas:update')" class="!px-1">
+                  <!--
+                    La manija arrastra; el resto de la fila no, para que seleccionar texto o
+                    tocar un botón siga funcionando. Una completada no se acomoda: vive al
+                    fondo por su estado.
+                  -->
+                  <button
+                    v-if="movible(t)"
+                    class="manija-arrastre" :class="{ 'opacity-30 cursor-not-allowed': !puedeOrdenar }"
+                    :title="puedeOrdenar ? 'Arrastrar para reordenar' : motivoSinOrdenar"
+                    :aria-label="puedeOrdenar ? `Reordenar ${t.nombre}` : motivoSinOrdenar"
+                    @pointerdown="puedeOrdenar && arrastre.empezar(i, $event)"
+                  >
+                    <IonIcon :icon="reorderThreeOutline" class="text-[16px]" />
+                  </button>
+                </td>
                 <td><BanderaPrioridad :prioridad="t.prioridad" :size="15" /></td>
                 <td>
                   <button class="text-left group flex items-center gap-1.5" @click="abrirTarea(t.id)">
@@ -547,7 +735,7 @@ watch([espacioId, listaId], () => { if (loadedOnce && espacioId.value && listaId
 
             <tbody v-else>
               <tr>
-                <td colspan="7" class="!h-auto">
+                <td :colspan="columnas" class="!h-auto">
                   <div class="flex flex-col items-center py-12 text-center">
                     <p class="text-sm font-medium text-ink">{{ filtrosActivos ? 'Sin tareas con estos filtros' : 'No hay tareas pendientes en esta lista' }}</p>
                     <p class="text-xs text-ink-faint mt-1">{{ filtrosActivos ? 'Probá con «Limpiar».' : (puedeEditar ? 'Creá la primera con «Nueva tarea».' : '') }}</p>
@@ -574,7 +762,9 @@ watch([espacioId, listaId], () => { if (loadedOnce && espacioId.value && listaId
       <Teleport defer to="ion-app">
         <div v-if="modalMover" class="ds-modal-backdrop" @click.self="modalMover = false">
           <div class="ds-modal max-w-sm" role="dialog" aria-modal="true" aria-label="Mover tarea">
-            <h2 class="text-base font-semibold text-ink mb-1">Mover «{{ tareaMoviendo?.nombre }}»</h2>
+            <h2 class="text-base font-semibold text-ink mb-1">
+              {{ tareaMoviendo ? `Mover «${tareaMoviendo.nombre}»` : `Mover ${seleccion.size} tarea(s)` }}
+            </h2>
             <p class="text-xs text-ink-soft mb-4">A otra lista, incluso de otro espacio (necesitás poder editar en ambos).</p>
             <form class="space-y-3" @submit.prevent="confirmarMover">
               <div>
@@ -593,7 +783,7 @@ watch([espacioId, listaId], () => { if (loadedOnce && espacioId.value && listaId
               <p v-if="moverError" class="ds-error" role="alert">{{ moverError }}</p>
               <footer class="flex justify-end gap-2 pt-1">
                 <button type="button" class="ds-btn-secondary" @click="modalMover = false">Cancelar</button>
-                <button type="submit" class="ds-btn-primary" :disabled="!destino.listaId">Mover</button>
+                <button type="submit" class="ds-btn-primary" :disabled="!destino.listaId || enLote">Mover</button>
               </footer>
             </form>
           </div>
@@ -611,6 +801,17 @@ watch([espacioId, listaId], () => { if (loadedOnce && espacioId.value && listaId
   color: rgb(var(--s-ink-faint)); transition: background-color 0.12s ease, color 0.12s ease;
 }
 .row-action:hover { background: rgb(var(--s-surface-2)); color: rgb(var(--s-ink)); }
+
+/* Manija de arrastre: `touch-action: none` es lo que hace que el gesto con el dedo mueva la
+   fila en vez de scrollear la página. */
+.manija-arrastre {
+  display: grid; place-items: center; width: 24px; height: 28px; border-radius: 6px;
+  color: rgb(var(--s-ink-faint)); cursor: grab; touch-action: none;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+.manija-arrastre:hover { background: rgb(var(--s-surface-2)); color: rgb(var(--s-ink)); }
+.manija-arrastre:active { cursor: grabbing; }
+.fila-arrastrando { background: rgb(var(--s-accent-soft)); }
 
 /* Filete de color por estado (est-* del legado). */
 .fila-estado td:first-child { box-shadow: inset 3px 0 0 var(--fila); }

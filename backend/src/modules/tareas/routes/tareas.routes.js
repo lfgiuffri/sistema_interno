@@ -6,7 +6,7 @@ import {
     validateId, validateEspacioId, validateEspacioLista, validateLista, validateListaUpdate,
     validateListTareas, validateCreate, validateUpdate, validateRapida, validateEstado,
     validateMover, validateArchivoId, validateClonarTarea, validateClonarLista, validateComentario,
-    validateAnalisis
+    validateAnalisis, validateOrdenTareas, validateLoteEstado, validateLoteMover, validateLoteEliminar
 } from '../validators/tareas.validator.js';
 
 const router = Router();
@@ -34,6 +34,14 @@ router.post('/espacios/:eid/listas/:lid/clonar', requireCapability('tareas:creat
 
 // Listado central de tareas.
 router.get('/espacios/:eid/listas/:lid/tareas', requireCapability('tareas:read'), validateListTareas, controller.listTareas);
+// Orden manual dentro de la lista (arrastrar y soltar): acomodar tareas es editarlas.
+router.patch('/espacios/:eid/listas/:lid/orden', requireCapability('tareas:update'), validateOrdenTareas, controller.reordenar);
+
+// Acciones en LOTE. Van antes de `/:id` (si no, «lote» se leería como un id) y cada una pide
+// la MISMA capability que su versión de a una: hacerlo masivo no relaja el permiso.
+router.patch('/lote/estado', requireCapability('tareas:estado'), validateLoteEstado, controller.estadoLote);
+router.patch('/lote/mover', requireCapability('tareas:update'), validateLoteMover, controller.moverLote);
+router.post('/lote/eliminar', requireCapability('tareas:delete'), validateLoteEliminar, controller.eliminarLote);
 
 // Archivos (imágenes del editor + adjuntos genéricos).
 router.post('/archivos', requireCapability('tareas:update'), upload.single('archivo'), controller.subirArchivo);

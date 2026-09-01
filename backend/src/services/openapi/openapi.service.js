@@ -160,6 +160,10 @@ export const buildOpenApiSpec = () => ({
         '/tareas/espacios': { get: op('Home del módulo: espacios visibles + mi resumen (fuente única)', 'Tareas', auth) },
         '/tareas/asignables': { get: op('Usuarios que pueden recibir tareas y ser mencionados (id, nombre, username)', 'Tareas', auth) },
         '/tareas/resumen': { get: op('Resumen por categorías (f=pendientes|hoy|por_vencer|vencidas; u=todos|sin|id; e=ids de espacio separados por coma)', 'Tareas', auth) },
+        '/tareas/espacios/{eid}/listas/{lid}/orden': { patch: op('Orden manual de las tareas abiertas de la lista (arrastrar y soltar; ids en el orden nuevo)', 'Tareas', auth) },
+        '/tareas/lote/estado': { patch: op('Cambia el estado de varias tareas (ids + estado)', 'Tareas', auth) },
+        '/tareas/lote/mover': { patch: op('Mueve varias tareas a otra lista (ids + listaId)', 'Tareas', auth) },
+        '/tareas/lote/eliminar': { post: op('Elimina varias tareas (ids en el body; POST porque un DELETE con cuerpo se pierde en los proxies)', 'Tareas', auth) },
         '/tareas/analisis': { get: op('Análisis de tareas (capability tareas:analisis, NO tareas:read): equipo, por lista, por espacio, realizadas en un rango (desde/hasta, default mes actual; agregados por persona y carga por lista —pendientes + cerradas—, sin el detalle tarea por tarea), serie anual (anio), antigüedad/estancadas (estancadas=días) y prioridad. Filtro e=ids de espacio separados por coma', 'Tareas', auth) },
         '/tareas/espacios/{eid}/listas': {
             get: op('Listas del espacio con agregados (requiere VER el espacio)', 'Tareas', auth),

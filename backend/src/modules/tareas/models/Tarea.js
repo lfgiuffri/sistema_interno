@@ -32,7 +32,14 @@ export const defineTareaModel = (db) => {
         prioridad: { type: DataTypes.ENUM(...PRIORIDADES_TAREA), allowNull: false, defaultValue: 'verde' },
         estado: { type: DataTypes.ENUM(...ESTADOS_TAREA), allowNull: false, defaultValue: 'abierta' },
         fechaInicio: { type: DataTypes.DATEONLY, allowNull: true },
-        fechaVencimiento: { type: DataTypes.DATEONLY, allowNull: true }
+        fechaVencimiento: { type: DataTypes.DATEONLY, allowNull: true },
+        /**
+         * Posición MANUAL dentro de la lista (arrastrar y soltar), en múltiplos de 10.
+         * 0 = nunca se acomodó a mano: esas tareas empatan y las desempata el orden
+         * automático del legado, así que una lista que nadie tocó se ve igual que siempre.
+         * Las completadas no participan: van al fondo por estado, antes de mirar esto.
+         */
+        orden: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 }
     }, {
         timestamps: true,
         paranoid: true,
@@ -41,7 +48,8 @@ export const defineTareaModel = (db) => {
             { fields: ['listaId'] },
             { fields: ['asignadoA'] },
             { fields: ['estado'] },
-            { fields: ['fechaVencimiento'] }
+            { fields: ['fechaVencimiento'] },
+            { fields: ['listaId', 'orden'] }
         ]
     });
 

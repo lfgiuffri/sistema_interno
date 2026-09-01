@@ -317,6 +317,103 @@ test.describe('M14: Tareas y listas', () => {
     await expectError(await tareasApi.get(`${APP_ENDPOINTS.tareas}/analisis?desde=pepe`), 422);
   });
 
+  test('M14.16 - orden manual: el arrastre manda, las completadas van al fondo igual', async () => {
+    const lista = await tareasApi.post(`${APP_ENDPOINTS.tareas}/espacios/${espacio1}/listas`, { data: makeNombre('Lista orden') });
+    const listaId = (await lista.json()).data.id;
+    const crear = async (nombre: string, prioridad = 'verde') => (await expectSuccess(
+      await tareasApi.post(APP_ENDPOINTS.tareas, { data: { listaId, nombre, prioridad } }), 201,
+    )).data.id;
+    // B es urgente: con el orden AUTOMÁTICO va primera.
+    const a = await crear('A');
+    const b = await crear('B', 'rojo');
+    const c = await crear('C');
+
+    const nombres = async (query = ''): Promise<string[]> => {
+      const res = await tareasApi.get(`${APP_ENDPOINTS.tareas}/espacios/${espacio1}/listas/${listaId}/tareas${query}`);
+      return (await expectSuccess(res, 200)).data.tareas.map((t: { nombre: string }) => t.nombre);
+    };
+    expect(await nombres()).toEqual(['B', 'A', 'C']);
+
+    // Se acomoda a mano: el orden manual pasa a mandar sobre el automático.
+    await expectSuccess(await tareasApi.patch(
+      `${APP_ENDPOINTS.tareas}/espacios/${espacio1}/listas/${listaId}/orden`, { data: { ids: [c, a, b] } },
+    ), 200);
+    expect(await nombres()).toEqual(['C', 'A', 'B']);
+
+    // Completar A la manda al FONDO, aunque a mano esté segunda.
+    await expectSuccess(await tareasApi.patch(`${APP_ENDPOINTS.tareas}/${a}/estado`, { data: { estado: 'completada' } }), 200);
+    expect(await nombres('?incluirCompletadas=true')).toEqual(['C', 'B', 'A']);
+
+    // Ids ajenos o inventados se descartan en vez de mover algo que no se está viendo.
+    const conBasura = await expectSuccess(await tareasApi.patch(
+      `${APP_ENDPOINTS.tareas}/espacios/${espacio1}/listas/${listaId}/orden`, { data: { ids: [b, 999999, c] } },
+    ), 200);
+    expect(conBasura.data.reordenadas).toBe(2);   // la completada tampoco cuenta
+    expect(await nombres()).toEqual(['B', 'C']);
+
+    await expectError(await tareasApi.patch(
+      `${APP_ENDPOINTS.tareas}/espacios/${espacio1}/listas/${listaId}/orden`, { data: { ids: [] } },
+    ), 422);
+  });
+
+  test('M14.17 - acciones en lote: estado, mover y eliminar, con las mismas reglas que de a una', async ({ adminApi }) => {
+    const lista = await tareasApi.post(`${APP_ENDPOINTS.tareas}/espacios/${espacio1}/listas`, { data: makeNombre('Lista lote') });
+    const listaId = (await lista.json()).data.id;
+    const otra = await tareasApi.post(`${APP_ENDPOINTS.tareas}/espacios/${espacio1}/listas`, { data: makeNombre('Lista destino') });
+    const destinoId = (await otra.json()).data.id;
+    const ids: number[] = [];
+    for (const nombre of ['L1', 'L2', 'L3']) {
+      ids.push((await expectSuccess(await tareasApi.post(APP_ENDPOINTS.tareas, { data: { listaId, nombre } }), 201)).data.id);
+    }
+
+    // Estado en lote: cuenta cuántas CAMBIARON, no cuántas se tocaron.
+    const cambio = await expectSuccess(await tareasApi.patch(`${APP_ENDPOINTS.tareas}/lote/estado`, {
+      data: { ids, estado: 'en_progreso' },
+    }), 200);
+    expect(cambio.data).toMatchObject({ total: 3, cambiadas: 3 });
+
+    // Repetir el mismo estado no cambia nada y NO ensucia la bitácora (§5.15).
+    const repetido = await expectSuccess(await tareasApi.patch(`${APP_ENDPOINTS.tareas}/lote/estado`, {
+      data: { ids, estado: 'en_progreso' },
+    }), 200);
+    expect(repetido.data.cambiadas).toBe(0);
+    const detalle = (await expectSuccess(await tareasApi.get(`${APP_ENDPOINTS.tareas}/${ids[0]}`), 200)).data;
+    const aEnProgreso = detalle.historial.filter(
+      (h: { campo: string; valorNuevo: string }) => h.campo === 'estado' && h.valorNuevo === 'en_progreso',
+    );
+    expect(aEnProgreso).toHaveLength(1);
+
+    // Mover en lote.
+    const movidas = await expectSuccess(await tareasApi.patch(`${APP_ENDPOINTS.tareas}/lote/mover`, {
+      data: { ids: [ids[0], ids[1]], listaId: destinoId },
+    }), 200);
+    expect(movidas.data).toMatchObject({ total: 2, movidas: 2 });
+    const quedan = (await expectSuccess(
+      await tareasApi.get(`${APP_ENDPOINTS.tareas}/espacios/${espacio1}/listas/${listaId}/tareas`), 200,
+    )).data.tareas;
+    expect(quedan.map((t: { id: number }) => t.id)).toEqual([ids[2]]);
+
+    // Eliminar en lote.
+    const borradas = await expectSuccess(await tareasApi.post(`${APP_ENDPOINTS.tareas}/lote/eliminar`, {
+      data: { ids: [ids[0], ids[1]] },
+    }), 200);
+    expect(borradas.data.eliminadas).toBe(2);
+    await expectError(await tareasApi.get(`${APP_ENDPOINTS.tareas}/${ids[0]}`), 404);
+
+    // El lote NO relaja los permisos: capa 2 (espacio2, donde este usuario no edita).
+    const ajena = (await expectSuccess(await adminApi.post(APP_ENDPOINTS.tareas, {
+      data: { listaId: (await (await adminApi.post(`${APP_ENDPOINTS.tareas}/espacios/${espacio2}/listas`, { data: makeNombre('Ajena') })).json()).data.id, nombre: 'De otro espacio' },
+    }), 201)).data.id;
+    await expectError(await tareasApi.patch(`${APP_ENDPOINTS.tareas}/lote/estado`, {
+      data: { ids: [ajena], estado: 'completada' },
+    }), 403);
+
+    // Validaciones: estado inválido, lista destino inexistente y lote vacío.
+    await expectError(await tareasApi.patch(`${APP_ENDPOINTS.tareas}/lote/estado`, { data: { ids: [ids[2]], estado: 'zzz' } }), 422);
+    await expectError(await tareasApi.patch(`${APP_ENDPOINTS.tareas}/lote/mover`, { data: { ids: [ids[2]], listaId: 999999 } }), 404);
+    await expectError(await tareasApi.post(`${APP_ENDPOINTS.tareas}/lote/eliminar`, { data: { ids: [] } }), 422);
+  });
+
   test('M14.10 - una lista con tareas no se elimina → 409; tarea inexistente → 404 real', async () => {
     const listas = await tareasApi.get(`${APP_ENDPOINTS.tareas}/espacios/${espacio1}/listas`);
     const conTareas = (await listas.json()).data.listas.find((l: { total: number }) => l.total > 0);

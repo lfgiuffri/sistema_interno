@@ -202,6 +202,19 @@ export const useTareasStore = defineStore('tareas', () => {
   const moverTarea = (id: number, listaId: number) => accion(() => api.patch(`/tareas/${id}/mover`, { listaId }))
   const removeTarea = (id: number) => accion(() => api.delete(`/tareas/${id}`))
 
+  /** Orden manual de la lista: `ids` es el orden nuevo de las tareas ABIERTAS. */
+  const reordenarTareas = (espacioId: number, listaId: number, ids: number[]) =>
+    accion(() => api.patch(`/tareas/espacios/${espacioId}/listas/${listaId}/orden`, { ids }))
+
+  // Acciones en LOTE: un pedido para todo el conjunto, no N pedidos. El backend las aplica
+  // en una transacción, así que no queda medio lote hecho si algo falla.
+  const estadoLote = (ids: number[], estado: string) =>
+    accion(() => api.patch('/tareas/lote/estado', { ids, estado }))
+  const moverLote = (ids: number[], listaId: number) =>
+    accion(() => api.patch('/tareas/lote/mover', { ids, listaId }))
+  const eliminarLote = (ids: number[]) =>
+    accion(() => api.post('/tareas/lote/eliminar', { ids }))
+
   async function fetchAsignables(): Promise<Array<{ id: number; nombre: string; username: string }>> {
     const { data } = await api.get('/tareas/asignables')
     return data.success ? data.data : []
@@ -256,6 +269,7 @@ export const useTareasStore = defineStore('tareas', () => {
     fetchHome, fetchListas, saveLista, toggleLista, restoreLista, removeLista,
     fetchTareas, fetchTarea, createTarea, updateTarea, updateRapida, cambiarEstado,
     moverTarea, removeTarea, clonarTarea, clonarLista,
+    reordenarTareas, estadoLote, moverLote, eliminarLote,
     fetchAsignables, fetchResumen, fetchAnalisis, subirArchivo, removeArchivo,
     addComentario, removeComentario,
     reset,

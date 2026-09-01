@@ -77,6 +77,70 @@ export const analisis = async (req, res) => {
     } catch (e) { return bizCatch(e, req, res); }
 };
 
+/**
+ * PATCH /tareas/espacios/:eid/listas/:lid/orden — orden manual (arrastrar y soltar).
+ * @param {import('express').Request} req - Request.
+ * @param {import('express').Response} res - Response.
+ * @returns {Promise<void>} 200 con { reordenadas }.
+ */
+export const reordenar = async (req, res) => {
+    try {
+        const { eid, lid, ids } = matchedData(req);
+        const n = await tareaService.reordenarTareas(req.models, req.user, eid, lid, ids);
+        // El evento es el mismo que el de cualquier mutación: las vistas abiertas recargan.
+        if (req.io) req.io.to('app').emit('tarea:actualizada', { espacioId: Number(eid), listaId: Number(lid) });
+        return await responseManager(200, { reordenadas: n }, req, res, false);
+    } catch (e) { return bizCatch(e, req, res); }
+};
+
+/**
+ * PATCH /tareas/lote/estado — cambia el estado de varias tareas.
+ * @param {import('express').Request} req - Request.
+ * @param {import('express').Response} res - Response.
+ * @returns {Promise<void>} 200 con { total, cambiadas }.
+ */
+export const estadoLote = async (req, res) => {
+    try {
+        const { ids, estado } = matchedData(req);
+        const r = await tareaService.cambiarEstadoLote(req.models, req.user, ids, estado, req.io);
+        if (req.io) req.io.to('app').emit('tarea:estado', { ids, estado });
+        return await responseManager(200, r, req, res, false);
+    } catch (e) { return bizCatch(e, req, res); }
+};
+
+/**
+ * PATCH /tareas/lote/mover — mueve varias tareas a otra lista.
+ * @param {import('express').Request} req - Request.
+ * @param {import('express').Response} res - Response.
+ * @returns {Promise<void>} 200 con { total, movidas, destino }.
+ */
+export const moverLote = async (req, res) => {
+    try {
+        const { ids, listaId } = matchedData(req);
+        const r = await tareaService.moverTareasLote(req.models, req.user, ids, listaId);
+        if (req.io) req.io.to('app').emit('tarea:actualizada', { ids, listaId });
+        return await responseManager(200, r, req, res, false);
+    } catch (e) { return bizCatch(e, req, res); }
+};
+
+/**
+ * POST /tareas/lote/eliminar — elimina varias tareas.
+ *
+ * Es POST y no DELETE porque los ids viajan en el body: un DELETE con cuerpo lo descartan
+ * proxies y clientes intermedios sin avisar.
+ * @param {import('express').Request} req - Request.
+ * @param {import('express').Response} res - Response.
+ * @returns {Promise<void>} 200 con { total, eliminadas }.
+ */
+export const eliminarLote = async (req, res) => {
+    try {
+        const { ids } = matchedData(req);
+        const r = await tareaService.eliminarTareasLote(req.models, req.user, ids);
+        if (req.io) req.io.to('app').emit('tarea:eliminada', { ids });
+        return await responseManager(200, r, req, res, false);
+    } catch (e) { return bizCatch(e, req, res); }
+};
+
 // ─────────────────────────── Listas ───────────────────────────
 
 /**
