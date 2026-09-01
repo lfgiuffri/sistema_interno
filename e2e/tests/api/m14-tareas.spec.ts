@@ -523,6 +523,51 @@ test.describe('M14: Tareas y listas', () => {
     await expectError(await adminApi.post(`${APP_ENDPOINTS.tareas}/999999/clonar`), 404);
   });
 
+  test('M14.18 - clonar conserva el ORDEN: la copia se lee igual que el original', async () => {
+    const lista = await tareasApi.post(`${APP_ENDPOINTS.tareas}/espacios/${espacio1}/listas`, { data: makeNombre('Lista a copiar') });
+    const origen = (await lista.json()).data;
+    const crear = async (nombre: string, prioridad = 'verde') => (await expectSuccess(
+      await tareasApi.post(APP_ENDPOINTS.tareas, { data: { listaId: origen.id, nombre, prioridad } }), 201,
+    )).data.id;
+    // B es urgente: con el orden AUTOMÁTICO iría primera. Después se acomoda a mano al revés.
+    const a = await crear('A');
+    const b = await crear('B', 'rojo');
+    const c = await crear('C');
+
+    const nombres = async (listaId: number, query = ''): Promise<string[]> => {
+      const res = await tareasApi.get(`${APP_ENDPOINTS.tareas}/espacios/${espacio1}/listas/${listaId}/tareas${query}`);
+      return (await expectSuccess(res, 200)).data.tareas.map((t: { nombre: string }) => t.nombre);
+    };
+    await expectSuccess(await tareasApi.patch(
+      `${APP_ENDPOINTS.tareas}/espacios/${espacio1}/listas/${origen.id}/orden`, { data: { ids: [c, b, a] } },
+    ), 200);
+    expect(await nombres(origen.id)).toEqual(['C', 'B', 'A']);
+
+    // La COPIA tiene que leerse igual. Antes se clonaba por id ascendente y la copia salía
+    // con el orden automático (B primera), o sea: distinta del original.
+    const clon = await expectSuccess(
+      await tareasApi.post(`${APP_ENDPOINTS.tareas}/espacios/${espacio1}/listas/${origen.id}/clonar`), 201);
+    expect(await nombres(clon.data.lista.id)).toEqual(['C', 'B', 'A']);
+
+    // Clonar UNA tarea deja la copia JUNTO a su original (hereda su posición), no en el tope.
+    // De qué lado exacto cae no se garantiza: heredar la posición las deja empatadas, y el
+    // desempate es `createdAt` DESC, que en DATETIME no tiene fracciones de segundo — clonar
+    // dentro del mismo segundo es un empate perfecto. Lo que importa es que no se despegue.
+    await expectSuccess(await tareasApi.post(`${APP_ENDPOINTS.tareas}/${b}/clonar`), 201);
+    const conCopia = await nombres(origen.id);
+    expect(conCopia).toHaveLength(4);
+    expect(conCopia[0]).toBe('C');                                   // el acomodo no se movió
+    expect(conCopia[3]).toBe('A');
+    expect(conCopia.slice(1, 3).sort()).toEqual(['B', 'B (copia)']);  // la copia, pegada a B
+
+    // Mover una tarea la manda arriba en el destino (su orden era de la lista vieja).
+    const otra = await tareasApi.post(`${APP_ENDPOINTS.tareas}/espacios/${espacio1}/listas`, { data: makeNombre('Destino orden') });
+    const otraId = (await otra.json()).data.id;
+    await expectSuccess(await tareasApi.post(APP_ENDPOINTS.tareas, { data: { listaId: otraId, nombre: 'Ya estaba' } }), 201);
+    await expectSuccess(await tareasApi.patch(`${APP_ENDPOINTS.tareas}/${a}/mover`, { data: { listaId: otraId } }), 200);
+    expect(await nombres(otraId)).toEqual(['A', 'Ya estaba']);
+  });
+
   test('M14.15 - clonar una lista arrastra sus tareas, todas abiertas', async ({ adminApi }) => {
     const lista = await adminApi.post(`tareas/espacios/${espacio1}/listas`, { data: makeNombre('Lista Plantilla') });
     const origen = (await lista.json()).data;

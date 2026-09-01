@@ -277,6 +277,14 @@ Paginación en `meta` (helper `Paginate`). Validación: express-validator → 42
   versión de a una y pasa por las mismas reglas — permiso de espacio (una vez por espacio, no
   por tarea), bitácora solo de lo que cambió, y todo en UNA transacción. El aviso al asignado
   se AGRUPA: 20 tareas de la misma persona son una notificación, no 20 campanazos.
+  El orden viaja con las COPIAS: `ordenDelListado()` es fuente única (la usan el listado y el
+  clonado), así que **clonar una lista recorre las tareas en el orden que se ve** y las numera
+  de nuevo en la copia — antes iba por id ascendente, que desde el orden manual ya no es lo
+  que se ve. Clonar UNA tarea le hereda la posición al original, para que la copia caiga a su
+  lado y no en el tope (de qué lado exacto no se garantiza: heredar empata y desempata
+  `createdAt` DESC, que en DATETIME no tiene fracciones de segundo). **Mover** —de a una o en
+  lote— resetea `orden` a 0: la posición era de la lista vieja, así que en la nueva entra
+  arriba hasta que alguien la acomode.
   **Crear en varias listas** vive colapsado detrás de un botón: un espacio con 60 listas
   llenaba media pantalla por una opción que casi no se usa. Abierto es una **lista de
   checkboxes** con `max-h` + scroll (2026-08-25): el `<select multiple>` que había antes se

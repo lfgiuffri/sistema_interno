@@ -187,6 +187,25 @@ export const catalogoEspacios = async (models, visiblesIds) => {
 // ─────────────────────────── Home del módulo ───────────────────────────
 
 /**
+ * Orden del listado de una lista — FUENTE ÚNICA, la usan `listTareas` (lo que se ve) y
+ * `clonarLista` (para que la copia se lea igual que el original).
+ *
+ *  1. Completadas al fondo (regla del legado §2.4): el orden manual solo acomoda lo abierto.
+ *  2. Orden MANUAL (arrastrar y soltar). Las que nunca se acomodaron valen 0 y empatan.
+ *  3. Orden automático del legado, como desempate de ese empate.
+ * @param {import('sequelize').ModelStatic<any>} Tarea - El modelo (para `sequelize.literal`).
+ * @returns {Array} Cláusula `order` de Sequelize.
+ */
+const ordenDelListado = (Tarea) => [
+    [Tarea.sequelize.literal(`\`tareas\`.\`estado\` = 'completada'`), 'ASC'],
+    ['orden', 'ASC'],
+    [Tarea.sequelize.literal(`FIELD(\`tareas\`.\`prioridad\`, 'rojo', 'naranja', 'amarillo', 'verde')`), 'ASC'],
+    [Tarea.sequelize.literal('`tareas`.`fechaVencimiento` IS NULL'), 'ASC'],
+    ['fechaVencimiento', 'ASC'],
+    ['createdAt', 'DESC']
+];
+
+/**
  * Resumen de columnas (fragmento único del legado §2.7) para un conjunto de tareas.
  * @param {object} models - Modelos de la app.
  * @param {number[]} espacioIds - Espacios a considerar ([] = nada, devuelve ceros).
@@ -534,20 +553,7 @@ export const listTareas = async (models, user, espacioId, listaId, q = {}) => {
     const tareas = await Tarea.findAll({
         where,
         include: tareaIncludes(models),
-        order: [
-            // 1. Las completadas SIEMPRE al fondo (regla del legado §2.4 y pedido explícito):
-            //    el orden manual solo acomoda lo que sigue abierto.
-            [Tarea.sequelize.literal(`\`tareas\`.\`estado\` = 'completada'`), 'ASC'],
-            // 2. Orden MANUAL (arrastrar y soltar). Las que nunca se acomodaron valen 0 y
-            //    empatan, así que las desempata el orden automático de abajo: una lista que
-            //    nadie tocó a mano se ve igual que siempre.
-            ['orden', 'ASC'],
-            // 3. Orden automático del legado, como desempate (§2.4).
-            [Tarea.sequelize.literal(`FIELD(\`tareas\`.\`prioridad\`, 'rojo', 'naranja', 'amarillo', 'verde')`), 'ASC'],
-            [Tarea.sequelize.literal('`tareas`.`fechaVencimiento` IS NULL'), 'ASC'],
-            ['fechaVencimiento', 'ASC'],
-            ['createdAt', 'DESC']
-        ]
+        order: ordenDelListado(Tarea)
     });
 
     return {
@@ -924,6 +930,8 @@ const copiarAdjuntos = async (models, origenId, destinoId) => {
  * @param {string} [opts.nombre] - Nombre del clon (default: «… (copia)»).
  * @param {boolean} [opts.conservarNombre] - Deja el nombre TAL CUAL, sin sufijo de copia (lo
  *   usa el clon de una lista completa: dentro de una lista nueva no hay con qué chocar).
+ * @param {number} [opts.orden] - Posición manual explícita (la usa el clon de una lista para
+ *   reconstruir el orden). Sin ella, la copia hereda la del original y cae a su lado.
  * @param {object|null} [io] - Socket.IO.
  * @returns {Promise<object>} El detalle de la tarea nueva.
  */
@@ -961,6 +969,10 @@ export const clonarTarea = async (models, user, id, opts = {}, io = null) => {
             estado: 'abierta',
             fechaInicio: orig.fechaInicio,
             fechaVencimiento: orig.fechaVencimiento,
+            // Sin posición explícita, la copia HEREDA la del original: empatan, y el desempate
+            // (creación descendente) deja la copia justo al lado de lo que se copió, en vez de
+            // mandarla al tope de la lista lejos de su original.
+            orden: Number.isInteger(opts.orden) ? opts.orden : orig.orden,
         }, { transaction: tx });
         await registrarEstado(models, nueva.id, null, 'abierta', user.id, { transaction: tx });
         return nueva;
@@ -1028,15 +1040,26 @@ export const clonarLista = async (models, user, espacioId, listaId, data = {}) =
 
     if (data.conTareas === false) return { lista: copia, tareas: 0, errores: [] };
 
-    // Se clonan en el orden original para que la lista nueva se lea igual que la vieja.
-    const tareas = await Tarea.findAll({ where: { listaId: orig.id }, order: [['id', 'ASC']], attributes: ['id'], raw: true });
+    // Se recorren en el MISMO orden en que se ven (incluido el manual, si la lista se acomodó
+    // a mano) y se numeran de nuevo en la copia: así la lista nueva se lee igual que la vieja.
+    // Ordenar por id daría el orden de creación, que desde el orden manual ya no es el que se ve.
+    const tareas = await Tarea.findAll({
+        where: { listaId: orig.id },
+        order: ordenDelListado(Tarea),
+        attributes: ['id'],
+        raw: true
+    });
     const errores = [];
     let clonadas = 0;
     for (const tarea of tareas) {
         try {
             // La lista destino está recién creada y vacía, así que no hay con qué chocar: las
             // tareas conservan su nombre. Ponerle «(copia)» a 40 tareas sería ruido.
-            await clonarTarea(models, user, tarea.id, { listaId: copia.id, conservarNombre: true });
+            // `orden` explícito y correlativo: la posición no se hereda del original (que pudo
+            // no haberse acomodado nunca), se REconstruye a partir del orden que se veía.
+            await clonarTarea(models, user, tarea.id, {
+                listaId: copia.id, conservarNombre: true, orden: (clonadas + 1) * 10
+            });
             clonadas += 1;
         } catch (e) {
             // Una tarea que falla no aborta el resto: se informa y se sigue.
@@ -1190,7 +1213,9 @@ export const moverTarea = async (models, user, id, listaDestinoId) => {
     if (destino.espacioId !== tarea.espacioId) {
         await exigirEspacioEditar(models, user, destino.espacioId);
     }
-    await tarea.update({ listaId: destino.id, espacioId: destino.espacioId });
+    // El orden manual es de la lista de ORIGEN: en la lista nueva la tarea entra arriba (0)
+    // hasta que alguien la acomode. Mismo criterio que el mover en lote.
+    await tarea.update({ listaId: destino.id, espacioId: destino.espacioId, orden: 0 });
     return tarea;
 };
 
