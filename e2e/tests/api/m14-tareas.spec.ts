@@ -323,16 +323,18 @@ test.describe('M14: Tareas y listas', () => {
     const crear = async (nombre: string, prioridad = 'verde') => (await expectSuccess(
       await tareasApi.post(APP_ENDPOINTS.tareas, { data: { listaId, nombre, prioridad } }), 201,
     )).data.id;
-    // B es urgente: con el orden AUTOMÁTICO va primera.
-    const a = await crear('A');
+    // Prioridades DISTINTAS a propósito: así el orden automático queda determinado por la
+    // prioridad y no depende del desempate por `createdAt`, que en DATETIME no tiene
+    // fracciones de segundo — tres altas seguidas empatan y el orden lo decide el motor.
+    const a = await crear('A', 'naranja');
     const b = await crear('B', 'rojo');
-    const c = await crear('C');
+    const c = await crear('C', 'verde');
 
     const nombres = async (query = ''): Promise<string[]> => {
       const res = await tareasApi.get(`${APP_ENDPOINTS.tareas}/espacios/${espacio1}/listas/${listaId}/tareas${query}`);
       return (await expectSuccess(res, 200)).data.tareas.map((t: { nombre: string }) => t.nombre);
     };
-    expect(await nombres()).toEqual(['B', 'A', 'C']);
+    expect(await nombres()).toEqual(['B', 'A', 'C']);   // rojo → naranja → verde
 
     // Se acomoda a mano: el orden manual pasa a mandar sobre el automático.
     await expectSuccess(await tareasApi.patch(
@@ -560,12 +562,21 @@ test.describe('M14: Tareas y listas', () => {
     expect(conCopia[3]).toBe('A');
     expect(conCopia.slice(1, 3).sort()).toEqual(['B', 'B (copia)']);  // la copia, pegada a B
 
-    // Mover una tarea la manda arriba en el destino (su orden era de la lista vieja).
+    // Mover RESETEA la posición manual: la posición era de la lista vieja y en la nueva no
+    // significa nada. La tarea llega sin posición (orden 0) y ahí la ubica el orden
+    // automático — no queda «arriba de todo», queda mezclada con las que nadie acomodó.
+    const antesDeMover = (await expectSuccess(await tareasApi.get(`${APP_ENDPOINTS.tareas}/${a}`), 200)).data;
+    expect(antesDeMover.orden).toBeGreaterThan(0);   // en la lista vieja SÍ tenía posición
+
     const otra = await tareasApi.post(`${APP_ENDPOINTS.tareas}/espacios/${espacio1}/listas`, { data: makeNombre('Destino orden') });
     const otraId = (await otra.json()).data.id;
     await expectSuccess(await tareasApi.post(APP_ENDPOINTS.tareas, { data: { listaId: otraId, nombre: 'Ya estaba' } }), 201);
     await expectSuccess(await tareasApi.patch(`${APP_ENDPOINTS.tareas}/${a}/mover`, { data: { listaId: otraId } }), 200);
-    expect(await nombres(otraId)).toEqual(['A', 'Ya estaba']);
+
+    const despues = (await expectSuccess(await tareasApi.get(`${APP_ENDPOINTS.tareas}/${a}`), 200)).data;
+    expect(despues.orden).toBe(0);
+    expect(despues.listaId).toBe(otraId);
+    expect(await nombres(otraId)).toContain('A');
   });
 
   test('M14.15 - clonar una lista arrastra sus tareas, todas abiertas', async ({ adminApi }) => {

@@ -55,9 +55,9 @@ export const useAbonosStore = defineStore('abonos', () => {
   const error = ref('')
 
   /** Serializa filtros a params (omite vacíos). */
-  const params = (filtros: AbonoFiltros, page: number) => ({
-    page,
-    limit: 50,
+  // Sin `page`/`limit`: el listado de abonos NO pagina (la facturación masiva necesita poder
+  // seleccionar TODO lo que matchea el filtro, no la página visible).
+  const params = (filtros: AbonoFiltros) => ({
     clienteId: filtros.clienteId || undefined,
     moneda: filtros.moneda || undefined,
     estado: filtros.estado || undefined,
@@ -67,14 +67,14 @@ export const useAbonosStore = defineStore('abonos', () => {
     dir: filtros.dir || undefined,
   })
 
-  /** Carga listado + resumen en paralelo (mismos filtros). */
-  async function fetchAll(filtros: AbonoFiltros = {}, page = 1): Promise<void> {
+  /** Carga listado + resumen en paralelo (mismos filtros). Trae TODOS los abonos del filtro. */
+  async function fetchAll(filtros: AbonoFiltros = {}): Promise<void> {
     loading.value = true
     error.value = ''
     try {
       const [listRes, resRes] = await Promise.all([
-        api.get('/abonos', { params: params(filtros, page) }),
-        api.get('/abonos/resumen', { params: params(filtros, 1) }),
+        api.get('/abonos', { params: params(filtros) }),
+        api.get('/abonos/resumen', { params: params(filtros) }),
       ])
       if (listRes.data.success) {
         rows.value = listRes.data.data

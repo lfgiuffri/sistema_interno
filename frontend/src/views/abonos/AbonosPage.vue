@@ -31,7 +31,6 @@ const toast = useToast()
 const router = useRouter()
 
 const filtros = ref<AbonoFiltros>({ estado: '', moneda: '', activo: '', search: '' })
-const page = ref(1)
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 
 const seleccion = ref<Set<number>>(new Set())
@@ -49,10 +48,10 @@ const todosSeleccionados = computed(() =>
 
 // El orden lo resuelve el SERVIDOR: son 76 abonos en páginas de 50, así que ordenar en el
 // navegador ordenaría media tabla. Cambiar de columna vuelve a la página 1.
-const orden = useOrdenRemoto(() => { page.value = 1; void load() })
+const orden = useOrdenRemoto(() => { void load() })
 
 async function load(): Promise<void> {
-  await abonosStore.fetchAll({ ...filtros.value, ...orden.params.value }, page.value)
+  await abonosStore.fetchAll({ ...filtros.value, ...orden.params.value })
   // Depurar selección: ids que ya no están en la página.
   const visibles = new Set(abonosStore.rows.map(a => a.id))
   seleccion.value = new Set([...seleccion.value].filter(id => visibles.has(id)))
@@ -60,10 +59,10 @@ async function load(): Promise<void> {
 
 function onSearch(): void {
   if (searchTimer) clearTimeout(searchTimer)
-  searchTimer = setTimeout(() => { page.value = 1; void load() }, 250)
+  searchTimer = setTimeout(() => { void load() }, 250)
 }
 
-function onFiltro(): void { page.value = 1; void load() }
+function onFiltro(): void { void load() }
 
 function toggleSeleccion(abono: Abono): void {
   if (!abono.activo) return
@@ -316,13 +315,13 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
           </table>
         </div>
 
-        <div v-if="abonosStore.meta && abonosStore.meta.totalPages > 1" class="flex items-center justify-between mt-3 text-xs text-ink-soft">
-          <span class="tnum">{{ abonosStore.meta.totalItems }} abono(s)</span>
-          <div class="flex gap-1">
-            <button class="ds-btn-secondary h-7 px-2.5 text-xs" :disabled="!abonosStore.meta.hasPrevPage" @click="page--; load()">Anterior</button>
-            <button class="ds-btn-secondary h-7 px-2.5 text-xs" :disabled="!abonosStore.meta.hasNextPage" @click="page++; load()">Siguiente</button>
-          </div>
-        </div>
+        <!--
+          Sin paginador: el listado trae TODO lo que matchea el filtro, para que «seleccionar
+          todos» sirva de verdad para facturar o actualizar precios en masa.
+        -->
+        <p v-if="abonosStore.rows.length" class="mt-3 text-xs text-ink-soft tnum">
+          {{ abonosStore.rows.length }} abono(s) — todos los que coinciden con el filtro.
+        </p>
       </div>
 
       <ActualizarPreciosModal

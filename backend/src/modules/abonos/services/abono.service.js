@@ -102,10 +102,17 @@ const abonoIncludes = (models) => [
 
 /**
  * Lista abonos con filtros (cliente, servicios, forma, moneda, período, texto, activo,
- * estado de actualización) y paginación. `diasParaActualizar` se calcula en SQL para que
- * el filtro por estado sea correcto con paginación (el legado filtraba en memoria).
+ * estado de actualización). `diasParaActualizar` se calcula en SQL para que el filtro por
+ * estado sea correcto (el legado filtraba en memoria).
+ *
+ * **NO pagina, a propósito.** La facturación (y la actualización de precios) son masivas:
+ * se seleccionan abonos y se opera sobre el conjunto. Con páginas, «seleccionar todos»
+ * marcaba solo la página visible y facturar el mes entero obligaba a repetir la operación
+ * página por página. El universo es acotado —los abonos vigentes de la empresa, decenas— y
+ * ya viene recortado por los filtros; devolverlos todos cuesta menos que la alternativa.
+ * `page` y `limit` se ignoran: se responden igual en `meta` para no romper el envelope.
  * @param {object} models - Modelos de la app.
- * @param {object} [query] - Filtros + page/limit.
+ * @param {object} [query] - Filtros (page/limit se ignoran).
  * @returns {Promise<{rows: object[], count: number, page: number, limit: number}>}
  */
 
@@ -129,22 +136,18 @@ export const listAbonos = async (models, query = {}) => {
     const { Abono } = models;
     const { where, literalWhere } = buildAbonoFilters(models, query);
 
-    const page = Math.max(parseInt(query.page, 10) || 1, 1);
-    const limit = Math.min(Math.max(parseInt(query.limit, 10) || 30, 1), 200);
-
     const { rows, count } = await Abono.findAndCountAll({
         where: literalWhere ? { [Op.and]: [where, literalWhere] } : where,
         include: abonoIncludes(models),
         attributes: { include: [[Abono.sequelize.literal(SQL_DIAS), 'diasParaActualizar'], [Abono.sequelize.literal(SQL_PROXIMA), 'proximaActualizacion']] },
-        limit,
-        offset: (page - 1) * limit,
         // Clientes históricos primero (por su abono más viejo lo resolvía el legado; acá
         // alcanza con cliente + inicio: mismo efecto práctico, sin subquery frágil).
         order: ordenSeguro(query, ordenAbonos(models), [[models.Cliente, 'nombre', 'ASC'], ['fechaInicio', 'ASC']]),
         distinct: true,
     });
 
-    return { rows: rows.map(r => r.toJSON()), count, page, limit };
+    // Una sola página con todo: `Paginate` divide por el límite, así que nunca puede ser 0.
+    return { rows: rows.map(r => r.toJSON()), count, page: 1, limit: Math.max(count, 1) };
 };
 
 /**

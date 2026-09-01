@@ -102,7 +102,7 @@ export const buildOpenApiSpec = () => ({
             post: op('Crear webhook saliente', 'Webhooks', auth)
         },
         '/abonos': {
-            get: op('Listar abonos (filtros + estado de actualización en SQL; estado=vencido incluye el que vence HOY, proximo son 1..30 días)', 'Abonos', auth),
+            get: op('Listar abonos — SIN paginar: devuelve todos los del filtro para poder facturar/actualizar en masa (page y limit se ignoran). estado=vencido incluye el que vence HOY; proximo son 1..30 días', 'Abonos', auth),
             post: op('Crear abono (nace inactivo salvo indicación)', 'Abonos', auth)
         },
         '/abonos/resumen': { get: op('Tiles del listado: activos, total mensual, próximos, vencidos', 'Abonos', auth) },

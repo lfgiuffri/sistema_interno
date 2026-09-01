@@ -225,7 +225,11 @@ Paginación en `meta` (helper `Paginate`). Validación: express-validator → 42
   escondía el abono en la cubeta equivocada justo el día que importaba. La regla vive en
   `estadoActualizacion()` + `SQL_DIAS_ACTUALIZACION` del service de abonos, y de ahí la toman
   el listado, el panel y los avisos diarios: estaba escrita en tres lugares y era cuestión de
-  tiempo que se desalinearan), actualización de precios
+  tiempo que se desalinearan. **El listado NO pagina** desde 2026-09-01: facturar y actualizar
+  precios son operaciones MASIVAS y con páginas «seleccionar todos» marcaba solo la visible,
+  así que había que repetir el trabajo página por página. `page`/`limit` se ignoran —se siguen
+  respondiendo en `meta` para no romper el envelope— y lo único que achica el listado son los
+  filtros), actualización de precios
   preview→aplicar IDEMPOTENTE (operationId), facturación mensual con montos congelados +
   anulación auditada re-facturable, `/app-config` (COTIZACION_DOLAR, REDONDEO_ABONOS —
   helpers `getAppConfigNumber` en el barrel), módulo `dashboard` (bloques calculados solo
@@ -288,8 +292,9 @@ Paginación en `meta` (helper `Paginate`). Validación: express-validator → 42
   que se ve. Clonar UNA tarea le hereda la posición al original, para que la copia caiga a su
   lado y no en el tope (de qué lado exacto no se garantiza: heredar empata y desempata
   `createdAt` DESC, que en DATETIME no tiene fracciones de segundo). **Mover** —de a una o en
-  lote— resetea `orden` a 0: la posición era de la lista vieja, así que en la nueva entra
-  arriba hasta que alguien la acomode.
+  lote— resetea `orden` a 0: la posición era de la lista vieja y en la nueva no significa
+  nada, así que la tarea llega SIN posición y ahí la ubica el orden automático (no queda
+  «arriba de todo»: queda mezclada con las que nadie acomodó).
   **Crear en varias listas** vive colapsado detrás de un botón: un espacio con 60 listas
   llenaba media pantalla por una opción que casi no se usa. Abierto es una **lista de
   checkboxes** con `max-h` + scroll (2026-08-25): el `<select multiple>` que había antes se

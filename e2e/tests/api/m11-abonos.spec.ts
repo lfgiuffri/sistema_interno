@@ -273,9 +273,38 @@ test.describe('M11: Abonos', () => {
     await expectError(fixture, 403);
   });
 
+  test('M11.16 - el listado NO pagina: trae todos los abonos del filtro (facturación masiva)', async ({ adminApi }) => {
+    // Varios abonos de prueba para que el conjunto no sea trivial.
+    const creados: number[] = [];
+    for (let i = 0; i < 3; i++) creados.push((await createAbono(adminApi, { descripcion: `Masivo ${i}` })).id);
+
+    // Nada de comparar totales entre dos pedidos: el proyecto `api` corre en paralelo y otros
+    // tests dan de alta y de baja abonos mientras este corre. Cada respuesta se valida contra
+    // SÍ MISMA y contra los ids propios, que es lo que realmente prueba que no hay páginas.
+    const todos = await expectSuccess(await adminApi.get(APP_ENDPOINTS.abonos), 200);
+    for (const id of creados) expect(todos.data.map((a: { id: number }) => a.id)).toContain(id);
+    // Una sola página con todo: el frontend no tiene que pedir más nada para seleccionar todo.
+    expect(todos.meta.totalPages).toBe(1);
+    expect(todos.meta.hasNextPage).toBe(false);
+    expect(todos.data).toHaveLength(todos.meta.totalItems);
+
+    // `limit` y `page` se ignoran: con páginas de 5, la 3ra no podría traer TODOS estos ids.
+    const recortado = await expectSuccess(await adminApi.get(`${APP_ENDPOINTS.abonos}?limit=5&page=3`), 200);
+    expect(recortado.data.length).toBeGreaterThan(5);
+    expect(recortado.data).toHaveLength(recortado.meta.totalItems);
+    for (const id of creados) expect(recortado.data.map((a: { id: number }) => a.id)).toContain(id);
+
+    // Los FILTROS siguen recortando (es lo único que achica el listado).
+    const soloUno = await expectSuccess(
+      await adminApi.get(`${APP_ENDPOINTS.abonos}?search=${encodeURIComponent('Masivo 1')}`), 200);
+    expect(soloUno.data).toHaveLength(soloUno.meta.totalItems);
+    expect(soloUno.data.map((a: { id: number }) => a.id)).toContain(creados[1]);
+    expect(soloUno.data.map((a: { id: number }) => a.id)).not.toContain(creados[0]);
+  });
+
   test('M11.14 - orden por columna en el servidor: whitelist, dirección y columna inválida', async ({ adminApi }) => {
-    // El listado pagina (50 por página), así que el orden TIENE que venir del servidor:
-    // ordenar en el navegador ordenaría solo la página visible.
+    // El orden viene del SERVIDOR aunque el listado ya no pagine: es una sola consulta y
+    // el frontend pinta lo que llega, sin reordenar por su cuenta.
     const asc = await expectSuccess(await adminApi.get(`${APP_ENDPOINTS.abonos}?orden=cliente&dir=asc&limit=20`), 200);
     const desc = await expectSuccess(await adminApi.get(`${APP_ENDPOINTS.abonos}?orden=cliente&dir=desc&limit=20`), 200);
     const nombres = (b: { data: Array<{ Cliente?: { nombre: string } }> }) => b.data.map(a => a.Cliente?.nombre ?? '');
