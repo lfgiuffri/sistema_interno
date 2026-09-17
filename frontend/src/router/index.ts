@@ -99,6 +99,12 @@ const router = createRouter({
   routes,
 })
 
+/** Título de la pestaña, por superficie. El portal se publica en su propio subdominio. */
+const TITULO = { interno: 'Sistema Interno', portal: 'Portal de clientes' }
+
+/** ¿La ruta pertenece al portal de clientes? Lo decide el prefijo, igual que el guard. */
+const esPortal = (path: string): boolean => path === '/portal' || path.startsWith('/portal/')
+
 /**
  * Destino de quien entra a la app: el panel si puede verlo, y si no, la PRIMERA pantalla
  * del menú a la que tenga acceso (antes caía en un panel vacío, sin nada y sin explicación).
@@ -117,10 +123,15 @@ async function destinoInicial(): Promise<string> {
 // El auth store es la ÚNICA fuente de verdad de la sesión: el guard lo restaura una sola vez
 // (ensureInitialized es idempotente) y decide en base a sus getters, sin leer localStorage directo.
 router.beforeEach(async (to, _from, next) => {
+  // El título se fija acá y no por vista: en el portal son TODAS las pantallas, el login
+  // incluido, y un cliente no tiene por qué leer «Sistema Interno» en su pestaña. Se
+  // reestablece al volver al sistema interno porque el mismo build sirve las dos superficies.
+  document.title = esPortal(to.path) ? TITULO.portal : TITULO.interno
+
   // El portal se resuelve ANTES de tocar el store del sistema interno. Si no, y el mismo
   // navegador tuviera una sesión interna abierta, `meta.guest` dispararía `destinoInicial()`
   // → `GET /me`, que no es del portal, y el cliente terminaría en el panel interno.
-  if (to.path === '/portal' || to.path.startsWith('/portal/')) {
+  if (esPortal(to.path)) {
     const { usePortalAuthStore } = await import('@/stores/portal/auth')
     const portal = usePortalAuthStore()
     // `next()` sin argumento deja pasar; `next(ruta)` redirige. No se puede pasar `undefined`.
