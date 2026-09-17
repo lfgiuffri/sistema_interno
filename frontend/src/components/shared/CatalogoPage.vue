@@ -373,6 +373,15 @@ defineExpose({ reload: load })
           </div>
         </div>
       </Teleport>
+
+      <!--
+        Modales u overlays propios de la página que usa este catálogo. Van ACÁ adentro y no
+        al lado del <CatalogoPage> en la página: un segundo nodo raíz convierte a la vista en
+        un fragmento, y ahí Ionic no tiene dónde colgar `registerIonPage` — la pantalla deja
+        de entrar cuando se llega navegando desde otra (entrar por URL directa sí anda, que
+        es lo que hace tan confuso el síntoma).
+      -->
+      <slot name="extra" />
     </IonContent>
   </IonPage>
 </template>

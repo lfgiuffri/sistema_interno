@@ -71,13 +71,15 @@ function abrirPortal(row: Record<string, unknown>): void {
         <IonIcon :icon="notificationsOffOutline" class="text-[11px]" /> sin aviso
       </span>
     </template>
-  </CatalogoPage>
 
-  <ClientePortalModal
-    v-if="meStore.can('clientes:update')"
-    :open="modalPortal"
-    :cliente="clienteElegido"
-    @cerrar="modalPortal = false"
-    @guardado="catalogo?.reload()"
-  />
+    <template #extra>
+      <ClientePortalModal
+        v-if="meStore.can('clientes:update')"
+        :open="modalPortal"
+        :cliente="clienteElegido"
+        @cerrar="modalPortal = false"
+        @guardado="catalogo?.reload()"
+      />
+    </template>
+  </CatalogoPage>
 </template>

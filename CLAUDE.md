@@ -556,6 +556,14 @@ Proyectos → Incidencias y con un botón los convierte en tareas. Doc completa 
   compartirla dejaría que un login de portal exitoso le limpie el contador de fuerza bruta al
   login interno para esa IP. **Sin socket**, a propósito: la room `app` recibe los broadcasts de
   todos los clientes. Los tres tests negativos de aislamiento son M23.2.
+- **Subdominio propio** (`clientes.positivemedia.com.ar`): sirve el MISMO build, así que no
+  tiene deploy aparte. Necesita DOS cosas, no una: el `location = /` de nginx que manda la raíz
+  a `/portal`, y **`VITE_PORTAL_HOST`** en el build. Sin la segunda anda la primera visita y
+  después no: el **service worker** de la PWA resuelve las navegaciones con el `index.html`
+  precacheado y la petición no llega a nginx, así que el router arranca en `/` y resuelve
+  `/` → `/panel`. Con la env seteada el router mira el hostname y decide solo (raíz → `/portal`,
+  toda ruta interna rebota). nginx cubre la primera visita; el router, las demás. Ojo al
+  diagnosticar: `curl` muestra el 302 correcto porque no ejecuta service workers.
 - **El portal NO tiene** auto-registro ni recuperación de contraseña (las cuentas las crea y
   resetea el equipo desde la ficha del cliente) ni HTML en la descripción (texto plano: es lo
   único que recibe contenido desde internet abierto). Se monta explícito en `routes.js` fuera de

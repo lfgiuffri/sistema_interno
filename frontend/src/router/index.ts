@@ -7,8 +7,30 @@
 import { createRouter, createWebHistory } from '@ionic/vue-router'
 import type { RouteRecordRaw } from 'vue-router'
 
+/**
+ * Host del subdominio del portal (build-time). Vacío = el portal se entra por `/portal` y
+ * nada de esto aplica.
+ */
+const PORTAL_HOST = import.meta.env.VITE_PORTAL_HOST || ''
+
+/**
+ * ¿La pestaña está abierta en el subdominio del portal?
+ *
+ * Esto NO es redundante con el redirect de nginx, aunque lo parezca: el **service worker** de
+ * la PWA atiende las navegaciones con el `index.html` precacheado (`navigateFallback`), así que
+ * la petición nunca llega a nginx y su 302 no corre. Sin este chequeo, un cliente que ya visitó
+ * el portal una vez y vuelve a escribir el dominio pelado cae en `/panel`. nginx sigue haciendo
+ * falta para la PRIMERA visita, cuando todavía no hay service worker: son las dos mitades.
+ * @returns true si el host actual es el del portal.
+ */
+const enHostDePortal = (): boolean =>
+  !!PORTAL_HOST && typeof window !== 'undefined' && window.location.hostname === PORTAL_HOST
+
+/** Destino de la raíz y del catch-all, según en qué host se esté. */
+const inicio = (): string => (enHostDePortal() ? '/portal' : '/panel')
+
 const routes: RouteRecordRaw[] = [
-  { path: '/', redirect: '/panel' },
+  { path: '/', redirect: inicio },
   {
     path: '/login',
     name: 'Login',
@@ -91,7 +113,7 @@ const routes: RouteRecordRaw[] = [
     ],
   },
 
-  { path: '/:pathMatch(.*)*', redirect: '/panel' },
+  { path: '/:pathMatch(.*)*', redirect: inicio },
 ]
 
 const router = createRouter({
@@ -123,6 +145,13 @@ async function destinoInicial(): Promise<string> {
 // El auth store es la ÚNICA fuente de verdad de la sesión: el guard lo restaura una sola vez
 // (ensureInitialized es idempotente) y decide en base a sus getters, sin leer localStorage directo.
 router.beforeEach(async (to, _from, next) => {
+  // En el subdominio del portal, NINGUNA ruta del sistema interno es alcanzable. Espeja lo
+  // que hace nginx, y hace falta por lo mismo que `enHostDePortal`: al service worker de la
+  // PWA le alcanza el `index.html` cacheado para resolver `/abonos` sin preguntarle a nadie.
+  // No es una defensa —el bundle es el mismo y contiene la app entera—: es que el cliente no
+  // termine mirando un login que no es el suyo.
+  if (enHostDePortal() && !esPortal(to.path)) return next('/portal')
+
   // El título se fija acá y no por vista: en el portal son TODAS las pantallas, el login
   // incluido, y un cliente no tiene por qué leer «Sistema Interno» en su pestaña. Se
   // reestablece al volver al sistema interno porque el mismo build sirve las dos superficies.

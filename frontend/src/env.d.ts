@@ -19,6 +19,11 @@ interface ImportMetaEnv {
   readonly VITE_TURNSTILE_SITEKEY?: string
   /** Fuerza el modo marketing (landing) en dev/local. '1' o 'true'. Ver ADR-011. */
   readonly VITE_MARKETING?: string
+  /**
+   * Host del subdominio del portal de clientes (ej. `clientes.positivemedia.com.ar`).
+   * Vacío = no hay subdominio propio y el portal se entra por `/portal`.
+   */
+  readonly VITE_PORTAL_HOST?: string
 }
 
 interface ImportMeta {

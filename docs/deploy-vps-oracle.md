@@ -277,6 +277,60 @@ Dar permiso de lectura del `dist/` al usuario `www-data` si el repo quedó con p
 restrictivos (`chmod -R o+rX /opt/sistema-interno/frontend/dist` y `o+x` en los
 directorios del camino).
 
+### Subdominio del portal de clientes
+
+`clientes.positivemedia.com.ar` sirve el **mismo `dist/`**: el portal son las rutas `/portal/*`
+de la misma SPA, así que no tiene deploy propio — cada `npm run build` actualiza los dos. Lo
+único que cambia es el vhost. El bloque completo y comentado está en `sistema_interno` (la copia
+versionada de la config).
+
+1. **DNS**: un registro `A` de `clientes` al IP del VPS. Verificar con `dig +short` **antes** de
+   llamar a certbot: sin DNS resuelto el desafío HTTP-01 falla y deja el vhost a medio convertir.
+2. **Vhost en HTTP**: pegar el server block en `/etc/nginx/sites-available/sistema_interno`
+   (o un archivo propio + symlink), `sudo nginx -t`, `sudo systemctl reload nginx`.
+3. **HTTPS**: `sudo certbot --nginx -d clientes.positivemedia.com.ar`. Certbot reescribe ESE
+   bloque a 443 y agrega el redirect desde el 80. Por eso el vhost se escribe primero en HTTP
+   plano: escribir a mano las líneas `ssl_certificate` apuntando a un certificado que todavía no
+   existe hace que nginx no levante.
+4. **`VITE_PORTAL_HOST=clientes.positivemedia.com.ar` en `frontend/.env.production`, y
+   rebuildear.** Sin esto el subdominio funciona la primera vez y **deja de funcionar después**:
+   ver abajo.
+
+> ⚠️ **nginx solo no alcanza: hace falta también `VITE_PORTAL_HOST`.** El `location = /` manda
+> la raíz a `/portal`, pero el **service worker** de la PWA atiende las navegaciones con el
+> `index.html` precacheado (`navigateFallback` de workbox), así que a partir de la segunda visita
+> la petición **no llega a nginx** y su 302 no corre nunca: el router arranca en `/`, resuelve
+> `/` → `/panel` y el cliente termina en el login del sistema interno. El síntoma es
+> desconcertante porque `curl` muestra el 302 correcto — curl no ejecuta service workers.
+>
+> Con `VITE_PORTAL_HOST` seteado, el router mira `window.location.hostname` y decide por sí
+> mismo: la raíz va a `/portal` y toda ruta interna rebota al portal. Las dos mitades hacen
+> falta — nginx cubre la PRIMERA visita, cuando todavía no hay service worker; el router cubre
+> todas las demás.
+>
+> Al desplegar el arreglo, el service worker viejo todavía vive en el navegador de quien ya
+> entró: con `registerType: 'autoUpdate'` se reemplaza solo, pero puede hacer falta una recarga.
+> Para verificar en el momento, una ventana de incógnito no tiene service worker.
+
+Tres decisiones del vhost que conviene no revertir por parecer omisiones:
+
+- **No proxea `/api`.** El frontend llama a una URL **absoluta** (`VITE_API_URL`, horneada en el
+  build) porque ese mismo build es el de la APK, donde una ruta relativa no tiene origen contra
+  el cual resolverse. Las llamadas del portal salen hacia el backend de siempre; proxearlas acá
+  sería config muerta. A cambio, el origen nuevo es **cross-origin**: `CORS_ORIGIN` del backend
+  tiene que aceptarlo (con `*` ya está; si está restringido, sumar el subdominio).
+- **No proxea `/socket.io`.** El portal no usa sockets a propósito: la room `app` recibe los
+  broadcasts de todos los clientes de la empresa. El backend ya rechaza el token de portal en el
+  handshake; no exponer la ruta es la segunda cerradura.
+- **`absolute_redirect off`** para que los 302 salgan relativos (`Location: /portal`). Si no,
+  nginx arma la URL con el esquema y el puerto que tiene configurados y el redirect puede
+  mandar a `http://` justo después de que certbot pase el bloque a 443.
+
+> ⚠️ **Antes de desplegar este código, `JWT_PORTAL_SECRET` tiene que estar en el `.env` del
+> backend.** No es opcional: si falta, es igual a `JWT_SECRET` o está vacío, el proceso hace
+> `process.exit(1)` al arrancar — o sea que **no se cae solo el portal, no arranca el sistema
+> entero**. Generarlo con `openssl rand -base64 48`, distinto del interno.
+
 ## 8. Verificación
 
 ```bash
@@ -284,6 +338,10 @@ curl https://sys.positivemedia.com.ar/api          # → { "success": true, ... 
 curl https://sys.positivemedia.com.ar/api/health   # → { "ok": true, "baseMs": 2, ... }
 ```
 
+- Portal: `https://clientes.positivemedia.com.ar` → tiene que **redirigir a `/portal`** y
+  mostrar el login de clientes. Si aparece el login del sistema interno, falta el
+  `location = / { return 302 /portal; }` y el router de la SPA está resolviendo `/` → `/panel`.
+  Probar también una ruta interna a mano (`/abonos`): debe volver al portal.
 - App: `https://sys.positivemedia.com.ar` → login con `ADMINUSER`/`ADMINPASS` →
   **cambiar la contraseña** → crear usuarios y roles reales.
 - Docs API: `https://sys.positivemedia.com.ar/api/docs`.
