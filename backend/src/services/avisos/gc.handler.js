@@ -13,7 +13,10 @@ import path from 'path';
 import { Op } from 'sequelize';
 
 const CONFIG_KEY = 'GC_ULTIMA_CORRIDA';
-const HORAS_GRACIA = 48;
+// Una semana y no 48 h: desde que hay portal, quien adjunta puede ser un cliente que sube tres
+// PDF, cierra el navegador y vuelve el lunes. Un huérfano de más cuesta unos KB; borrarle el
+// adjunto a un cliente antes de que termine de cargar cuesta que lo vuelva a hacer.
+const HORAS_GRACIA = 24 * 7;
 
 /**
  * Qué se limpia. Un origen por módulo que sube archivos: mismo criterio, distinta tabla.
@@ -31,6 +34,12 @@ const ORIGENES = [
         fk: 'documentoId',
         dir: () => path.resolve(process.cwd(), process.env.DOCUMENTACION_STORAGE_DIR || 'storage/documentacion'),
         etiqueta: 'documentación',
+    },
+    {
+        modelo: 'IncidenciaArchivo',
+        fk: 'incidenciaId',
+        dir: () => path.resolve(process.cwd(), process.env.INCIDENCIAS_STORAGE_DIR || 'storage/incidencias'),
+        etiqueta: 'incidencias',
     },
 ];
 

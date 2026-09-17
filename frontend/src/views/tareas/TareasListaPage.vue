@@ -496,7 +496,7 @@ watch([espacioId, listaId], () => { if (loadedOnce && espacioId.value && listaId
               <div class="flex flex-wrap gap-1">
                 <button
                   v-for="(meta, key) in ESTADOS_TAREA" :key="key" type="button"
-                  class="pill-mini" :class="{ 'pill-mini-activa': f.estado.includes(key as string) }"
+                  class="ds-pill" :class="{ 'ds-pill-activa': f.estado.includes(key as string) }"
                   :style="{ '--c': meta.color }" @click="togglePill(f.estado, key as string)"
                 >{{ meta.label }}</button>
               </div>
@@ -506,7 +506,7 @@ watch([espacioId, listaId], () => { if (loadedOnce && espacioId.value && listaId
               <div class="flex flex-wrap gap-1">
                 <button
                   v-for="(meta, key) in PRIORIDADES" :key="key" type="button"
-                  class="pill-mini" :class="{ 'pill-mini-activa': f.prioridad.includes(key as string) }"
+                  class="ds-pill" :class="{ 'ds-pill-activa': f.prioridad.includes(key as string) }"
                   :style="{ '--c': meta.color }" @click="togglePill(f.prioridad, key as string)"
                 >{{ meta.label }}</button>
               </div>
@@ -608,7 +608,7 @@ watch([espacioId, listaId], () => { if (loadedOnce && espacioId.value && listaId
             <span class="text-xs text-ink-soft ml-1">Pasar a</span>
             <button
               v-for="(meta, key) in ESTADOS_TAREA" :key="key" type="button"
-              class="pill-mini" :style="{ '--c': meta.color }" :disabled="enLote"
+              class="ds-pill" :style="{ '--c': meta.color }" :disabled="enLote"
               @click="loteEstado(key as string)"
             >{{ meta.label }}</button>
           </div>
@@ -815,13 +815,6 @@ watch([espacioId, listaId], () => { if (loadedOnce && espacioId.value && listaId
 
 /* Filete de color por estado (est-* del legado). */
 .fila-estado td:first-child { box-shadow: inset 3px 0 0 var(--fila); }
-
-.pill-mini {
-  height: 22px; padding: 0 8px; border-radius: 999px; font-size: 11px; font-weight: 500;
-  color: var(--c); background: color-mix(in srgb, var(--c) 10%, transparent);
-  border: 1px solid color-mix(in srgb, var(--c) 25%, transparent);
-}
-.pill-mini-activa { background: var(--c); color: white; border-color: var(--c); }
 
 .kanban-col {
   background: rgb(var(--s-surface-2) / 0.45);

@@ -33,6 +33,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'proyectos/:id/editar', name: 'ProyectoEditar', component: () => import('@/views/proyectos/ProyectoFormPage.vue'), meta: { module: 'proyectos' } },
       { path: 'proyectos/:id/cobranzas', name: 'Cobranzas', component: () => import('@/views/proyectos/CobranzasPage.vue'), meta: { module: 'cobranzas' } },
       { path: 'grilla-cobranzas', name: 'GrillaCobranzas', component: () => import('@/views/proyectos/GrillaCobranzasPage.vue'), meta: { module: 'cobranzas' } },
+      { path: 'incidencias', name: 'Incidencias', component: () => import('@/views/incidencias/IncidenciasPage.vue'), meta: { module: 'incidencias' } },
       { path: 'tareas', name: 'Tareas', component: () => import('@/views/tareas/TareasHomePage.vue'), meta: { module: 'tareas' } },
       { path: 'tareas/resumen', name: 'TareasResumen', component: () => import('@/views/tareas/ResumenPage.vue'), meta: { module: 'tareas' } },
       { path: 'tareas/analisis', name: 'TareasAnalisis', component: () => import('@/views/tareas/AnalisisPage.vue'), meta: { module: 'tareas' } },
@@ -68,6 +69,28 @@ const routes: RouteRecordRaw[] = [
       { path: 'configuracion', name: 'Configuracion', component: () => import('@/views/dashboard/settings/SettingsLayout.vue') },
     ],
   },
+  // ── PORTAL DE CLIENTES ──
+  // Árbol aparte, con su propio login, su propio shell y su propio guard. No lleva
+  // `meta.auth`/`meta.guest`: esos los mira el guard del sistema interno, que resuelve contra
+  // `stores/auth` y terminaría mandando a un cliente a `/login` o pidiendo `GET /me`.
+  {
+    path: '/portal/login',
+    name: 'PortalLogin',
+    component: () => import('@/views/portal/PortalLoginPage.vue'),
+    meta: { portal: true, portalGuest: true },
+  },
+  {
+    path: '/portal',
+    component: () => import('@/views/portal/PortalShell.vue'),
+    meta: { portal: true },
+    children: [
+      { path: '', name: 'PortalIncidencias', component: () => import('@/views/portal/PortalIncidenciasPage.vue') },
+      // Catch-all ANIDADO: sin esto, el global de abajo se come cualquier `/portal/*`
+      // desconocido y manda al cliente al panel del sistema interno.
+      { path: ':pathMatch(.*)*', redirect: '/portal' },
+    ],
+  },
+
   { path: '/:pathMatch(.*)*', redirect: '/panel' },
 ]
 
@@ -94,6 +117,17 @@ async function destinoInicial(): Promise<string> {
 // El auth store es la ÚNICA fuente de verdad de la sesión: el guard lo restaura una sola vez
 // (ensureInitialized es idempotente) y decide en base a sus getters, sin leer localStorage directo.
 router.beforeEach(async (to, _from, next) => {
+  // El portal se resuelve ANTES de tocar el store del sistema interno. Si no, y el mismo
+  // navegador tuviera una sesión interna abierta, `meta.guest` dispararía `destinoInicial()`
+  // → `GET /me`, que no es del portal, y el cliente terminaría en el panel interno.
+  if (to.path === '/portal' || to.path.startsWith('/portal/')) {
+    const { usePortalAuthStore } = await import('@/stores/portal/auth')
+    const portal = usePortalAuthStore()
+    // `next()` sin argumento deja pasar; `next(ruta)` redirige. No se puede pasar `undefined`.
+    if (to.meta.portalGuest) return portal.autenticado ? next('/portal') : next()
+    return portal.autenticado ? next() : next('/portal/login')
+  }
+
   const { useAuthStore } = await import('@/stores/auth')
   const auth = useAuthStore()
   auth.ensureInitialized()

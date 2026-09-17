@@ -11,8 +11,12 @@ export default {
     version: '1.0.0',
     description: 'Clientes de la empresa: base de abonos y proyectos.',
     basePath: '/clientes',
-    models: ['Cliente'],
-    capabilities: ['clientes:read', 'clientes:create', 'clientes:update', 'clientes:toggle', 'clientes:delete'],
+    models: ['Cliente', 'ClienteUsuario'],
+    capabilities: [
+        'clientes:read', 'clientes:create', 'clientes:update', 'clientes:toggle', 'clientes:delete',
+        // Dar acceso al portal a gente de afuera es una decisión distinta de editar la ficha.
+        'clientes:usuarios'
+    ],
     dependsOn: [],
     router
 };

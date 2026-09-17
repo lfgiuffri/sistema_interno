@@ -34,6 +34,7 @@ const RUTAS = [
   [`/proyectos/${IDS.proyecto}/editar`, 'Proyecto editar'],
   [`/proyectos/${IDS.proyecto}/cobranzas`, 'Cobranzas del proyecto'],
   ['/grilla-cobranzas', 'Grilla de cobranzas'],
+  ['/incidencias', 'Incidencias'],
   ['/tareas', 'Tareas (home)'],
   ['/tareas/resumen', 'Tareas resumen'],
   ['/tareas/analisis', 'Análisis de tareas'],

@@ -16,6 +16,7 @@ import { registerSocketHandlers } from './socket/socketHandlers.js';
 import { mountFeatureModules } from './routes.js';
 import { registerPresence } from './kernel/realtime/presence.js';
 import { runMigrations } from './kernel/migrations/migrationRunner.js';
+import { validarConfigPortal } from './services/portal/portalToken.service.js';
 
 // Fail-fast: sin JWT_SECRET no se pueden firmar/verificar tokens de forma segura (un secreto
 // vacío haría que jwt acepte/firme con clave trivial). Abortamos antes de levantar el server.
@@ -26,6 +27,16 @@ if (!process.env.JWT_SECRET || !process.env.JWT_SECRET.trim()) {
 if (process.env.JWT_SECRET.length < 32) {
     console.warn('⚠️ JWT_SECRET es corto (<32 chars). En producción usá un secreto largo y aleatorio.');
 }
+
+// Lo mismo para el PORTAL DE CLIENTES, que firma con su propio secreto. Si fuera igual al
+// interno, un token de cliente podría valer como sesión interna: por eso esto aborta el boot
+// en vez de avisar. Vale la pena fallar al arrancar antes que descubrirlo en producción.
+const configPortal = validarConfigPortal();
+if (!configPortal.ok) {
+    console.error(`❌ ${configPortal.error}`);
+    process.exit(1);
+}
+if (configPortal.warn) console.warn(`⚠️ ${configPortal.warn}`);
 
 // Registrar el handler de presence/broadcast (se aplica a cada conexión de socket autenticada).
 registerPresence();
@@ -50,6 +61,9 @@ io.use((socket, next) => {
     if (!token) return next(new Error('No token provided'));
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        // Solo `access` del sistema INTERNO. Un token de portal no entra por dos motivos
+        // independientes (otro secreto y otro `type`), y es a propósito: al conectarse, el
+        // socket se une a la room `app`, que recibe los broadcasts de TODOS los clientes.
         if (decoded.type !== 'access') return next(new Error('Invalid token'));
         socket.userId = decoded.id;
         // Guardar exp para desconexión por TTL

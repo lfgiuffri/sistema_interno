@@ -8,29 +8,9 @@
  */
 
 import { Op } from 'sequelize';
+import { usuariosConCapability } from '../../kernel/index.js';
 
 const CONFIG_KEY = 'AVISOS_ULTIMA_CORRIDA';
-
-/**
- * Usuarios activos cuyo rol tiene la capability (o el comodín).
- * @param {object} models - Modelos de la app.
- * @param {string} cap - Capability.
- * @returns {Promise<number[]>} Ids de usuarios.
- */
-const usuariosConCapability = async (models, cap) => {
-    const roles = (await models.RoleCapability.findAll({
-        where: { capability: { [Op.in]: ['*', cap] } },
-        attributes: ['roleId'],
-        raw: true
-    })).map(r => r.roleId);
-    if (!roles.length) return [];
-    const users = await models.User.findAll({
-        where: { active: true, roleId: { [Op.in]: [...new Set(roles)] } },
-        attributes: ['id'],
-        raw: true
-    });
-    return users.map(u => u.id);
-};
 
 /**
  * Handler del scheduler: avisos diarios de abonos y tareas.

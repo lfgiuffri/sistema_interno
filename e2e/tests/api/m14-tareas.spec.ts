@@ -145,6 +145,33 @@ test.describe('M14: Tareas y listas', () => {
     expect(data.nombre).toBe('Renombrada');
   });
 
+  test('M14.6b - un PUT sin `estado` NO reabre la tarea (antes la volvía a «abierta»)', async () => {
+    const lista = await tareasApi.post(`${APP_ENDPOINTS.tareas}/espacios/${espacio1}/listas`, { data: makeNombre('Lista put') });
+    const listaId = (await lista.json()).data.id;
+    const tarea = await tareasApi.post(APP_ENDPOINTS.tareas, { data: { listaId, nombre: 'No me reabras' } });
+    const id = (await expectSuccess(tarea, 201)).data.id;
+    await expectSuccess(await tareasApi.patch(`${APP_ENDPOINTS.tareas}/${id}/estado`, { data: { estado: 'completada' } }), 200);
+
+    // El PUT completo sin `estado` es lo que manda un formulario viejo o un cliente de API.
+    // Con `data.estado || 'abierta'` esto reabría la tarea en silencio — y con una incidencia
+    // de cliente vinculada, le reabriría el reclamo y le mandaría un mail por un renombre.
+    await expectSuccess(await tareasApi.put(`${APP_ENDPOINTS.tareas}/${id}`, {
+      data: { nombre: 'Renombrada sin tocar el estado' },
+    }), 200);
+    const trasPut = (await expectSuccess(await tareasApi.get(`${APP_ENDPOINTS.tareas}/${id}`), 200)).data;
+    expect(trasPut.estado).toBe('completada');
+    expect(trasPut.nombre).toBe('Renombrada sin tocar el estado');
+    // Y no ensució la bitácora con un cambio que no ocurrió.
+    const cambiosEstado = trasPut.historial.filter((h: { campo: string }) => h.campo === 'estado');
+    expect(cambiosEstado.filter((h: { valorNuevo: string }) => h.valorNuevo === 'abierta')).toHaveLength(1);
+
+    // Mandarlo explícito sigue funcionando.
+    await expectSuccess(await tareasApi.put(`${APP_ENDPOINTS.tareas}/${id}`, {
+      data: { nombre: 'Renombrada', estado: 'en_progreso' },
+    }), 200);
+    expect((await expectSuccess(await tareasApi.get(`${APP_ENDPOINTS.tareas}/${id}`), 200)).data.estado).toBe('en_progreso');
+  });
+
   test('M14.7 - el HTML de la descripción se sanea en servidor (XSS fuera)', async () => {
     const listas = await tareasApi.get(`${APP_ENDPOINTS.tareas}/espacios/${espacio1}/listas`);
     const listaId = (await listas.json()).data.listas[0].id;

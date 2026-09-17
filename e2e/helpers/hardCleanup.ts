@@ -56,6 +56,7 @@ export async function hardDeleteByPath(cleanupPath: string): Promise<void> {
       'documentos': 'documentos',
       'servidores': 'servidores',
       'sitios': 'sitios_web',
+      'incidencias': 'incidencias',
     };
     if (catalogTables[parts[0]] && parts[1] && parts[1] !== 'roles') {
       // Proyectos: primero los hijos (cobranza_eventos + cobranzas tienen FK al proyecto).
@@ -74,6 +75,21 @@ export async function hardDeleteByPath(cleanupPath: string): Promise<void> {
       if (parts[0] === 'tareas') {
         await conn.query('DELETE FROM tarea_estados WHERE tareaId = ?', [Number(parts[1])]);
         await conn.query('DELETE FROM tarea_archivos WHERE tareaId = ?', [Number(parts[1])]);
+        // Una incidencia puede apuntar a la tarea: se suelta antes de borrarla.
+        await conn.query('UPDATE incidencias SET tareaId = NULL WHERE tareaId = ?', [Number(parts[1])]).catch(() => null);
+      }
+      // Incidencias: bitácora/outbox y adjuntos antes que la fila.
+      if (parts[0] === 'incidencias') {
+        await conn.query('DELETE FROM incidencia_cambios WHERE incidenciaId = ?', [Number(parts[1])]);
+        await conn.query('DELETE FROM incidencia_archivos WHERE incidenciaId = ?', [Number(parts[1])]);
+      }
+      // Clientes: usuarios de portal e incidencias (con sus hijos) antes que el cliente.
+      if (parts[0] === 'clientes') {
+        const cid = Number(parts[1]);
+        await conn.query('DELETE ic FROM incidencia_cambios ic JOIN incidencias i ON i.id = ic.incidenciaId WHERE i.clienteId = ?', [cid]).catch(() => null);
+        await conn.query('DELETE FROM incidencia_archivos WHERE clienteId = ?', [cid]).catch(() => null);
+        await conn.query('DELETE FROM incidencias WHERE clienteId = ?', [cid]).catch(() => null);
+        await conn.query('DELETE FROM cliente_usuarios WHERE clienteId = ?', [cid]).catch(() => null);
       }
       // Empleados: primero todos los hijos (áreas, vacaciones, archivos, sueldos, pagos).
       if (parts[0] === 'empleados') {

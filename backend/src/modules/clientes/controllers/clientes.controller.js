@@ -6,6 +6,7 @@
 import { matchedData } from 'express-validator';
 import { responseManager, Paginate } from '../../../kernel/index.js';
 import * as clienteService from '../services/cliente.service.js';
+import * as usuariosSvc from '../services/clienteUsuario.service.js';
 
 /**
  * Mapea un error de negocio del service al envelope (statusCode + errorCode/deletedId).
@@ -121,5 +122,77 @@ export const remove = async (req, res) => {
         if (!ok) return await responseManager(404, 'Cliente no encontrado', req, res, false);
         if (req.io) req.io.to('app').emit('cliente:deleted', { id: Number(req.params.id) });
         return await responseManager(200, { message: 'Cliente eliminado' }, req, res, false);
+    } catch (e) { return bizCatch(e, req, res); }
+};
+
+// ─────────────────────── Usuarios de PORTAL del cliente ───────────────────────
+
+/**
+ * GET /clientes/:id/usuarios — usuarios de portal del cliente.
+ * @param {import('express').Request} req - Request.
+ * @param {import('express').Response} res - Response.
+ * @returns {Promise<void>} 200 con los usuarios (sin el hash).
+ */
+export const listUsuarios = async (req, res) => {
+    try {
+        const data = await usuariosSvc.listClienteUsuarios(req.models, req.params.id);
+        return await responseManager(200, data, req, res, false);
+    } catch (e) { return bizCatch(e, req, res); }
+};
+
+/**
+ * POST /clientes/:id/usuarios — da de alta un acceso al portal.
+ * @param {import('express').Request} req - Request.
+ * @param {import('express').Response} res - Response.
+ * @returns {Promise<void>} 201 con el usuario.
+ */
+export const createUsuario = async (req, res) => {
+    try {
+        const { id, ...data } = matchedData(req);
+        const usuario = await usuariosSvc.createClienteUsuario(req.models, id, data);
+        return await responseManager(201, usuario, req, res, false);
+    } catch (e) { return bizCatch(e, req, res); }
+};
+
+/**
+ * PUT /clientes/:id/usuarios/:uid — edita (y resetea la contraseña, si viene).
+ * @param {import('express').Request} req - Request.
+ * @param {import('express').Response} res - Response.
+ * @returns {Promise<void>} 200 con el usuario, 404 si no existe.
+ */
+export const updateUsuario = async (req, res) => {
+    try {
+        const { id, uid, ...data } = matchedData(req);
+        const usuario = await usuariosSvc.updateClienteUsuario(req.models, id, uid, data);
+        if (!usuario) return await responseManager(404, 'Usuario de portal no encontrado', req, res, false);
+        return await responseManager(200, usuario, req, res, false);
+    } catch (e) { return bizCatch(e, req, res); }
+};
+
+/**
+ * PATCH /clientes/:id/usuarios/:uid/active — activa/desactiva el acceso.
+ * @param {import('express').Request} req - Request.
+ * @param {import('express').Response} res - Response.
+ * @returns {Promise<void>} 200 con el usuario, 404 si no existe.
+ */
+export const toggleUsuario = async (req, res) => {
+    try {
+        const usuario = await usuariosSvc.toggleClienteUsuario(req.models, req.params.id, req.params.uid);
+        if (!usuario) return await responseManager(404, 'Usuario de portal no encontrado', req, res, false);
+        return await responseManager(200, usuario, req, res, false);
+    } catch (e) { return bizCatch(e, req, res); }
+};
+
+/**
+ * DELETE /clientes/:id/usuarios/:uid — quita el acceso al portal.
+ * @param {import('express').Request} req - Request.
+ * @param {import('express').Response} res - Response.
+ * @returns {Promise<void>} 200 si se eliminó, 404 si no existe.
+ */
+export const removeUsuario = async (req, res) => {
+    try {
+        const ok = await usuariosSvc.deleteClienteUsuario(req.models, req.params.id, req.params.uid);
+        if (!ok) return await responseManager(404, 'Usuario de portal no encontrado', req, res, false);
+        return await responseManager(200, { id: Number(req.params.uid) }, req, res, false);
     } catch (e) { return bizCatch(e, req, res); }
 };

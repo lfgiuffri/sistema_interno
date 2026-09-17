@@ -105,7 +105,9 @@ helmet → json → globalRateLimit → req.io
 - Catálogo por prefijo de módulo (`usuarios:read`, `usuarios:create`, `usuarios:update`,
   `usuarios:toggle`, `usuarios:delete`, `roles:*`, `webhooks:manage`, y las de cada módulo
   de negocio; `tareas:analisis` gatea la pantalla de Análisis de tareas aparte de
-  `tareas:read`). El catálogo completo es el del PRD §4 — todos los módulos están construidos.
+  `tareas:read`; `incidencias:estado` está separada de `incidencias:update` porque mover el
+  estado es lo que le dispara el mail al cliente; `clientes:usuarios` reparte accesos al
+  portal, que no es lo mismo que editar la ficha de un cliente). El catálogo completo es el del PRD §4 — todos los módulos están construidos.
 - `GET /me` → `{ user, modules, capabilities, declaredCapabilities }`: el frontend arma el
   menú y gatea acciones con eso (store `me`: `can(cap)` / `canAny(modulo)`).
 - Protecciones de usuarios: nadie se desactiva/elimina/cambia el rol a sí mismo; el ÚLTIMO
@@ -537,6 +539,84 @@ indexadas y la pantalla se abre a mano, no autorefresca).
   filtros; sin permiso no reintenta contra el 403.
 - Helpers compartidos con el resumen en `tarea.service.js`: `alcanceEspacios()` (interseca el
   filtro contra lo visible; nunca amplía) y `catalogoEspacios()`.
+
+## Incidencias + Portal de clientes (2026-09-17)
+
+Los clientes cargan sus reclamos desde un **portal con URL y login aparte**, el equipo los ve en
+Proyectos → Incidencias y con un botón los convierte en tareas. Doc completa en
+`docs/modules/incidencias.md`. Lo que hay que saber antes de tocar nada:
+
+- **Es la SEGUNDA superficie de autenticación del sistema.** `verifyAccessToken` hace
+  `jwt.verify(token, JWT_SECRET)` → `User.findOne({ id: decoded.id })`: un token de cliente con
+  `id: 1` sería el admin del seed. Tres cerrojos INDEPENDIENTES, cualquiera alcanza solo:
+  **`JWT_PORTAL_SECRET` propio** (el backend NO arranca si falta, es corto o es IGUAL al
+  interno), **`type: portal_access`** y **el id en `sub`, no en `id`**. El principal va en
+  **`req.clienteUsuario`, nunca en `req.user`** — `requireCapability` cuelga de `req.user.roleId`
+  y cachea por `caps:default:<roleId>`. Tabla de lockout propia (`portal_login_attempts`):
+  compartirla dejaría que un login de portal exitoso le limpie el contador de fuerza bruta al
+  login interno para esa IP. **Sin socket**, a propósito: la room `app` recibe los broadcasts de
+  todos los clientes. Los tres tests negativos de aislamiento son M23.2.
+- **El portal NO tiene** auto-registro ni recuperación de contraseña (las cuentas las crea y
+  resetea el equipo desde la ficha del cliente) ni HTML en la descripción (texto plano: es lo
+  único que recibe contenido desde internet abierto). Se monta explícito en `routes.js` fuera de
+  `verifyAccessToken`, mismo patrón que `/agente`, con rate limit propio y MÁS generoso que el de
+  `/auth` porque los clientes salen todos por el NAT de su oficina.
+- **Estados**: `nueva | en_progreso | resuelta`, mapeados 5→3 desde la tarea en
+  `estadoDesdeTarea()` (fuente única). `abierta → nueva`, no `en_progreso`: que exista una tarea
+  no significa que alguien la empezó. **Invariante**: la incidencia es DERIVADA mientras tenga
+  `tareaId`.
+  Hubo un cuarto estado, `cerrada`, que se **sacó** (2026-09-17, migración `0012`): se pisaba con
+  `resuelta` — en el portal las dos iban al fondo y decían lo mismo, así que la única diferencia
+  real era que alguien se acordara de cerrar, y si no se acordaba todo quedaba en `resuelta` para
+  siempre. Con él se cayó el corte de propagación que tenía: **ningún estado es terminal**, así
+  que reabrir la tarea reabre el reclamo — que es justo el caso en el que al cliente más le
+  importa enterarse. `resueltaAt` (antes `cerradaAt`) se sella al resolver y se **limpia** al
+  volver atrás. Con tarea vinculada la UI apaga TODAS las pastillas: un botón que el próximo
+  movimiento de la tarea pisa sin explicación es peor que no tener botón.
+  ⚠️ En la migración, los datos van **antes** que el `ALTER … ENUM`: cambiar el tipo con filas en
+  `cerrada` las deja en cadena vacía sin avisar. Y el DROP de la columna se hizo con un ALTER a
+  mano porque `queryInterface.removeColumn` rompe con el conector de MariaDB («Cannot delete
+  property 'meta' of [object Array]», el mismo choque de la migración `0010`).
+- **`fechaVencimiento` de la tarea → `fechaEstimada` de la incidencia**: para que el cliente sepa
+  para cuándo lo estimamos. Se carga al crear la tarea (campo en el modal) y después la sigue,
+  enganchada en `registrarCambios` —el mismo choque que el estado—, porque `fechaVencimiento` ya
+  estaba en `CAMPOS_AUDITADOS`. No genera evento ni mail: correr una fecha interna no es un
+  cambio de estado. Se guarda **copiada y no por el join**, y por eso la respuesta del portal
+  **ya no incluye la `Tarea`**: nombre, espacio y lista son organización interna y no salen a
+  internet. De regalo, borrar la tarea desliga la incidencia sin evaporar la fecha prometida.
+- **El alta avisa al equipo** (campana + socket + push, todo con `crearNotificacion`) a quienes
+  tengan `incidencias:read`, salvo al autor. Es **distinto** del mail al cliente: dos avisos, dos
+  públicos. Los destinatarios salen de `usuariosConCapability()`, que se promovió a
+  `kernel/capability.js` porque la misma consulta estaba copiada en los avisos diarios y en las
+  alertas de mantenimiento.
+- **La propagación se engancha en los DOS escritores de bitácora** de `tarea.service.js`
+  (`registrarEstado` y `registrarCambios`), no en las siete funciones públicas que pueden
+  cambiar un estado: parchearlas de a una garantiza que la octava se escape. Los dos
+  soft-deletes se manejan aparte (no escriben estado) y **desvinculan** en vez de dejar la
+  incidencia colgada de una tarea invisible. Índice UNIQUE en `incidencias.tareaId`.
+- **Mails por OUTBOX**, no en línea: la fila de `incidencia_cambios` se escribe en la misma
+  transacción con `notificadoAt: null` y un handler del scheduler la manda agrupando **por
+  cliente**. Nada se manda si hay rollback, hay retry, y 20 tareas de un lote son un mail.
+  **Qué avisa se configura por cliente** (`AVISOS_INCIDENCIA` en `models/Cliente.js`, fuente
+  única): defaults = al crearse y al resolverse. El filtro se aplica en el outbox y
+  NO al escribir la bitácora, que es auditoría; la fila se estampa igual con `notificado: false`
+  para dejar registrado por qué no salió el mail.
+- **Servicios elegibles**: derivados de abonos ACTIVOS + proyectos. Puede dar **vacío**
+  legítimamente (los abonos nacen inactivos), por eso `servicioId` es nullable y siempre hay
+  «Consulta general».
+- **Archivos**: `IncidenciaArchivo` lleva **`clienteId` desnormalizado y NOT NULL** — el archivo
+  se sube antes de que exista la incidencia y es lo único que dice de quién es; sin él, el
+  patrón de ligado de tareas (ids secuenciales) dejaría que un cliente se quede con el adjunto en
+  vuelo de otro. El servido va acotado por `clienteId` y lo ajeno da **404**. El GC de huérfanos
+  pasó de 48 h a **una semana**: ahora quien adjunta puede ser un cliente que vuelve el lunes.
+
+⚠️ **Deuda que se saldó para poder montar esto** (2026-09-17): `actionTracking.js` guardaba
+`JSON.stringify(req.headers)` SIN tachar — había **38.553 filas con el `x-access-token` en texto
+plano**. La redacción vive ahora en `libs/redaccion.js` (por patrón, no por lista cerrada) y la
+usan `actionTracking` y `responseManager`; la migración `0010` limpió lo histórico. Y
+`updateTareaCompleta` hacía `estado: data.estado || 'abierta'`: un PUT sin estado **reabría la
+tarea en silencio**, que con incidencias cableadas habría reabierto reclamos y mandado mails por
+un renombre.
 
 ## Panel vs Estadísticas (2026-08-12)
 

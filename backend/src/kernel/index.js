@@ -19,7 +19,7 @@ export { default as Paginate } from '../libs/paginate.js';
 export { validator } from '../middlewares/index.js';
 
 // Micro-permisos por capability (se declara la capability requerida por ruta).
-export { requireCapability, registerCapabilities, getDeclaredCapabilities, getRoleCapabilities, setRoleCapabilities } from './capability.js';
+export { requireCapability, registerCapabilities, getDeclaredCapabilities, getRoleCapabilities, setRoleCapabilities, usuariosConCapability } from './capability.js';
 
 // Storage pluggable (local/S3).
 export { putFile, getFile, deleteFile, fileExists, getFileUrl, activeStorageDriver } from '../services/storage/storage.service.js';

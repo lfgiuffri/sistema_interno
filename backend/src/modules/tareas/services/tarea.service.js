@@ -693,9 +693,70 @@ const validarNegocio = async (models, data) => {
  * @param {object} [opts] - { transaction }.
  * @returns {Promise<boolean>} true si anotó.
  */
+/**
+ * Baja el cambio de estado a la incidencia de cliente vinculada, si la hay.
+ *
+ * Se llama desde los DOS escritores de bitácora y no desde las funciones públicas: el estado
+ * de una tarea cambia en siete lugares (alta, alta múltiple, clonado de tarea, clonado de
+ * lista, PUT completo, cambio suelto y cambio en lote) y todos pasan por acá. Parchear las
+ * públicas de a una garantiza que el día que aparezca la octava, se escape.
+ *
+ * Se saltea cuando `anterior === null`: eso es un alta, y una tarea recién creada todavía no
+ * puede tener incidencia (el vínculo lo pone el service de incidencias DESPUÉS). Eso evita
+ * una consulta por cada tarea clonada al duplicar una lista entera.
+ *
+ * Import diferido y guarda por modelo: `tareas` no depende de `incidencias`, y la app tiene
+ * que funcionar igual con el módulo desmontado.
+ * @param {object} models - Modelos de la app.
+ * @param {number} tareaId - Tarea que cambió.
+ * @param {string} estadoNuevo - Estado nuevo.
+ * @param {number|null} userId - Quién lo provocó.
+ * @param {object} [opts] - { transaction } — se propaga dentro de la misma transacción.
+ * @returns {Promise<void>}
+ */
+const propagarAIncidencia = async (models, tareaId, estadoNuevo, userId, opts = {}) => {
+    if (!models.Incidencia) return;   // módulo no montado
+    const { sincronizarDesdeTarea } = await import('../../incidencias/services/incidencia.service.js');
+    await sincronizarDesdeTarea(models, tareaId, estadoNuevo, userId, opts);
+};
+
+/**
+ * Copia el vencimiento de la tarea a la incidencia que la haya originado: para el cliente es
+ * la FECHA ESTIMADA en la que va a estar resuelto lo que reclamó.
+ *
+ * Mismas guardas que la propagación de estado (módulo desmontado, import diferido) y el mismo
+ * punto de enganche: `registrarCambios`, que es por donde pasan las dos ediciones que pueden
+ * tocar la fecha (el PUT completo y la edición rápida).
+ * @param {object} models - Modelos de la app.
+ * @param {number} tareaId - Tarea que cambió.
+ * @param {string|null} fechaNueva - Vencimiento nuevo.
+ * @param {object} [opts] - { transaction }.
+ * @returns {Promise<void>}
+ */
+const propagarFechaAIncidencia = async (models, tareaId, fechaNueva, opts = {}) => {
+    if (!models.Incidencia) return;
+    const { sincronizarFechaDesdeTarea } = await import('../../incidencias/services/incidencia.service.js');
+    await sincronizarFechaDesdeTarea(models, tareaId, fechaNueva, opts);
+};
+
+/**
+ * Suelta las incidencias de cliente que apunten a estas tareas (antes de eliminarlas).
+ * @param {object} models - Modelos de la app.
+ * @param {number[]} tareaIds - Tareas que se van a eliminar.
+ * @param {number|null} userId - Quién las elimina.
+ * @param {object} [opts] - { transaction }.
+ * @returns {Promise<void>}
+ */
+const desvincularIncidencias = async (models, tareaIds, userId, opts = {}) => {
+    if (!models.Incidencia) return;
+    const { desvincularTareas } = await import('../../incidencias/services/incidencia.service.js');
+    await desvincularTareas(models, tareaIds, userId, opts);
+};
+
 const registrarEstado = async (models, tareaId, anterior, nuevo, userId, opts = {}) => {
     if (anterior !== null && anterior === nuevo) return false;
     await models.TareaCambio.create({ tareaId, campo: 'estado', valorAnterior: anterior, valorNuevo: nuevo, userId }, opts);
+    if (anterior !== null) await propagarAIncidencia(models, tareaId, nuevo, userId, opts);
     return true;
 };
 
@@ -754,6 +815,16 @@ const registrarCambios = async (models, tareaId, antes, despues, userId, opts = 
         });
     }
     if (filas.length) await models.TareaCambio.bulkCreate(filas, opts);
+
+    // El PUT completo cambia el estado por acá y no por `registrarEstado`, así que la
+    // propagación a la incidencia también tiene que salir de este lado.
+    const cambioDeEstado = filas.find(f => f.campo === 'estado');
+    if (cambioDeEstado) await propagarAIncidencia(models, tareaId, cambioDeEstado.valorNuevo, userId, opts);
+
+    // Y la fecha de vencimiento, que es lo que el cliente ve como fecha estimada de solución.
+    const cambioDeFecha = filas.find(f => f.campo === 'fechaVencimiento');
+    if (cambioDeFecha) await propagarFechaAIncidencia(models, tareaId, cambioDeFecha.valorNuevo, opts);
+
     return filas.length;
 };
 
@@ -1098,7 +1169,11 @@ export const updateTareaCompleta = async (models, user, id, data, io = null) => 
         descripcion,
         asignadoA: data.asignadoA || null,
         prioridad: data.prioridad || 'verde',
-        estado: data.estado || 'abierta',
+        // `'estado' in data`, NO `data.estado || 'abierta'`: con el OR, un PUT que no mandara
+        // el estado —un formulario viejo, un cliente de API, un campo que no viaja— REABRÍA la
+        // tarea en silencio. Con una incidencia de cliente vinculada eso además le reabriría el
+        // reclamo y le mandaría un mail, por haberle editado el título. Ausente = no se toca.
+        estado: 'estado' in data && data.estado ? data.estado : tarea.estado,
         fechaInicio: data.fechaInicio || null,
         fechaVencimiento: data.fechaVencimiento || null,
     };
@@ -1230,6 +1305,10 @@ export const deleteTarea = async (models, user, id) => {
     const tarea = await models.Tarea.findByPk(id);
     if (!tarea) return false;
     await exigirEspacioEditar(models, user, tarea.espacioId);
+    // Antes de que desaparezca: si tenía una incidencia de cliente colgando, se suelta. El
+    // soft-delete no escribe estado, así que no pasa por la bitácora ni por la propagación, y
+    // la incidencia quedaría apuntando a una tarea invisible y congelada para siempre.
+    await desvincularIncidencias(models, [tarea.id], user.id);
     await tarea.destroy();
     return true;
 };
@@ -1405,6 +1484,7 @@ export const eliminarTareasLote = async (models, user, ids) => {
     if (!tareas.length) return { total: 0, eliminadas: 0 };
 
     await Tarea.sequelize.transaction(async (t) => {
+        await desvincularIncidencias(models, tareas.map(x => x.id), user.id, { transaction: t });
         for (const tarea of tareas) await tarea.destroy({ transaction: t });
     });
     return { total: tareas.length, eliminadas: tareas.length };

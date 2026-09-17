@@ -227,6 +227,21 @@ select option { background: rgb(var(--s-surface)); color: rgb(var(--s-ink)); }
   .ds-badge-danger { @apply ds-badge bg-danger-soft border-danger/20 text-danger; }
 
   /* Tabla del sistema: filas 44px, separadores 1px, header discreto. */
+  /*
+   * Pastilla chica de estado/filtro. El color lo pone quien la usa con la variable `--c`, así
+   * la misma clase sirve para estados de tarea, de incidencia o prioridades. Vivía duplicada
+   * en los `<style scoped>` de las páginas, que es como una quedó sin estilo al usarse en una
+   * tercera pantalla.
+   */
+  .ds-pill {
+    @apply inline-flex items-center h-[22px] px-2 rounded-full text-[11px] font-medium border;
+    color: var(--c);
+    background: color-mix(in srgb, var(--c) 10%, transparent);
+    border-color: color-mix(in srgb, var(--c) 25%, transparent);
+  }
+  .ds-pill-activa { background: var(--c); color: white; border-color: var(--c); }
+  .ds-pill:disabled { @apply opacity-40 cursor-not-allowed; }
+
   .ds-table { @apply w-full text-sm; }
   .ds-table thead th {
     @apply h-9 px-3 text-left text-2xs font-medium uppercase tracking-wide text-ink-faint

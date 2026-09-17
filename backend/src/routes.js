@@ -25,6 +25,7 @@ import notificationActionsRoutes from './services/notifications/routes/notificat
 import meRoutes from './services/me/me.routes.js';
 import notificacionesRoutes from './services/notificaciones/notificaciones.routes.js';
 import agenteRoutes from './modules/mantenimiento/routes/agente.routes.js';
+import portalRoutes from './services/portal/portal.routes.js';
 import healthRoutes from './kernel/registry/routes/health.routes.js';
 
 const router = Router();
@@ -65,6 +66,13 @@ router.use('/notificaciones', verifyAccessToken, notificacionesRoutes);
 // servidor (`x-agent-token`) que valida el service, así que va FUERA de verifyAccessToken
 // (mismo criterio que /auth). Tiene rate limit propio.
 router.use('/agente', agenteRoutes);
+
+// PORTAL DE CLIENTES: quien llama es un cliente, no un usuario interno. Va FUERA de
+// `verifyAccessToken` (mismo criterio que /auth y /agente) porque se autentica con su propio
+// token, firmado con un secreto distinto y verificado por `verifyPortalToken`, que deja el
+// principal en `req.clienteUsuario` y NUNCA en `req.user` — así `requireCapability` no puede
+// aplicarle permisos del sistema interno ni por accidente. Rate limit propio en sus rutas.
+router.use('/portal', portalRoutes);
 
 /**
  * Descubre y monta los MÓDULOS FEATURE (los que tienen module.manifest.js) sobre el router.

@@ -19,6 +19,7 @@ import { useMantenimientoStore } from './mantenimiento'
 import { useEmpleadosStore } from './empleados'
 import { useSueldosStore } from './sueldos'
 import { useNotificacionesStore } from './notificaciones'
+import { useIncidenciasStore } from './incidencias'
 import { useSettingsState } from '@/views/dashboard/settings/useSettingsState'
 
 /** Resetea el estado de todos los feature stores (llamar junto a `authStore.logout()`). */
@@ -36,5 +37,8 @@ export function resetAllStores(): void {
   useEmpleadosStore().reset()
   useSueldosStore().reset()
   useNotificacionesStore().reset()
+  // Ojo: los stores del PORTAL (`stores/portal/*`) NO van acá. Este reset es del sistema
+  // interno; el portal tiene su propia sesión y su propia limpieza.
+  useIncidenciasStore().reset()
   useSettingsState().reset()
 }

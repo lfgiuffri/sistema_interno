@@ -11,6 +11,7 @@
  * de tenant. Deny-by-default: si el rol no tiene la capability (ni `*`), se deniega.
  */
 
+import { Op } from 'sequelize';
 import { cacheGet, cacheSet, cacheDel } from '../config/redis.js';
 import { responseManager } from '../libs/responseManager.js';
 
@@ -112,6 +113,32 @@ export const grantAllCapabilities = async (models, tenantId, roleId) =>
     setRoleCapabilities(models, tenantId, roleId, [WILDCARD]);
 
 // ─── Middleware ────────────────────────────────────────────────────────────────
+
+/**
+ * Usuarios ACTIVOS cuyo rol tiene la capability (o el comodín `*`).
+ *
+ * Es el «a quién le avisamos» de todo el sistema: los avisos diarios y las alertas de
+ * mantenimiento ya resolvían esto con la misma consulta copiada. Devuelve ids; el que
+ * necesite el mail o el nombre los busca con los ids (cada aviso quiere campos distintos).
+ * @param {object} models - Modelos de la app.
+ * @param {string} cap - Capability requerida.
+ * @returns {Promise<number[]>} Ids de los usuarios que la tienen.
+ */
+export const usuariosConCapability = async (models, cap) => {
+    if (!models.RoleCapability || !models.User) return [];
+    const roles = (await models.RoleCapability.findAll({
+        where: { capability: { [Op.in]: ['*', cap] } },
+        attributes: ['roleId'],
+        raw: true
+    })).map(r => r.roleId);
+    if (!roles.length) return [];
+    const users = await models.User.findAll({
+        where: { active: true, roleId: { [Op.in]: [...new Set(roles)] } },
+        attributes: ['id'],
+        raw: true
+    });
+    return users.map(u => u.id);
+};
 
 /**
  * Middleware que exige una capability para acceder a una ruta. Deny-by-default.

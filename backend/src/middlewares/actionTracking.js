@@ -1,12 +1,20 @@
 import { getIP } from '../libs/getIp.js';
+import { redactarHeaders, redactarBody } from '../libs/redaccion.js';
 
+/**
+ * Bitácora de requests. Corre ANTES de cualquier autenticación, así que ve el request crudo:
+ * todo lo que guarde tiene que pasar por la redacción de `libs/redaccion.js` primero.
+ * @param {import('express').Request} req - Request.
+ * @param {import('express').Response} res - Response.
+ * @param {import('express').NextFunction} next - Siguiente middleware.
+ * @returns {Promise<void>}
+ */
 export const actionTrackingMidd = async (req, res, next) => {
     try {
-        
-        let bodyActionTracking = {};
-        for (let key in req.body){
-            if(key != 'password') bodyActionTracking[key] = req.body[key];
-        }
+
+        // Antes se filtraba solo la clave exacta `password`, así que el token del header y
+        // campos como `newPassword` quedaban en texto plano en la tabla.
+        const bodyActionTracking = redactarBody(req.body);
 
         const { ActionTracking } = req.models;
         
@@ -26,7 +34,7 @@ export const actionTrackingMidd = async (req, res, next) => {
                         ip: getIP(req),
                         method: req.method,
                         url: req.url,
-                        header: JSON.stringify(req.headers),
+                        header: JSON.stringify(redactarHeaders(req.headers)),
                         body: JSON.stringify(bodyActionTracking),
                         responseStatus: res.statusCode,
                         responseTime: Math.min(Math.floor(responseTime), 2147483647) // Usar responseTime, no endTime

@@ -1,6 +1,7 @@
 import { Op } from 'sequelize';
 import { getIP } from './getIp.js';
 import { getFormattedTimestamp } from './timestamp.js';
+import { redactarHeaders, redactarBody } from './redaccion.js';
 
 /**
  * Sistema de gestión de respuestas con notificaciones integradas
@@ -209,17 +210,12 @@ const getDefaultErrorMessage = (code) => {
 
 /**
  * Sanitiza los headers para no persistir tokens sensibles en la tabla de errores.
+ *
+ * La implementación vive en `libs/redaccion.js`, compartida con `actionTracking`: acá había
+ * una lista cerrada de cuatro nombres y allá no había nada, que es cómo se filtraron 38.553
+ * tokens. Una sola copia, y por patrón en vez de por lista.
  */
-const sanitizeHeaders = (headers = {}) => {
-    const clone = { ...headers };
-    for (const key of Object.keys(clone)) {
-        const lower = key.toLowerCase();
-        if (lower === 'authorization' || lower === 'x-access-token' || lower === 'x-refresh-token' || lower === 'cookie') {
-            clone[key] = '[REDACTED]';
-        }
-    }
-    return clone;
-};
+const sanitizeHeaders = redactarHeaders;
 
 /**
  * Trunca un string a un máximo razonable para evitar sobrecargar la tabla.
@@ -252,7 +248,8 @@ const saveErrorLog = async (response, req, originalData = null) => {
             method: req.method,
             url: clip(req.originalUrl || req.url, 2000),
             header: clip(JSON.stringify(sanitizeHeaders(req.headers))),
-            body: clip(JSON.stringify(req.body || {})),
+            // El body también se tacha: un 500 en /auth/signin guardaba la contraseña en claro.
+            body: clip(JSON.stringify(redactarBody(req.body))),
             userId: req.user ? req.user.id : null,
             code: response.code,
             error: response.error ? String(response.error).slice(0, 100) : null,

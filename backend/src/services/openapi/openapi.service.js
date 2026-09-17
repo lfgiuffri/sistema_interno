@@ -160,6 +160,48 @@ export const buildOpenApiSpec = () => ({
         '/tareas/espacios': { get: op('Home del módulo: espacios visibles + mi resumen (fuente única)', 'Tareas', auth) },
         '/tareas/asignables': { get: op('Usuarios que pueden recibir tareas y ser mencionados (id, nombre, username)', 'Tareas', auth) },
         '/tareas/resumen': { get: op('Resumen por categorías (f=pendientes|hoy|por_vencer|vencidas; u=todos|sin|id; e=ids de espacio separados por coma)', 'Tareas', auth) },
+        // ── Incidencias (sistema interno) ──
+        '/incidencias': {
+            get: op('Listar incidencias (filtros: clienteId, servicioId, estado, texto; las RESUELTAS van AL FONDO)', 'Incidencias', auth),
+            post: op('Cargar una incidencia en nombre de un cliente (servicioId opcional = consulta general). Notifica por campana y push a quienes tengan incidencias:read, salvo al autor', 'Incidencias', auth)
+        },
+        '/incidencias/{id}': {
+            get: op('Detalle con bitácora y adjuntos', 'Incidencias', auth),
+            put: op('Editar título, descripción y servicio (el estado va aparte)', 'Incidencias', auth),
+            delete: op('Eliminar (baja lógica; el cliente deja de verla)', 'Incidencias', auth)
+        },
+        '/incidencias/{id}/estado': { patch: op('Cambio MANUAL de estado (capability propia: es lo que le dispara el mail al cliente). Estados: nueva | en_progreso | resuelta. Con tarea vinculada el estado es DERIVADO y el próximo movimiento de la tarea lo pisa', 'Incidencias', auth) },
+        '/incidencias/{id}/tarea': { post: op('Crear una TAREA a partir de la incidencia y vincularlas (copia título, descripción y adjuntos; pide tareas:create; 409 si ya tiene). `fechaVencimiento` opcional: es el vencimiento de la tarea y la fechaEstimada que ve el cliente', 'Incidencias', auth) },
+        '/incidencias/servicios/{clienteId}': { get: op('Servicios elegibles del cliente, derivados de sus abonos ACTIVOS + proyectos (puede venir vacío: ahí va «consulta general»)', 'Incidencias', auth) },
+        '/incidencias/archivos': { post: op('Subir un adjunto suelto (se liga a la incidencia al guardarla)', 'Incidencias', auth) },
+        '/incidencias/archivos/{nombre}': { get: op('Servir un adjunto (binario, con headers defensivos)', 'Incidencias', auth) },
+
+        // ── Portal de clientes ──
+        // Se monta FUERA de verifyAccessToken: autentica con su PROPIO token, firmado con
+        // JWT_PORTAL_SECRET y con `type: portal_access`. No usa la sesión del sistema interno.
+        '/portal/auth/signin': { post: op('Login del PORTAL DE CLIENTES (email + contraseña). Token propio: no sirve contra la API interna ni contra el socket', 'Portal', {}) },
+        '/portal/auth/refresh': { post: op('Renueva la sesión del portal (header x-refresh-token)', 'Portal', {}) },
+        '/portal/me': { get: op('Usuario de portal logueado y su cliente', 'Portal', auth) },
+        '/portal/servicios': { get: op('Servicios que el cliente puede elegir (salen de SU clienteId, nunca de un parámetro)', 'Portal', auth) },
+        '/portal/incidencias': {
+            get: op('Incidencias del cliente logueado, con las resueltas al fondo. NO incluye la tarea vinculada (dato interno): la fecha prometida viaja en fechaEstimada', 'Portal', auth),
+            post: op('Cargar una incidencia (el clienteId sale del token; el estado NO se acepta)', 'Portal', auth)
+        },
+        '/portal/incidencias/{id}': { get: op('Detalle de una incidencia PROPIA (una ajena devuelve 404, no 403)', 'Portal', auth) },
+        '/portal/archivos': { post: op('Subir un adjunto desde el portal', 'Portal', auth) },
+        '/portal/archivos/{nombre}': { get: op('Servir un adjunto PROPIO (acotado por clienteId: uno ajeno devuelve 404)', 'Portal', auth) },
+
+        // ── Usuarios de portal de un cliente ──
+        '/clientes/{id}/usuarios': {
+            get: op('Accesos al portal de ese cliente (nunca devuelve el hash)', 'Clientes', auth),
+            post: op('Dar acceso al portal (capability clientes:usuarios; sin auto-registro ni recuperación por mail)', 'Clientes', auth)
+        },
+        '/clientes/{id}/usuarios/{uid}': {
+            put: op('Editar el acceso; mandar `password` es el reseteo de contraseña', 'Clientes', auth),
+            delete: op('Quitar el acceso al portal', 'Clientes', auth)
+        },
+        '/clientes/{id}/usuarios/{uid}/active': { patch: op('Activar/desactivar el acceso (impacta de inmediato: el middleware relee la fila en cada request)', 'Clientes', auth) },
+
         '/tareas/espacios/{eid}/listas/{lid}/orden': { patch: op('Orden manual de las tareas abiertas de la lista (arrastrar y soltar; ids en el orden nuevo)', 'Tareas', auth) },
         '/tareas/lote/estado': { patch: op('Cambia el estado de varias tareas (ids + estado)', 'Tareas', auth) },
         '/tareas/lote/mover': { patch: op('Mueve varias tareas a otra lista (ids + listaId)', 'Tareas', auth) },

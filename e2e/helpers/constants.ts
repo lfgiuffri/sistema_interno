@@ -59,6 +59,8 @@ export const APP_ENDPOINTS = {
   empleados: 'empleados',
   sueldos: 'sueldos',
   tareas: 'tareas',
+  incidencias: 'incidencias',
+  portal: 'portal',
   facturaciones: 'abonos/facturaciones',
   appConfig: 'app-config',
   dashboard: 'dashboard',

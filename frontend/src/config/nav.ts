@@ -14,7 +14,7 @@ import {
   walletOutline, documentTextOutline, folderOpenOutline, calendarOutline,
   checkboxOutline, albumsOutline, personOutline, cashOutline, trendingUpOutline,
   calendarNumberOutline, cardOutline, statsChartOutline, libraryOutline, serverOutline,
-  globeOutline, analyticsOutline,
+  globeOutline, analyticsOutline, chatbubbleEllipsesOutline,
 } from 'ionicons/icons'
 
 export interface NavItem {
@@ -84,6 +84,7 @@ export const NAV: NavGroup[] = [
     items: [
       { label: 'Proyectos', path: '/proyectos', icon: folderOpenOutline, module: 'proyectos' },
       { label: 'Grilla de cobranzas', path: '/grilla-cobranzas', icon: calendarOutline, module: 'cobranzas' },
+      { label: 'Incidencias', path: '/incidencias', icon: chatbubbleEllipsesOutline, module: 'incidencias' },
       { label: 'Tareas', path: '/tareas', icon: checkboxOutline, module: 'tareas' },
       { label: 'Análisis de tareas', path: '/tareas/analisis', icon: analyticsOutline, module: 'tareas', cap: 'tareas:analisis' },
       { label: 'Documentación', path: '/documentacion', icon: libraryOutline, module: 'documentacion' },
