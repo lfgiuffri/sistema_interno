@@ -5,7 +5,8 @@
  * Acá vive UNA sola copia de las defensas (mismas reglas del legado,
  * ../analisis_app_php/03 §2.12), para que no puedan divergir entre módulos:
  *  - Tipo de imagen decidido por CONTENIDO (firma binaria), nunca por nombre o mime del cliente.
- *  - Adjuntos por lista blanca de extensión + verificación de firma.
+ *  - Adjuntos por lista blanca de extensión + verificación de firma (los de texto plano, sin
+ *    firma que mirar, se validan por ausencia de bytes nulos).
  *  - Límites: 5 MB imágenes, 15 MB adjuntos.
  *  - Nombre en disco aleatorio `YYYYMM_<20hex>.ext` (80 bits) validado por regex al servir.
  *
@@ -17,7 +18,7 @@ import path from 'path';
 import crypto from 'crypto';
 
 /** Regex del nombre en disco (mismo esquema que el legado, extensiones ampliadas). */
-export const NOMBRE_RE = /^\d{6}_[0-9a-f]{20}\.(png|jpg|jpeg|gif|webp|pdf|doc|docx|xls|xlsx|csv|txt|zip)$/;
+export const NOMBRE_RE = /^\d{6}_[0-9a-f]{20}\.(png|jpg|jpeg|gif|webp|pdf|doc|docx|xls|xlsx|csv|txt|md|zip)$/;
 
 /** Límite de las imágenes embebidas (bytes). */
 export const MAX_IMAGEN = 5 * 1024 * 1024;
@@ -32,7 +33,12 @@ export const MIME_POR_EXT = {
     docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     xls: 'application/vnd.ms-excel',
     xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    csv: 'text/csv', txt: 'text/plain', zip: 'application/zip'
+    csv: 'text/csv', txt: 'text/plain',
+    // `text/markdown` está registrado en IANA (RFC 7763). Va igual como descarga: el navegador
+    // no lo renderiza, y el servido fuerza `attachment` + `nosniff` para todo lo que no sea
+    // imagen — así que el mime acá es para que el archivo baje con su identidad correcta.
+    md: 'text/markdown',
+    zip: 'application/zip'
 };
 
 const EXT_IMAGEN = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp']);
@@ -77,8 +83,11 @@ export const firmaAdjuntoValida = (buf, ext) => {
         case 'docx': case 'xlsx': case 'zip': return ascii4.startsWith('PK');
         // doc/xls legado: contenedor OLE.
         case 'doc': case 'xls': return buf[0] === 0xd0 && buf[1] === 0xcf && buf[2] === 0x11 && buf[3] === 0xe0;
-        // Texto plano: sin bytes nulos en la muestra.
-        case 'csv': case 'txt': return !buf.slice(0, 1024).includes(0);
+        // Texto plano: sin bytes nulos en la muestra. Markdown ES texto plano —no tiene firma
+        // que verificar— así que cae en la misma regla. El efecto colateral querido es que un
+        // binario renombrado a .md no entra; el no querido, que un .md guardado en UTF-16 se
+        // rechaza, lo mismo que ya pasaba con .txt y .csv.
+        case 'csv': case 'txt': case 'md': return !buf.slice(0, 1024).includes(0);
         default: return false;
     }
 };
@@ -115,7 +124,7 @@ export const resolverArchivo = (file, destino = 'editor') => {
         // Dice ser imagen pero el contenido no lo es → afuera (regla del legado).
         throw bizError(400, 'El archivo no es una imagen válida');
     } else {
-        if (!MIME_POR_EXT[extDeclarada]) throw bizError(400, 'Tipo de archivo no permitido (pdf, doc, xls, csv, txt o zip)');
+        if (!MIME_POR_EXT[extDeclarada]) throw bizError(400, 'Tipo de archivo no permitido (pdf, doc, xls, csv, txt, md o zip)');
         if (file.size > MAX_ARCHIVO) throw bizError(400, 'El archivo supera los 15 MB');
         if (!firmaAdjuntoValida(file.buffer, extDeclarada)) throw bizError(400, 'El contenido no coincide con el tipo de archivo');
         ext = extDeclarada;

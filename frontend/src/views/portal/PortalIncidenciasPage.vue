@@ -251,7 +251,7 @@ onMounted(async () => {
               <span class="ds-label">Adjuntos</span>
               <ZonaAdjuntos
                 :subir="subirAdjunto" :deshabilitada="guardando"
-                ayuda="Imágenes, PDF, Office, CSV, TXT y ZIP. Hasta 5 MB las imágenes y 15 MB el resto."
+                ayuda="Imágenes, PDF, Office, CSV, TXT, MD y ZIP. Hasta 5 MB las imágenes y 15 MB el resto."
                 @listo="adjuntosListos"
               />
               <ul v-if="adjuntos.length" class="mt-2 space-y-1">

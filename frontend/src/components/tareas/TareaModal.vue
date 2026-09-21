@@ -478,7 +478,7 @@ async function borrarAdjunto(id: number): Promise<void> {
                 <ZonaAdjuntos
                   class="mb-2"
                   :subir="subirAdjunto"
-                  ayuda="Imágenes, PDF, Office, CSV, TXT y ZIP. Hasta 5 MB las imágenes y 15 MB el resto."
+                  ayuda="Imágenes, PDF, Office, CSV, TXT, MD y ZIP. Hasta 5 MB las imágenes y 15 MB el resto."
                   @listo="adjuntosListos"
                 />
                 <div v-if="adjuntos.length" class="mt-1 divide-y divide-line-soft border border-line rounded-lg">

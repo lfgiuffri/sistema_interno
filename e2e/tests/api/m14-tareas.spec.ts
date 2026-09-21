@@ -513,6 +513,45 @@ test.describe('M14: Tareas y listas', () => {
     await up.dispose();
   });
 
+  test('M14.19 - adjuntar un .md: entra como archivo, y un binario disfrazado de .md no', async ({ adminTokens, playwright }) => {
+    const up = await playwright.request.newContext({
+      baseURL: `${API_BASE}/`,
+      extraHTTPHeaders: { 'x-access-token': adminTokens.accessToken },
+    });
+
+    // Markdown es texto plano: no tiene firma binaria que verificar, así que la defensa es la
+    // misma que la de .txt y .csv — que no haya bytes nulos en la muestra.
+    const md = await expectSuccess(await up.post(`${APP_ENDPOINTS.tareas}/archivos`, {
+      multipart: {
+        archivo: { name: 'notas.md', mimeType: 'text/markdown', buffer: Buffer.from('# Título\n\nUn párrafo con **negrita**.\n') },
+        destino: 'adjunto',
+      },
+    }), 201);
+    expect(md.data.tipo).toBe('archivo');
+    expect(md.data.mime).toBe('text/markdown');
+    // El nombre en disco lo pone el servidor y respeta el esquema (la regex del servido tiene
+    // que aceptar la extensión nueva; si no, el archivo sube y después da 404 al bajarlo).
+    expect(md.data.nombre).toMatch(/^\d{6}_[0-9a-f]{20}\.md$/);
+
+    // Y se puede BAJAR: es la mitad que se olvida: sin `md` en NOMBRE_RE esto sería 404.
+    const bajada = await up.get(`${APP_ENDPOINTS.tareas}/archivos/${md.data.nombre}`);
+    expect(bajada.status()).toBe(200);
+    expect(bajada.headers()['content-type']).toContain('text/markdown');
+    // Nunca inline: se descarga con su nombre real, con nosniff.
+    expect(bajada.headers()['content-disposition']).toContain('attachment');
+    expect(bajada.headers()['x-content-type-options']).toBe('nosniff');
+
+    // Un ejecutable renombrado a .md NO entra: el byte nulo lo delata.
+    await expectError(await up.post(`${APP_ENDPOINTS.tareas}/archivos`, {
+      multipart: {
+        archivo: { name: 'troyano.md', mimeType: 'text/markdown', buffer: Buffer.from([0x4d, 0x5a, 0x90, 0x00, 0x03, 0x00]) },
+        destino: 'adjunto',
+      },
+    }), 400);
+
+    await up.dispose();
+  });
+
   test('M14.11 - capability gating: el fixture (sin tareas:read) → 403', async ({ authedApi }) => {
     const res = await authedApi.get(`${APP_ENDPOINTS.tareas}/espacios`);
     const body = await expectError(res, 403);

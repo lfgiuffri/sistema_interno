@@ -287,7 +287,7 @@ function editar(): void {
               v-if="puedeEscribir"
               class="mb-2"
               :subir="subirAdjunto"
-              ayuda="Imágenes, PDF, Office, CSV, TXT y ZIP. Hasta 5 MB las imágenes y 15 MB el resto."
+              ayuda="Imágenes, PDF, Office, CSV, TXT, MD y ZIP. Hasta 5 MB las imágenes y 15 MB el resto."
               @listo="adjuntosListos"
             />
 
