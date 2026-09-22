@@ -119,6 +119,7 @@ async function toggle(user: User): Promise<void> {
 
 async function confirmDelete(user: User): Promise<void> {
   const alert = await alertController.create({
+    backdropDismiss: false,
     header: 'Eliminar usuario',
     message: `¿Eliminar a ${user.name} ${user.lastName ?? ''}? Podés desactivarlo si es temporal.`,
     buttons: [
@@ -295,7 +296,7 @@ onIonViewWillEnter(() => {
 
       <!-- Modal alta/edición -->
       <Teleport defer to="ion-app">
-        <div v-if="modalOpen" class="ds-modal-backdrop" @click.self="modalOpen = false">
+        <div v-if="modalOpen" class="ds-modal-backdrop">
           <div class="ds-modal ds-enter" role="dialog" aria-modal="true" :aria-label="isEdit ? 'Editar usuario' : 'Nuevo usuario'">
             <header class="flex items-center justify-between px-5 h-12 border-b border-line">
               <h2 class="text-sm font-semibold text-ink">{{ isEdit ? 'Editar usuario' : 'Nuevo usuario' }}</h2>

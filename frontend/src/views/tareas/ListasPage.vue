@@ -80,6 +80,7 @@ async function guardar(): Promise<void> {
     if (r.errorCode === 'EXISTE_ELIMINADO' && r.deletedId) {
       modal.value = false
       const alert = await alertController.create({
+        backdropDismiss: false,
         header: 'Lista eliminada encontrada',
         message: r.message,
         buttons: [
@@ -119,6 +120,7 @@ async function toggle(lista: ListaRow): Promise<void> {
  */
 async function clonar(lista: ListaRow): Promise<void> {
   const alert = await alertController.create({
+    backdropDismiss: false,
     header: 'Clonar la lista',
     message: `Se va a crear una copia de «${lista.nombre}» con todas sus tareas. Las tareas copiadas arrancan abiertas.`,
     buttons: [
@@ -147,6 +149,7 @@ async function clonar(lista: ListaRow): Promise<void> {
 
 async function confirmDelete(lista: ListaRow): Promise<void> {
   const alert = await alertController.create({
+    backdropDismiss: false,
     header: 'Eliminar lista',
     message: `¿Eliminar la lista «${lista.nombre}»? Si tiene tareas no se puede eliminar.`,
     buttons: [
@@ -289,7 +292,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
 
       <!-- Modal lista -->
       <Teleport defer to="ion-app">
-        <div v-if="modal" class="ds-modal-backdrop" @click.self="modal = false">
+        <div v-if="modal" class="ds-modal-backdrop">
           <div class="ds-modal max-w-sm" role="dialog" aria-modal="true" :aria-label="editando ? 'Editar lista' : 'Nueva lista'">
             <h2 class="text-base font-semibold text-ink mb-3">{{ editando ? 'Editar lista' : 'Nueva lista' }}</h2>
             <form class="space-y-3" @submit.prevent="guardar">

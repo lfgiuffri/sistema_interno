@@ -299,6 +299,7 @@ async function borrarComentario(id: number): Promise<void> {
 
 async function borrarAdjunto(id: number): Promise<void> {
   const alert = await alertController.create({
+    backdropDismiss: false,
     header: 'Eliminar adjunto',
     message: '¿Eliminar este archivo? No se puede deshacer.',
     buttons: [
@@ -320,7 +321,7 @@ async function borrarAdjunto(id: number): Promise<void> {
 
 <template>
   <Teleport defer to="ion-app">
-    <div v-if="open" class="ds-modal-backdrop" @click.self="emit('close')">
+    <div v-if="open" class="ds-modal-backdrop">
       <div class="ds-modal ds-modal-xl" role="dialog" aria-modal="true" :aria-label="esEdicion ? 'Editar tarea' : 'Nueva tarea'">
         <header class="mb-3">
           <div class="min-w-0">

@@ -103,6 +103,7 @@ async function moverSeleccion(): Promise<void> {
 /** Cobrar: se ingresa el PESO REAL recibido; la cotización queda derivada (pesos/USD). */
 async function cobrar(c: Cuota): Promise<void> {
   const alert = await alertController.create({
+    backdropDismiss: false,
     header: 'Cobrar cuota',
     message: `${MESES[c.mes - 1]} ${c.anio} · US$ ${Number(c.montoUsd)}. Ingresá el monto REAL recibido en pesos: la cotización queda derivada y congelada.`,
     inputs: [{ name: 'pesos', type: 'number', placeholder: 'Monto en pesos', value: String(Math.round(c.enPesos)) }],
@@ -127,6 +128,7 @@ async function cobrar(c: Cuota): Promise<void> {
 
 async function descobrar(c: Cuota): Promise<void> {
   const alert = await alertController.create({
+    backdropDismiss: false,
     header: 'Descobrar cuota',
     message: `Vuelve a pendiente y libera el monto congelado (${fmtMoneda(c.montoPesos ?? 0)}). El cobro queda registrado en la auditoría.`,
     buttons: [
@@ -147,6 +149,7 @@ async function descobrar(c: Cuota): Promise<void> {
 
 async function editarMonto(c: Cuota): Promise<void> {
   const alert = await alertController.create({
+    backdropDismiss: false,
     header: 'Editar monto',
     message: 'Nuevo monto planificado, en dólares. Respeta el tope del presupuesto.',
     inputs: [{ name: 'usd', type: 'number', value: String(Number(c.montoUsd)), placeholder: 'Monto en USD' }],
@@ -171,6 +174,7 @@ async function editarMonto(c: Cuota): Promise<void> {
 
 async function eliminarCuota(c: Cuota): Promise<void> {
   const alert = await alertController.create({
+    backdropDismiss: false,
     header: 'Eliminar cuota',
     message: `¿Eliminar la cuota de ${MESES[c.mes - 1]} ${c.anio} (US$ ${Number(c.montoUsd)})? Queda registrado en la auditoría.`,
     buttons: [
@@ -384,7 +388,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
 
       <!-- Modal: agregar cuota -->
       <Teleport defer to="ion-app">
-        <div v-if="modalAgregar" class="ds-modal-backdrop" @click.self="modalAgregar = false">
+        <div v-if="modalAgregar" class="ds-modal-backdrop">
           <div class="ds-modal max-w-sm" role="dialog" aria-modal="true" aria-label="Agregar cuota">
             <h2 class="text-base font-semibold text-ink mb-1">Agregar cuota</h2>
             <p class="text-xs text-ink-soft mb-4">Planificada en dólares; respeta el tope del presupuesto.</p>
@@ -417,7 +421,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
 
       <!-- Modal: mover selección -->
       <Teleport defer to="ion-app">
-        <div v-if="modalMover" class="ds-modal-backdrop" @click.self="modalMover = false">
+        <div v-if="modalMover" class="ds-modal-backdrop">
           <div class="ds-modal max-w-sm" role="dialog" aria-modal="true" aria-label="Mover cuotas">
             <h2 class="text-base font-semibold text-ink mb-1">Mover {{ seleccion.size }} cuota(s)</h2>
             <p class="text-xs text-ink-soft mb-4">Se replanifican al período elegido. Solo cuotas pendientes.</p>

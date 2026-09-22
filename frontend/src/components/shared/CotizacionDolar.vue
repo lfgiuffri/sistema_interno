@@ -88,7 +88,7 @@ async function guardar(): Promise<void> {
   </button>
 
   <Teleport defer to="ion-app">
-    <div v-if="abierto" class="ds-modal-backdrop" @click.self="abierto = false">
+    <div v-if="abierto" class="ds-modal-backdrop">
       <div class="ds-modal max-w-sm" role="dialog" aria-modal="true" aria-label="Cotización del dólar">
         <h2 class="text-base font-semibold text-ink mb-1">Cotización del dólar</h2>
         <p class="text-xs text-ink-soft mb-3">Impacta en abonos USD, cuotas de proyectos y montos pendientes.</p>

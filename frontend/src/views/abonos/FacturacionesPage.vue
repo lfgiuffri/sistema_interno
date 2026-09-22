@@ -73,6 +73,7 @@ async function load(): Promise<void> {
 
 async function confirmAnular(fact: FactRow): Promise<void> {
   const alert = await alertController.create({
+    backdropDismiss: false,
     header: 'Anular facturación',
     message: `${fact.cliente?.nombre} · ${MESES[fact.mes - 1]} ${fact.anio} · ${fmtMoneda(fact.montoPesos)}. La anulación queda auditada y el período se puede volver a facturar.`,
     inputs: [{ name: 'motivo', type: 'text', placeholder: 'Motivo de la anulación (obligatorio)' }],

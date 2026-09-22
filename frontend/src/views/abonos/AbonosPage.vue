@@ -85,6 +85,7 @@ async function toggle(abono: Abono): Promise<void> {
 
 async function confirmDelete(abono: Abono): Promise<void> {
   const alert = await alertController.create({
+    backdropDismiss: false,
     header: 'Eliminar abono',
     message: `¿Eliminar el abono de ${abono.cliente?.nombre} (${abono.servicio?.nombre})? El histórico de facturaciones se conserva.`,
     buttons: [

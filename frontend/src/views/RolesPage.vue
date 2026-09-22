@@ -143,6 +143,7 @@ async function save(): Promise<void> {
 
 async function confirmDelete(role: Role): Promise<void> {
   const alert = await alertController.create({
+    backdropDismiss: false,
     header: 'Eliminar rol',
     message: `¿Eliminar el rol «${role.label}»?`,
     buttons: [
@@ -250,7 +251,7 @@ onIonViewWillEnter(() => { void load() })
 
       <!-- Modal alta/edición con matriz -->
       <Teleport defer to="ion-app">
-        <div v-if="modalOpen" class="ds-modal-backdrop" @click.self="modalOpen = false">
+        <div v-if="modalOpen" class="ds-modal-backdrop">
           <div class="ds-modal !max-w-xl ds-enter" role="dialog" aria-modal="true" :aria-label="isEdit ? 'Editar rol' : 'Nuevo rol'">
             <header class="flex items-center justify-between px-5 h-12 border-b border-line sticky top-0 bg-surface z-10">
               <h2 class="text-sm font-semibold text-ink">{{ isEdit ? `Editar rol · ${editing?.label}` : 'Nuevo rol' }}</h2>

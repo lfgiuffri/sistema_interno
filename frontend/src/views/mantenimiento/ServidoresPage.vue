@@ -305,7 +305,7 @@ onIonViewWillLeave(() => auto.parar())
 
       <!-- Alta / edición -->
       <Teleport defer to="ion-app">
-        <div v-if="modalForm" class="ds-modal-backdrop" @click.self="modalForm = false">
+        <div v-if="modalForm" class="ds-modal-backdrop">
           <div class="ds-modal max-w-md" role="dialog" aria-modal="true" :aria-label="editando ? 'Editar servidor' : 'Nuevo servidor'">
             <h2 class="text-base font-semibold text-ink mb-3">{{ editando ? 'Editar servidor' : 'Nuevo servidor' }}</h2>
             <form class="space-y-3" @submit.prevent="guardar">
@@ -392,7 +392,7 @@ onIonViewWillLeave(() => auto.parar())
 
       <!-- Token del agente (se muestra una sola vez) -->
       <Teleport defer to="ion-app">
-        <div v-if="modalToken" class="ds-modal-backdrop" @click.self="modalToken = false">
+        <div v-if="modalToken" class="ds-modal-backdrop">
           <div class="ds-modal ds-modal-lg" role="dialog" aria-modal="true" aria-label="Instalar el agente">
             <h2 class="text-base font-semibold text-ink mb-1">Instalar el agente en {{ servidorToken?.nombre ?? 'el servidor' }}</h2>
             <p class="text-xs text-ink-soft mb-3">

@@ -487,7 +487,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void store.fetchSitios() })
 
       <!-- Alta / edición -->
       <Teleport defer to="ion-app">
-        <div v-if="modalForm" class="ds-modal-backdrop" @click.self="modalForm = false">
+        <div v-if="modalForm" class="ds-modal-backdrop">
           <div class="ds-modal max-w-md" role="dialog" aria-modal="true" :aria-label="editando ? 'Editar sitio' : 'Nuevo sitio'">
             <h2 class="text-base font-semibold text-ink mb-3">{{ editando ? 'Editar sitio' : 'Nuevo sitio' }}</h2>
             <form class="space-y-3" @submit.prevent="guardar">
@@ -558,7 +558,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void store.fetchSitios() })
 
       <!-- Detalle: historial de chequeos e incidentes -->
       <Teleport defer to="ion-app">
-        <div v-if="modalDetalle && detalle" class="ds-modal-backdrop" @click.self="modalDetalle = false">
+        <div v-if="modalDetalle && detalle" class="ds-modal-backdrop">
           <div class="ds-modal ds-modal-lg" role="dialog" aria-modal="true" aria-label="Detalle del sitio">
             <header class="flex items-start justify-between gap-3 mb-3">
               <div>

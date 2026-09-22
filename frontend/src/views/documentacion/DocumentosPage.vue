@@ -218,7 +218,7 @@ watch(() => route.query.doc, (v) => { if (!v) abierto.value = null })
 
       <!-- Mover a otra lista -->
       <Teleport defer to="ion-app">
-        <div v-if="modalMover" class="ds-modal-backdrop" @click.self="modalMover = false">
+        <div v-if="modalMover" class="ds-modal-backdrop">
           <div class="ds-modal max-w-sm" role="dialog" aria-modal="true" aria-label="Mover documento">
             <h2 class="text-base font-semibold text-ink mb-1">Mover documento</h2>
             <p class="text-xs text-ink-soft mb-3">«{{ moviendo?.titulo }}» pasa a la lista que elijas.</p>

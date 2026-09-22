@@ -223,7 +223,7 @@ function editar(): void {
 
 <template>
   <Teleport defer to="ion-app">
-    <div class="ds-modal-backdrop" @click.self="emit('cerrar')">
+    <div class="ds-modal-backdrop">
       <div class="ds-modal ds-modal-lg" role="dialog" aria-modal="true" aria-label="Documento">
 
         <!-- Encabezado -->

@@ -118,7 +118,7 @@ onMounted(() => { void cargar() })
 </script>
 
 <template>
-  <div class="ds-modal-backdrop" @click.self="emit('cerrar')">
+  <div class="ds-modal-backdrop">
     <div class="ds-modal max-w-3xl">
       <header class="flex items-start justify-between gap-3 px-5 pt-4 pb-3 border-b border-line">
         <div class="min-w-0">

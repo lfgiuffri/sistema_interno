@@ -124,6 +124,7 @@ async function toggleUsuario(u: { id: number }): Promise<void> {
 /** Resetear la contraseña es mandarla de nuevo: no hay flujo por mail, a propósito. */
 async function resetearPassword(u: { id: number; nombre: string }): Promise<void> {
   const alert = await alertController.create({
+    backdropDismiss: false,
     header: 'Nueva contraseña',
     message: `Elegí la contraseña de ${u.nombre} y pasásela vos. No se manda ningún mail.`,
     inputs: [{ name: 'password', type: 'password', placeholder: 'Al menos 8 caracteres' }],
@@ -146,6 +147,7 @@ async function resetearPassword(u: { id: number; nombre: string }): Promise<void
 
 async function eliminarUsuario(u: { id: number; nombre: string }): Promise<void> {
   const alert = await alertController.create({
+    backdropDismiss: false,
     header: 'Quitar acceso',
     message: `${u.nombre} deja de poder entrar al portal.`,
     buttons: [
@@ -166,7 +168,7 @@ async function eliminarUsuario(u: { id: number; nombre: string }): Promise<void>
 
 <template>
   <Teleport to="body">
-    <div v-if="open && cliente" class="ds-modal-backdrop" @click.self="emit('cerrar')">
+    <div v-if="open && cliente" class="ds-modal-backdrop">
       <div class="ds-modal ds-modal-lg" role="dialog" aria-modal="true" aria-label="Portal y avisos">
         <div class="flex items-start justify-between gap-3 mb-4">
           <div>

@@ -205,7 +205,7 @@ onMounted(async () => {
 
     <!-- Alta -->
     <Teleport to="body">
-      <div v-if="modal" class="ds-modal-backdrop" @click.self="modal = false">
+      <div v-if="modal" class="ds-modal-backdrop">
         <div class="ds-modal" role="dialog" aria-modal="true" aria-label="Nueva incidencia">
           <div class="flex items-start justify-between gap-3 mb-4">
             <div>

@@ -254,7 +254,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
 
       <!-- Modal actualizar por % -->
       <Teleport defer to="ion-app">
-        <div v-if="modalPct" class="ds-modal-backdrop" @click.self="modalPct = false">
+        <div v-if="modalPct" class="ds-modal-backdrop">
           <div class="ds-modal max-w-lg" role="dialog" aria-modal="true" aria-label="Actualizar sueldos por porcentaje">
             <h2 class="text-base font-semibold text-ink mb-1">Actualizar por porcentaje</h2>
             <p class="text-xs text-ink-soft mb-4">Sobre el sueldo vigente. Acepta decimales y negativos (baja).</p>
@@ -313,7 +313,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
 
       <!-- Modal historial -->
       <Teleport defer to="ion-app">
-        <div v-if="modalHist && historial" class="ds-modal-backdrop" @click.self="modalHist = false">
+        <div v-if="modalHist && historial" class="ds-modal-backdrop">
           <div class="ds-modal ds-modal-lg" role="dialog" aria-modal="true" aria-label="Historial de sueldo">
             <h2 class="text-base font-semibold text-ink mb-1">Historial · {{ historial.empleado.nombre }}</h2>
             <p class="text-xs text-ink-soft mb-3 tnum">Vigente: {{ fmtMoneda(historial.vigente) }}</p>

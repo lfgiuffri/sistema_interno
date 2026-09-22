@@ -203,7 +203,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void store.fetchListas(espacioId) })
 
       <!-- Modal de lista -->
       <Teleport defer to="ion-app">
-        <div v-if="modal" class="ds-modal-backdrop" @click.self="modal = false">
+        <div v-if="modal" class="ds-modal-backdrop">
           <div class="ds-modal max-w-md" role="dialog" aria-modal="true" :aria-label="editando ? 'Editar lista' : 'Nueva lista'">
             <h2 class="text-base font-semibold text-ink mb-3">{{ editando ? 'Editar lista' : 'Nueva lista' }}</h2>
             <form @submit.prevent="guardar">

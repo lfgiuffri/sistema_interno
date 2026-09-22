@@ -47,6 +47,7 @@ async function toggle(e: EmpleadoRow): Promise<void> {
 
 async function confirmDelete(e: EmpleadoRow): Promise<void> {
   const alert = await alertController.create({
+    backdropDismiss: false,
     header: 'Eliminar empleado',
     message: `¿Eliminar a ${e.nombre}? Si tiene sueldos, pagos o archivos no se puede eliminar.`,
     buttons: [

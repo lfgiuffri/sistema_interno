@@ -147,6 +147,7 @@ async function confirmarCrearTarea(): Promise<void> {
 
 async function confirmarEliminar(i: IncidenciaRow): Promise<void> {
   const alert = await alertController.create({
+    backdropDismiss: false,
     header: 'Eliminar incidencia',
     message: `¿Eliminar «${i.titulo}»? El cliente deja de verla en su portal.`,
     buttons: [
@@ -350,7 +351,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
 
       <!-- Alta en nombre del cliente -->
       <Teleport to="body">
-        <div v-if="modalAlta" class="ds-modal-backdrop" @click.self="modalAlta = false">
+        <div v-if="modalAlta" class="ds-modal-backdrop">
           <div class="ds-modal" role="dialog" aria-modal="true" aria-label="Cargar incidencia">
             <div class="flex items-start justify-between gap-3 mb-4">
               <div>
@@ -403,7 +404,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
 
       <!-- Crear tarea -->
       <Teleport to="body">
-        <div v-if="modalTarea" class="ds-modal-backdrop" @click.self="modalTarea = false">
+        <div v-if="modalTarea" class="ds-modal-backdrop">
           <div class="ds-modal max-w-sm" role="dialog" aria-modal="true" aria-label="Crear tarea">
             <h2 class="text-base font-semibold text-ink mb-1">Crear tarea</h2>
             <p class="text-xs text-ink-soft mb-4">

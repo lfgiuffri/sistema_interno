@@ -50,6 +50,7 @@ function onFiltro(): void { page.value = 1; void load() }
 
 async function confirmDelete(p: Proyecto): Promise<void> {
   const alert = await alertController.create({
+    backdropDismiss: false,
     header: 'Eliminar proyecto',
     message: `¿Eliminar «${p.nombre}» de ${p.cliente?.nombre}? Si tiene cobranzas cobradas no se puede eliminar.`,
     buttons: [

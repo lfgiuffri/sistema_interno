@@ -60,6 +60,7 @@ async function guardar(): Promise<void> {
     if (r.errorCode === 'EXISTE_ELIMINADO' && r.deletedId) {
       modalForm.value = false
       const alert = await alertController.create({
+        backdropDismiss: false,
         header: 'Espacio eliminado encontrado',
         message: r.message,
         buttons: [
@@ -95,6 +96,7 @@ async function toggle(e: Espacio): Promise<void> {
 
 async function confirmDelete(e: Espacio): Promise<void> {
   const alert = await alertController.create({
+    backdropDismiss: false,
     header: 'Eliminar espacio',
     message: `¿Eliminar «${e.nombre}»? Si tiene listas o tareas no se puede eliminar.`,
     buttons: [
@@ -256,7 +258,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void espaciosStore.fetchAll() })
 
       <!-- Modal alta/edición -->
       <Teleport defer to="ion-app">
-        <div v-if="modalForm" class="ds-modal-backdrop" @click.self="modalForm = false">
+        <div v-if="modalForm" class="ds-modal-backdrop">
           <div class="ds-modal max-w-sm" role="dialog" aria-modal="true" :aria-label="editando ? 'Editar espacio' : 'Nuevo espacio'">
             <h2 class="text-base font-semibold text-ink mb-3">{{ editando ? 'Editar espacio' : 'Nuevo espacio de trabajo' }}</h2>
             <form class="space-y-3" @submit.prevent="guardar">
@@ -283,7 +285,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void espaciosStore.fetchAll() })
 
       <!-- Modal matriz (eje espacio) -->
       <Teleport defer to="ion-app">
-        <div v-if="modalMatriz" class="ds-modal-backdrop" @click.self="modalMatriz = false">
+        <div v-if="modalMatriz" class="ds-modal-backdrop">
           <div class="ds-modal max-w-md" role="dialog" aria-modal="true" aria-label="Accesos del espacio">
             <h2 class="text-base font-semibold text-ink mb-1">Accesos · {{ matrizDe?.nombre }}</h2>
             <p class="text-xs text-ink-soft mb-3">Editar implica ver. Los administradores entran por su rol: guardar no los afecta.</p>

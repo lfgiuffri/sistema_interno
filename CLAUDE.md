@@ -157,6 +157,14 @@ Paginación en `meta` (helper `Paginate`). Validación: express-validator → 42
   `reset.ts` (limpieza al logout — registrá ahí todo store nuevo).
 - **Páginas**: root `<IonPage>`, datos en `onIonViewWillEnter`, acciones gateadas con
   `meStore.can(...)`, estados de carga (skeleton) + vacío + error SIEMPRE.
+- **Los modales NO cierran al tocar el fondo oscurecido** (2026-09-22). Son casi todos
+  formularios, y un click al costado —o un dedo que roza el borde en el celular— borraba lo
+  cargado sin preguntar. Se sale por el botón «Cerrar»/«Cancelar» o con **Escape**, que son
+  gestos deliberados. Son DOS familias y hay que respetar las dos: los modales propios llevan
+  el div `.ds-modal-backdrop` **sin `@click.self`**, y las alertas de Ionic van con
+  `backdropDismiss: false` en `alertController.create()`. Corolario: sin salida por el fondo,
+  **un modal sin botón de cierre visible queda trabado** — es lo primero que hay que mirar al
+  agregar uno (hoy los 31 modales y las 25 alertas tienen botón, se verificó uno por uno).
 - **Responsive**: el sistema se usa desde el celular a diario. Reglas y auditoría en
   `docs/responsive.md` (`e2e/auditar-responsive.mjs` + `auditar-modales.mjs` MIDEN, no
   miran: texto que no entra en su caja). Lo clave: una tabla ancha **se recorre, no se

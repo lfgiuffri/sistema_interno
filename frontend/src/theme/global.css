@@ -281,6 +281,17 @@ select option { background: rgb(var(--s-surface)); color: rgb(var(--s-ink)); }
 }
 
 /* ── Modal del design system (usado por Teleport, fuera del scope de los componentes) ── */
+/*
+ * Fondo oscurecido del modal. NO cierra al hacerle click, a propósito (2026-09-22): estos
+ * modales son casi todos formularios, y un click al costado para correr el foco borraba lo
+ * cargado sin preguntar. Se sale por el botón «Cerrar»/«Cancelar» o con Escape, que son
+ * gestos deliberados.
+ *
+ * Por eso el div del backdrop va SIN `@click.self`. Si agregás un modal nuevo, no se lo
+ * pongas; y si le ponés un botón de cierre, que sea visible: sin cierre por fondo, un modal
+ * sin botón queda trabado. Las alertas de Ionic siguen la misma regla con
+ * `backdropDismiss: false` en `alertController.create()`.
+ */
 .ds-modal-backdrop {
   position: fixed;
   inset: 0;

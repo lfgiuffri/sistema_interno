@@ -142,6 +142,7 @@ async function save(): Promise<void> {
   if (result.status === 'existe-eliminado') {
     // Oferta de reactivación (mejora del PRD sobre el error genérico del legado).
     const alert = await alertController.create({
+      backdropDismiss: false,
       header: 'Ya existió con ese nombre',
       message: `${result.message} ¿Querés reactivarlo con sus datos anteriores?`,
       buttons: [
@@ -174,6 +175,7 @@ async function toggle(row: CatalogoRow): Promise<void> {
 
 async function confirmDelete(row: CatalogoRow): Promise<void> {
   const alert = await alertController.create({
+    backdropDismiss: false,
     header: 'Eliminar',
     message: `¿Eliminar «${row.nombre}»?`,
     buttons: [
@@ -314,7 +316,7 @@ defineExpose({ reload: load })
 
       <!-- Modal alta/edición -->
       <Teleport defer to="ion-app">
-        <div v-if="modalOpen" class="ds-modal-backdrop" @click.self="modalOpen = false">
+        <div v-if="modalOpen" class="ds-modal-backdrop">
           <div class="ds-modal ds-enter" role="dialog" aria-modal="true" :aria-label="isEdit ? `Editar ${sustantivo}` : `Nuevo ${sustantivo}`">
             <header class="flex items-center justify-between px-5 h-12 border-b border-line">
               <h2 class="text-sm font-semibold text-ink">

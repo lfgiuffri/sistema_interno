@@ -253,6 +253,7 @@ async function loteEstado(estado: string): Promise<void> {
 async function loteEliminar(): Promise<void> {
   const n = seleccion.value.size
   const alert = await alertController.create({
+    backdropDismiss: false,
     header: `Eliminar ${n} tarea(s)`,
     message: 'Se eliminan las tareas seleccionadas. Esta acción no se puede deshacer desde la pantalla.',
     buttons: [
@@ -386,6 +387,7 @@ async function cambiarEstado(t: TareaRow, estado: string): Promise<void> {
 
 async function confirmDelete(t: TareaRow): Promise<void> {
   const alert = await alertController.create({
+    backdropDismiss: false,
     header: 'Eliminar tarea',
     message: `¿Eliminar «${t.nombre}»?`,
     buttons: [
@@ -760,7 +762,7 @@ watch([espacioId, listaId], () => { if (loadedOnce && espacioId.value && listaId
 
       <!-- Modal mover -->
       <Teleport defer to="ion-app">
-        <div v-if="modalMover" class="ds-modal-backdrop" @click.self="modalMover = false">
+        <div v-if="modalMover" class="ds-modal-backdrop">
           <div class="ds-modal max-w-sm" role="dialog" aria-modal="true" aria-label="Mover tarea">
             <h2 class="text-base font-semibold text-ink mb-1">
               {{ tareaMoviendo ? `Mover «${tareaMoviendo.nombre}»` : `Mover ${seleccion.size} tarea(s)` }}

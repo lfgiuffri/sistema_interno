@@ -65,6 +65,7 @@ async function registrarToma(): Promise<void> {
 
 async function eliminarToma(tomaId: number): Promise<void> {
   const alert = await alertController.create({
+    backdropDismiss: false,
     header: 'Eliminar período',
     message: '¿Eliminar este período de vacaciones? Los días vuelven a estar disponibles.',
     buttons: [
@@ -109,6 +110,7 @@ async function subirArchivo(ev: Event): Promise<void> {
 
 async function eliminarArchivo(archivoId: number): Promise<void> {
   const alert = await alertController.create({
+    backdropDismiss: false,
     header: 'Eliminar archivo',
     message: '¿Eliminar este archivo? No se puede deshacer.',
     buttons: [
