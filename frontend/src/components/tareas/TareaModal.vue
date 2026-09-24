@@ -37,6 +37,20 @@ const props = defineProps<{
   /** null = alta; id = edición (carga el detalle). */
   tareaId: number | null
   asignables: Array<{ id: number; nombre: string; username: string }>
+  /**
+   * Valores con los que arranca un ALTA (título y descripción ya cargados). Lo usa el alta
+   * desde una incidencia: el equipo ve lo que escribió el cliente y lo corrige ahí mismo.
+   */
+  preset?: { nombre?: string; descripcion?: string } | null
+  /**
+   * Guardado alternativo del ALTA. Cuando viene, el modal NO hace el POST de tareas y llama a
+   * esto con el mismo payload; así el alta desde una incidencia usa su endpoint —que además
+   * vincula las dos cosas— sin que este componente sepa que existen las incidencias (mismo
+   * criterio que la subida de archivos de `DescripcionEditor`, que también entra por prop).
+   */
+  altaPersonalizada?: ((payload: Record<string, unknown>) => Promise<{ ok: boolean; message: string }>) | null
+  /** Espacios donde se puede crear: si viene, el modal muestra el selector de destino. */
+  espaciosDestino?: Array<{ id: number; nombre: string }>
 }>()
 const emit = defineEmits<{ (e: 'close'): void; (e: 'saved'): void }>()
 
@@ -84,6 +98,32 @@ const form = ref({
 })
 
 const esEdicion = computed(() => props.tareaId !== null)
+
+/**
+ * Alta SIN lista fija (desde una incidencia): el destino se elige acá adentro, porque el
+ * pedido es una sola ventana. Con lista fija —el alta normal, parado en un tablero— no se
+ * muestra nada de esto y `listaId` manda.
+ */
+const eligeDestino = computed(() => !esEdicion.value && !!props.espaciosDestino?.length)
+const espacioDestino = ref(0)
+const listaDestino = ref(0)
+const listasDestino = ref<Array<{ id: number; nombre: string }>>([])
+const cargandoListas = ref(false)
+
+/** La lista donde va a caer la tarea: la elegida, o la fija del contexto. */
+const listaFinal = computed(() => (eligeDestino.value ? listaDestino.value : props.listaId))
+
+/** Carga las listas del espacio elegido y preselecciona la primera. */
+async function cargarListasDestino(): Promise<void> {
+  listasDestino.value = []
+  listaDestino.value = 0
+  if (!espacioDestino.value) return
+  cargandoListas.value = true
+  const data = await tareasStore.fetchListas(espacioDestino.value).catch(() => null)
+  cargandoListas.value = false
+  listasDestino.value = (data?.listas ?? []).filter((l: { activa?: boolean }) => l.activa !== false)
+  listaDestino.value = listasDestino.value[0]?.id ?? 0
+}
 const abierto = computed(() => props.open)
 useEscapeToClose(abierto, () => emit('close'))
 
@@ -113,11 +153,18 @@ watch(() => props.open, async (v) => {
   listasExtra.value = []
   mostrarListasExtra.value = false
   if (props.tareaId === null) {
-    // Alta preasignada a mí, prioridad verde (regla del legado).
+    // Alta preasignada a mí, prioridad verde (regla del legado). El `preset` pisa lo que
+    // traiga: viene de una incidencia ya cargada y es justamente lo que hay que revisar.
     form.value = {
-      nombre: '', asignadoA: meStore.user?.id ?? 0, fechaVencimiento: '',
-      prioridad: 'verde', estado: 'abierta', fechaInicio: '', descripcion: '',
+      nombre: props.preset?.nombre ?? '', asignadoA: meStore.user?.id ?? 0, fechaVencimiento: '',
+      prioridad: 'verde', estado: 'abierta', fechaInicio: '', descripcion: props.preset?.descripcion ?? '',
     }
+    if (eligeDestino.value) {
+      espacioDestino.value = props.espaciosDestino?.[0]?.id ?? 0
+      await cargarListasDestino()
+    }
+    await nextTick()
+    await hidratarImagenes(descripcionRef.value)
     return
   }
   cargando.value = true
@@ -140,6 +187,7 @@ watch(() => props.open, async (v) => {
 
 async function guardar(): Promise<void> {
   if (!form.value.nombre.trim() || guardando.value) return
+  if (eligeDestino.value && !listaFinal.value) { formError.value = 'Elegí la lista donde va la tarea'; return }
   guardando.value = true
   formError.value = ''
 
@@ -153,18 +201,20 @@ async function guardar(): Promise<void> {
     descripcion: form.value.descripcion,
   }
 
+  const alta = {
+    // Con listas extra se manda `listaIds` (la actual + las elegidas) y el backend crea una
+    // tarea independiente en cada una. Sin extras, el alta normal de una sola lista.
+    ...(listasExtra.value.length
+      ? { listaIds: [props.listaId, ...listasExtra.value] }
+      : { listaId: listaFinal.value }),
+    ...base,
+    // Adjuntos subidos durante el alta: el backend los liga a la tarea nueva.
+    ...(adjuntosPendientes.value.length ? { archivoIds: adjuntosPendientes.value.map(a => a.id) } : {}),
+  }
+
   const r = esEdicion.value
     ? await tareasStore.updateTarea(props.tareaId as number, base)
-    : await tareasStore.createTarea({
-      // Con listas extra se manda `listaIds` (la actual + las elegidas) y el backend crea una
-      // tarea independiente en cada una. Sin extras, el alta normal de una sola lista.
-      ...(listasExtra.value.length
-        ? { listaIds: [props.listaId, ...listasExtra.value] }
-        : { listaId: props.listaId }),
-      ...base,
-      // Adjuntos subidos durante el alta: el backend los liga a la tarea nueva.
-      ...(adjuntosPendientes.value.length ? { archivoIds: adjuntosPendientes.value.map(a => a.id) } : {}),
-    })
+    : await (props.altaPersonalizada ? props.altaPersonalizada(alta) : tareasStore.createTarea(alta))
 
   guardando.value = false
   if (!r.ok) { formError.value = r.message; return }
@@ -340,6 +390,31 @@ async function borrarAdjunto(id: number): Promise<void> {
 
             <!-- ── Columna izquierda: la tarea ── -->
             <div class="space-y-3 min-w-0">
+              <!--
+                Destino: solo cuando el alta no viene de un tablero (hoy, desde una incidencia).
+                Va ARRIBA del nombre porque es la decisión que más se piensa: el título y la
+                descripción ya vienen escritos y lo que falta resolver es dónde cae.
+              -->
+              <div v-if="eligeDestino" class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="ds-label" for="tm-espacio">Espacio</label>
+                  <select
+                    id="tm-espacio" v-model.number="espacioDestino" class="ds-input"
+                    @change="cargarListasDestino"
+                  >
+                    <option v-for="e in espaciosDestino" :key="e.id" :value="e.id">{{ e.nombre }}</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="ds-label" for="tm-lista">Lista</label>
+                  <select id="tm-lista" v-model.number="listaDestino" class="ds-input" :disabled="cargandoListas">
+                    <option v-if="cargandoListas" :value="0">Cargando…</option>
+                    <option v-else-if="!listasDestino.length" :value="0">Este espacio no tiene listas</option>
+                    <option v-for="l in listasDestino" :key="l.id" :value="l.id">{{ l.nombre }}</option>
+                  </select>
+                </div>
+              </div>
+
               <div>
                 <label class="ds-label" for="tm-nombre">Nombre</label>
                 <input id="tm-nombre" v-model="form.nombre" class="ds-input" type="text" required maxlength="200" />

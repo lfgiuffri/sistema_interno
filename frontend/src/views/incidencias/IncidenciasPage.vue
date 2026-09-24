@@ -27,6 +27,7 @@ import { useToast } from '@/composables/useToast'
 import { useEscapeToClose } from '@/composables/useEscapeToClose'
 import { fecha as fmtFecha } from '@/composables/useFormato'
 import api from '@/services/api'
+import TareaModal from '@/components/tareas/TareaModal.vue'
 
 const router = useRouter()
 const store = useIncidenciasStore()
@@ -105,44 +106,57 @@ async function cambiarEstado(i: IncidenciaRow, estado: string): Promise<void> {
 }
 
 // ── Crear tarea ──
+//
+// Abre el MODAL COMPLETO de tareas, el mismo de los tableros, con el título y la descripción
+// que cargó el cliente ya puestos. Antes era un modal propio de tres campos y la tarea se
+// componía en el servidor: había que crearla y después entrar a la tarea para asignarla,
+// corregirle el título o sumarle un archivo. El texto del cliente casi nunca sirve tal cual
+// como nombre de tarea, así que ese segundo paso era la regla, no la excepción.
 const modalTarea = ref(false)
 const incidenciaParaTarea = ref<IncidenciaRow | null>(null)
-const espacios = ref<Array<{ id: number; nombre: string; editar: boolean }>>([])
-const listas = ref<Array<{ id: number; nombre: string }>>([])
-const destino = ref({ espacioId: 0, listaId: 0, fechaVencimiento: '' })
-const creandoTarea = ref(false)
-const tareaError = ref('')
-useEscapeToClose(modalTarea, () => { modalTarea.value = false })
+const espacios = ref<Array<{ id: number; nombre: string }>>([])
+const asignables = ref<Array<{ id: number; nombre: string; username: string }>>([])
+/** Título y descripción con los que arranca el modal (los compone el backend). */
+const presetTarea = ref<{ nombre: string; descripcion: string } | null>(null)
 
 async function abrirCrearTarea(i: IncidenciaRow): Promise<void> {
-  incidenciaParaTarea.value = i
-  tareaError.value = ''
+  // El borrador viene del DETALLE: el listado no trae la descripción, y componerlo acá sería
+  // tener dos versiones del mismo texto (con su escapado) que se desalinean.
+  const detalle = detalles.value[i.id] ?? await store.fetchIncidencia(i.id)
+  if (!detalle) { toast.error('No se pudo abrir la incidencia'); return }
+  detalles.value = { ...detalles.value, [i.id]: detalle }
+
   if (!tareasStore.homeEspacios.length) await tareasStore.fetchHome()
-  espacios.value = tareasStore.homeEspacios.filter(e => e.editar)
-  destino.value = { espacioId: espacios.value[0]?.id ?? 0, listaId: 0, fechaVencimiento: '' }
-  await cargarListas()
+  espacios.value = tareasStore.homeEspacios.filter(e => e.editar).map(e => ({ id: e.id, nombre: e.nombre }))
+  if (!espacios.value.length) { toast.error('No tenés espacios donde crear la tarea'); return }
+  if (!asignables.value.length) asignables.value = await tareasStore.fetchAsignables().catch(() => [])
+
+  incidenciaParaTarea.value = i
+  presetTarea.value = detalle.borradorTarea ?? { nombre: i.titulo, descripcion: '' }
   modalTarea.value = true
 }
 
-async function cargarListas(): Promise<void> {
-  if (!destino.value.espacioId) { listas.value = []; return }
-  const data = await tareasStore.fetchListas(destino.value.espacioId).catch(() => null)
-  listas.value = (data?.listas ?? []).filter((l: { activa?: boolean }) => l.activa !== false)
-  destino.value.listaId = listas.value[0]?.id ?? 0
-}
+/**
+ * Alta de la tarea DESDE la incidencia: el modal entrega el mismo payload que usaría para un
+ * alta normal y acá se manda al endpoint que además las VINCULA. Va por ese endpoint y no por
+ * el POST de tareas para que crear y vincular sigan siendo una sola operación: si fueran dos
+ * llamadas, un fallo en la segunda dejaría una tarea suelta y la incidencia sin tarea.
+ * @param payload - Campos de la tarea tal como los armó el modal.
+ * @returns `{ ok, message }`, que es lo que el modal sabe mostrar.
+ */
+async function guardarTareaDeIncidencia(payload: Record<string, unknown>) {
+  const inc = incidenciaParaTarea.value
+  if (!inc) return { ok: false as const, message: 'No hay incidencia seleccionada' }
 
-async function confirmarCrearTarea(): Promise<void> {
-  if (!incidenciaParaTarea.value || !destino.value.listaId) return
-  creandoTarea.value = true
-  const r = await store.crearTarea(incidenciaParaTarea.value.id, destino.value.listaId, destino.value.fechaVencimiento)
-  creandoTarea.value = false
-  if (!r.ok) { tareaError.value = r.message; return }
-  modalTarea.value = false
+  const r = await store.crearTarea(inc.id, payload)
+  if (!r.ok) return r
+
   const d = r.data as { archivosCopiados?: number } | undefined
   toast.success(d?.archivosCopiados
-    ? `Tarea creada con ${d.archivosCopiados} adjunto(s)`
+    ? `Tarea creada con ${d.archivosCopiados} adjunto(s) de la incidencia`
     : 'Tarea creada')
   await load()
+  return r
 }
 
 async function confirmarEliminar(i: IncidenciaRow): Promise<void> {
@@ -403,47 +417,21 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
       </Teleport>
 
       <!-- Crear tarea -->
-      <Teleport to="body">
-        <div v-if="modalTarea" class="ds-modal-backdrop">
-          <div class="ds-modal max-w-sm" role="dialog" aria-modal="true" aria-label="Crear tarea">
-            <h2 class="text-base font-semibold text-ink mb-1">Crear tarea</h2>
-            <p class="text-xs text-ink-soft mb-4">
-              Se crea con el título, la descripción y una copia de los adjuntos de
-              «{{ incidenciaParaTarea?.titulo }}». Desde ahí, el estado de la tarea marca el de la incidencia.
-            </p>
-            <form class="space-y-3" @submit.prevent="confirmarCrearTarea">
-              <div>
-                <label class="ds-label" for="t-espacio">Espacio</label>
-                <select id="t-espacio" v-model.number="destino.espacioId" class="ds-input" @change="cargarListas">
-                  <option v-for="e in espacios" :key="e.id" :value="e.id">{{ e.nombre }}</option>
-                </select>
-              </div>
-              <div>
-                <label class="ds-label" for="t-lista">Lista</label>
-                <select id="t-lista" v-model.number="destino.listaId" class="ds-input">
-                  <option v-if="!listas.length" :value="0" disabled>Este espacio no tiene listas</option>
-                  <option v-for="l in listas" :key="l.id" :value="l.id">{{ l.nombre }}</option>
-                </select>
-              </div>
-              <div>
-                <label class="ds-label" for="t-venc">Fecha estimada de resolución</label>
-                <input id="t-venc" v-model="destino.fechaVencimiento" type="date" class="ds-input" />
-                <p class="ds-hint">
-                  Es el vencimiento de la tarea y lo que ve el cliente en su portal. Se puede
-                  cargar después desde la tarea: el cambio le llega igual.
-                </p>
-              </div>
-              <p v-if="tareaError" class="ds-error" role="alert">{{ tareaError }}</p>
-              <footer class="flex justify-end gap-2 pt-1">
-                <button type="button" class="ds-btn-secondary" @click="modalTarea = false">Cancelar</button>
-                <button type="submit" class="ds-btn-primary" :disabled="!destino.listaId || creandoTarea">
-                  {{ creandoTarea ? 'Creando…' : 'Crear tarea' }}
-                </button>
-              </footer>
-            </form>
-          </div>
-        </div>
-      </Teleport>
+      <!--
+        El alta de la tarea es el MODAL GENERAL de tareas, no uno propio: así se puede asignar,
+        adjuntar y corregir el texto del cliente en el mismo paso. El destino (espacio + lista)
+        lo pide el propio modal porque acá no hay tablero del que deducirlo.
+      -->
+      <TareaModal
+        :open="modalTarea"
+        :lista-id="0"
+        :tarea-id="null"
+        :asignables="asignables"
+        :espacios-destino="espacios"
+        :preset="presetTarea"
+        :alta-personalizada="guardarTareaDeIncidencia"
+        @close="modalTarea = false"
+      />
     </IonContent>
   </IonPage>
 </template>

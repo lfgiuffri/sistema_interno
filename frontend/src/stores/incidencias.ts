@@ -24,6 +24,8 @@ export interface IncidenciaRow {
   servicioId: number | null
   tareaId: number | null
   fechaEstimada: string | null
+  /** Borrador para el alta de la tarea (solo en el detalle, y solo si todavía no tiene). */
+  borradorTarea?: { nombre: string; descripcion: string }
   createdAt: string
   cliente?: { id: number; nombre: string } | null
   servicio?: { id: number; nombre: string } | null
@@ -87,11 +89,14 @@ export const useIncidenciasStore = defineStore('incidencias', () => {
   const eliminar = (id: number) => accion(() => api.delete(`/incidencias/${id}`))
   /** Crea la tarea a partir de la incidencia y las deja vinculadas. */
   /**
-   * Crea la tarea a partir de la incidencia. `fechaVencimiento` es opcional y es lo que el
-   * cliente ve como fecha estimada de resolución en su portal.
+   * Crea la tarea a partir de la incidencia y las vincula.
+   *
+   * El payload es el MISMO que el de un alta de tarea normal (lo arma `TareaModal`): nombre,
+   * descripción, asignado, prioridad, fechas y adjuntos. Van por este endpoint y no por el POST
+   * de tareas porque crear y vincular tienen que ser una sola operación.
    */
-  const crearTarea = (id: number, listaId: number, fechaVencimiento?: string) =>
-    accion(() => api.post(`/incidencias/${id}/tarea`, { listaId, fechaVencimiento: fechaVencimiento || undefined }))
+  const crearTarea = (id: number, payload: Record<string, unknown>) =>
+    accion(() => api.post(`/incidencias/${id}/tarea`, payload))
 
   function reset(): void {
     rows.value = []

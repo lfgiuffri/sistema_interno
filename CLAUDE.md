@@ -593,6 +593,19 @@ Proyectos → Incidencias y con un botón los convierte en tareas. Doc completa 
   `cerrada` las deja en cadena vacía sin avisar. Y el DROP de la columna se hizo con un ALTER a
   mano porque `queryInterface.removeColumn` rompe con el conector de MariaDB («Cannot delete
   property 'meta' of [object Array]», el mismo choque de la migración `0010`).
+- **De incidencia a tarea se abre el MODAL COMPLETO de tareas** (2026-09-24), con el título y la
+  descripción del cliente ya cargados y editables: en un paso se corrige el texto, se asigna, se
+  pone prioridad y se adjunta. Antes era un modal de tres campos y todo lo demás exigía entrar
+  después a la tarea. `TareaModal` **no conoce incidencias**: recibe `preset` y
+  **`altaPersonalizada`** (una función que reemplaza el POST de tareas con el MISMO payload) —
+  mismo criterio que `DescripcionEditor` con la subida de archivos. Sigue siendo UNA llamada a
+  `POST /incidencias/:id/tarea`, que es lo que mantiene ATÓMICO crear + vincular; el endpoint
+  acepta el alta completa con todos los campos **opcionales**, así que el contrato viejo sigue
+  valiendo. El borrador lo compone el SERVIDOR (`descripcionPorDefecto` → `borradorTarea` en el
+  detalle, solo hacia adentro y solo sin tarea): armarlo en el frontend duplicaría el texto y su
+  escapado. El destino (espacio + lista) lo pide el modal, porque acá no hay tablero del que
+  deducirlo. ⚠️ El validator importa `ESTADOS_TAREA`/`PRIORIDADES_TAREA` del módulo tareas, y por
+  eso `tareas` entró en el `dependsOn` del manifest.
 - **`fechaVencimiento` de la tarea → `fechaEstimada` de la incidencia**: para que el cliente sepa
   para cuándo lo estimamos. Se carga al crear la tarea (campo en el modal) y después la sigue,
   enganchada en `registrarCambios` —el mismo choque que el estado—, porque `fechaVencimiento` ya

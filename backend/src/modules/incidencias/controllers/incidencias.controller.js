@@ -132,13 +132,15 @@ export const remove = async (req, res) => {
  */
 export const crearTarea = async (req, res) => {
     try {
-        const { id, listaId, fechaVencimiento } = matchedData(req);
-        const data = await svc.crearTareaDesdeIncidencia(req.models, req.user, id, { listaId, fechaVencimiento }, req.io);
+        // `matchedData` ya whitelistea contra el validator, así que el resto del cuerpo es
+        // exactamente el alta de tarea (nombre, descripción, asignado, prioridad, adjuntos…).
+        const { id, ...data } = matchedData(req);
+        const creada = await svc.crearTareaDesdeIncidencia(req.models, req.user, id, data, req.io);
         if (req.io) {
-            req.io.to('app').emit('incidencia:actualizada', { id: data.id });
-            req.io.to('app').emit('tarea:creada', { id: data.tareaId, listaId });
+            req.io.to('app').emit('incidencia:actualizada', { id: creada.id });
+            req.io.to('app').emit('tarea:creada', { id: creada.tareaId, listaId: data.listaId });
         }
-        return await responseManager(201, data, req, res, false);
+        return await responseManager(201, creada, req, res, false);
     } catch (e) { return bizCatch(e, req, res); }
 };
 

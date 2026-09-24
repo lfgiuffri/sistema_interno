@@ -112,6 +112,44 @@ Detalles que importan:
 > estado **reabría la tarea en silencio**. Con la propagación cableada eso le habría reabierto el
 > reclamo al cliente **y mandado un mail** por un renombre. Ahora es un PATCH real.
 
+### De incidencia a tarea: el modal completo, no uno recortado
+
+El botón «Crear tarea» abre **el mismo modal de alta que los tableros** (`TareaModal`), con el
+título y la descripción del cliente ya cargados y editables. Así, en un solo paso, se corrige el
+texto, se asigna a alguien, se pone prioridad y se adjunta lo que haga falta.
+
+Antes era un modal propio de tres campos y la tarea se componía entera en el servidor: había que
+crearla y después entrar a la tarea para todo lo demás. Como lo que escribe un cliente casi nunca
+sirve tal cual de nombre de tarea («no anda nada»), ese segundo paso era la regla.
+
+Cómo se armó, que es donde están las decisiones:
+
+- **`TareaModal` no sabe que existen las incidencias.** Recibe dos props: `preset` (nombre y
+  descripción de arranque) y **`altaPersonalizada`**, una función que, cuando viene, reemplaza el
+  POST de tareas y recibe el MISMO payload. Es el criterio que ya usaba `DescripcionEditor` con la
+  subida de archivos: el componente genérico expone un enganche y el que lo usa pone la política.
+- **Sigue siendo UNA sola llamada**, a `POST /incidencias/:id/tarea`. Es lo que hace que crear y
+  vincular sean atómicos: con dos llamadas (crear la tarea y después vincularla), un fallo en la
+  segunda dejaría una tarea suelta y la incidencia sin nada.
+- **El endpoint acepta el alta completa** (`nombre`, `descripcion`, `asignadoA`, `prioridad`,
+  `estado`, `fechaInicio`, `archivoIds`), todo **opcional**: si no viene nada, compone la tarea
+  como siempre. Por eso el contrato viejo sigue valiendo y su test (M22.4) no se tocó.
+- **El borrador lo compone el SERVIDOR** (`descripcionPorDefecto`) y viaja en el detalle como
+  `borradorTarea`. Si lo armara el frontend habría dos versiones del mismo texto —y del escapado
+  del HTML— destinadas a desalinearse. Solo se sirve hacia adentro y solo mientras la incidencia
+  no tenga tarea.
+- **El destino (espacio + lista) lo pide el propio modal**, porque acá no hay tablero del que
+  deducirlo. Es la única parte del modal que cambia de forma: aparece un selector arriba del
+  nombre y se apaga lo de «crear en varias listas» (una incidencia es UNA tarea — lo garantiza el
+  UNIQUE de `tareaId`).
+- El validator del módulo importa `ESTADOS_TAREA` y `PRIORIDADES_TAREA` **del módulo tareas** en
+  vez de copiarlos, y por eso `tareas` entró en el `dependsOn` del manifest: el alta ya no puede
+  funcionar sin ese módulo montado.
+
+Los adjuntos son de dos orígenes y no se pisan: los de la **incidencia** se copian al almacén de
+tareas (como antes), y los que el equipo sube **en el modal** viajan en `archivoIds` y los liga
+`createTarea`.
+
 ### La fecha estimada viaja por el mismo camino
 
 `tareas.fechaVencimiento` → `incidencias.fechaEstimada`: es la respuesta a «¿para cuándo lo van a

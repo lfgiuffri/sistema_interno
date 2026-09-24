@@ -23,7 +23,9 @@ export default {
         // Separada de `update`: mover el estado es lo que le dispara el mail al cliente.
         'incidencias:estado', 'incidencias:delete'
     ],
-    dependsOn: ['clientes', 'servicios'],
+    // `tareas` está en la lista desde que el alta abre el modal completo de tareas: el
+    // validator importa sus enums y el service crea la tarea con `createTarea`.
+    dependsOn: ['clientes', 'servicios', 'tareas'],
     // Outbox de los avisos por mail: tick por minuto (ver el service para el porqué).
     schedulerHandler: avisoIncidenciaHandler,
     router

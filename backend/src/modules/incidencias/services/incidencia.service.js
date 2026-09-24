@@ -247,10 +247,17 @@ export const getIncidencia = async (models, id, clienteId = null) => {
             : []
     ]);
 
+    const json = incidencia.toJSON();
     return {
-        ...incidencia.toJSON(),
+        ...json,
         historial,
-        archivos: archivos.map(a => ({ ...a, url: `/api/incidencias/archivos/${a.nombre}` }))
+        archivos: archivos.map(a => ({ ...a, url: `/api/incidencias/archivos/${a.nombre}` })),
+        // Borrador para el modal de «Crear tarea»: lo mismo que se guardaría si nadie tocara
+        // nada. Se calcula acá y no en el frontend para que el texto (y su escapado) tengan UNA
+        // sola versión. Solo hacia adentro: al cliente no le importa cómo nombramos su reclamo.
+        ...(clienteId === null && !json.tareaId
+            ? { borradorTarea: { nombre: json.titulo, descripcion: descripcionPorDefecto(json, json.cliente) } }
+            : {})
     };
 };
 
@@ -449,20 +456,28 @@ export const crearTareaDesdeIncidencia = async (models, user, id, data, io = nul
 
     // El alta pasa por `createTarea`, no por un INSERT propio: así hereda las dos capas de
     // permiso del módulo tareas (capability + editar el espacio), la validación de negocio y
-    // la bitácora. Duplicar eso acá sería duplicar las reglas.
+    // la bitácora. Duplicar eso acá sería duplicar las reglas. Eso incluye el saneado del
+    // HTML de la descripción, que importa porque ahora puede venir del cliente HTTP.
     const tarea = await tareas.createTarea(models, user, {
         listaId: Number(data.listaId),
-        nombre: incidencia.titulo,
+        // Título y descripción son EDITABLES: el equipo abre el alta de tarea con lo que cargó
+        // el cliente ya puesto y lo corrige ahí mismo (un asunto de dos palabras casi nunca es
+        // un buen nombre de tarea). Si no vienen, se usa lo que compone este service, que es lo
+        // que sigue pasando cuando la llamada no es la del modal.
+        nombre: (data.nombre ?? '').trim() || incidencia.titulo,
+        descripcion: data.descripcion ?? descripcionPorDefecto(incidencia, cliente),
         // El vencimiento de la tarea es lo que el cliente ve como «fecha estimada»: se carga
         // acá mismo para no tener que entrar después a la tarea a ponerlo.
         fechaVencimiento: data.fechaVencimiento || null,
-        // La tarea nace con una referencia a quién la pidió: en el tablero, «de quién es esto»
-        // es la primera pregunta.
-        descripcion: [
-            `<p><strong>Incidencia #${incidencia.id}</strong> — ${cliente?.nombre ?? 'cliente'}</p>`,
-            incidencia.descripcion ? `<p>${escaparHtml(incidencia.descripcion).replace(/\n/g, '<br>')}</p>` : ''
-        ].join(''),
-        prioridad: 'verde'
+        fechaInicio: data.fechaInicio || null,
+        // Poder asignarla en el mismo paso es la mitad del valor: una incidencia que entra y
+        // queda sin dueño es una incidencia que nadie mira.
+        asignadoA: data.asignadoA || null,
+        prioridad: data.prioridad || 'verde',
+        estado: data.estado || 'abierta',
+        // Adjuntos que el equipo sumó en el alta (subidos sueltos, como en cualquier tarea).
+        // Son DISTINTOS de los de la incidencia, que se copian más abajo.
+        archivoIds: data.archivoIds || []
     }, io);
 
     // Los adjuntos se COPIAN al almacén de tareas: son dos módulos con su propio directorio y
@@ -497,6 +512,22 @@ export const crearTareaDesdeIncidencia = async (models, user, id, data, io = nul
 
     return { ...(await getIncidencia(models, incidencia.id)), archivosCopiados: copiados };
 };
+
+/**
+ * Descripción con la que nace la tarea si nadie mandó una.
+ *
+ * Lleva una referencia a quién la pidió: en el tablero, «de quién es esto» es la primera
+ * pregunta. Se expone también en el detalle de la incidencia (`borradorTarea`) para que el
+ * modal de alta arranque mostrando EXACTAMENTE lo que se va a guardar — si la compusiera el
+ * frontend, habría dos versiones del mismo texto y el escapado en dos lugares.
+ * @param {object} incidencia - La incidencia.
+ * @param {object|null} cliente - Su cliente (para nombrarlo).
+ * @returns {string} HTML listo para la descripción de la tarea.
+ */
+export const descripcionPorDefecto = (incidencia, cliente) => [
+    `<p><strong>Incidencia #${incidencia.id}</strong> — ${escaparHtml(cliente?.nombre ?? 'cliente')}</p>`,
+    incidencia.descripcion ? `<p>${escaparHtml(incidencia.descripcion).replace(/\n/g, '<br>')}</p>` : ''
+].join('');
 
 /**
  * Escapa el texto plano de la incidencia para poder meterlo en la descripción HTML de la tarea.

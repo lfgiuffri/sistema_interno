@@ -116,6 +116,57 @@ test.describe('M22: Incidencias', () => {
     await expectError(await adminApi.post(`${APP_ENDPOINTS.incidencias}/${incId}/tarea`, { data: { listaId } }), 409);
   });
 
+  test('M22.10 - el alta acepta la tarea COMPLETA (título, descripción, asignado, prioridad)', async ({ adminApi }) => {
+    const inc = await expectSuccess(await adminApi.post(APP_ENDPOINTS.incidencias, {
+      data: { clienteId, titulo: 'no anda el mail', descripcion: 'Rebotan los envíos.' },
+    }), 201);
+    const incId = inc.data.id;
+    cleanup.push(`incidencias/${incId}`);
+
+    // El DETALLE trae el borrador con el que el modal abre. Se compone en el servidor para que
+    // el texto —y su escapado— tengan una sola versión.
+    const detalle = await expectSuccess(await adminApi.get(`${APP_ENDPOINTS.incidencias}/${incId}`), 200);
+    expect(detalle.data.borradorTarea.nombre).toBe('no anda el mail');
+    expect(detalle.data.borradorTarea.descripcion).toContain(`Incidencia #${incId}`);
+    expect(detalle.data.borradorTarea.descripcion).toContain('Rebotan los envíos.');
+
+    // Y el equipo lo corrige antes de guardar: «no anda el mail» no es un nombre de tarea.
+    const yo = (await expectSuccess(await adminApi.get('me'), 200)).data.user.id;
+    const vinc = await expectSuccess(await adminApi.post(`${APP_ENDPOINTS.incidencias}/${incId}/tarea`, {
+      data: {
+        listaId,
+        nombre: 'Revisar rebotes de SMTP',
+        descripcion: '<p>Reescrita por el equipo</p>',
+        asignadoA: yo,
+        prioridad: 'rojo',
+        fechaVencimiento: '2026-12-15',
+      },
+    }), 201);
+
+    const tarea = (await expectSuccess(await adminApi.get(`${APP_ENDPOINTS.tareas}/${vinc.data.tareaId}`), 200)).data;
+    expect(tarea.nombre).toBe('Revisar rebotes de SMTP');
+    expect(tarea.descripcion).toContain('Reescrita por el equipo');
+    expect(tarea.asignadoA).toBe(yo);
+    expect(tarea.prioridad).toBe('rojo');
+    // El vínculo y la fecha prometida al cliente siguen saliendo igual.
+    expect(vinc.data.fechaEstimada).toBe('2026-12-15');
+    // Y el borrador YA NO se sirve: la incidencia tiene tarea, no hay nada que redactar.
+    const despues = await expectSuccess(await adminApi.get(`${APP_ENDPOINTS.incidencias}/${incId}`), 200);
+    expect(despues.data.borradorTarea).toBeUndefined();
+  });
+
+  test('M22.11 - el alta rechaza una prioridad o un estado inválidos (mismas listas que una tarea)', async ({ adminApi }) => {
+    const inc = await expectSuccess(await adminApi.post(APP_ENDPOINTS.incidencias, {
+      data: { clienteId, titulo: 'Validaciones' },
+    }), 201);
+    cleanup.push(`incidencias/${inc.data.id}`);
+    const url = `${APP_ENDPOINTS.incidencias}/${inc.data.id}/tarea`;
+
+    await expectError(await adminApi.post(url, { data: { listaId, prioridad: 'fucsia' } }), 422);
+    await expectError(await adminApi.post(url, { data: { listaId, estado: 'inventado' } }), 422);
+    await expectError(await adminApi.post(url, { data: { listaId, nombre: '' } }), 422);
+  });
+
   test('M22.5 - el estado de la TAREA baja a la incidencia por TODAS las rutas', async ({ adminApi }) => {
     const inc = await expectSuccess(await adminApi.post(APP_ENDPOINTS.incidencias, {
       data: { clienteId, titulo: 'Propagación' },

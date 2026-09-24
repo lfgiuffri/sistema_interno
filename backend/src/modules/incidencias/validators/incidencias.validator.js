@@ -1,6 +1,10 @@
 import { body, param, query } from 'express-validator';
 import { validator } from '../../../kernel/index.js';
 import { ESTADOS_INCIDENCIA } from '../models/Incidencia.js';
+// Import cruzado al módulo tareas, como el de espacios en tareas: son las MISMAS listas que
+// valida un alta normal, y copiarlas acá garantizaba que se desalinearan el día que se agregue
+// un estado. Solo son constantes, no arrastran nada del módulo.
+import { ESTADOS_TAREA, PRIORIDADES_TAREA } from '../../tareas/models/Tarea.js';
 
 export const validateId = [param('id').isInt({ min: 1 }).toInt(), validator];
 
@@ -47,5 +51,16 @@ export const validateCrearTarea = [
     // Opcional: es el vencimiento de la tarea Y la fecha estimada que ve el cliente. Se puede
     // cargar después editando la tarea; el cambio le llega igual a la incidencia.
     body('fechaVencimiento').optional({ nullable: true, checkFalsy: true }).isISO8601().withMessage('Fecha inválida'),
+    // El alta abre el modal COMPLETO de tareas con el título y la descripción del cliente ya
+    // puestos, así que acepta los mismos campos que un alta normal. Todos opcionales: sin
+    // ellos el service compone la tarea como antes.
+    body('nombre').optional().isString().trim().isLength({ min: 1, max: 200 }).withMessage('El nombre de la tarea es obligatorio'),
+    body('descripcion').optional({ nullable: true }).isString(),
+    body('asignadoA').optional({ nullable: true }).isInt({ min: 0 }).toInt(),
+    body('prioridad').optional().isIn(PRIORIDADES_TAREA).withMessage('Prioridad inválida'),
+    body('estado').optional().isIn(ESTADOS_TAREA).withMessage('Estado inválido'),
+    body('fechaInicio').optional({ nullable: true, checkFalsy: true }).isISO8601().withMessage('Fecha inválida'),
+    body('archivoIds').optional().isArray({ max: 20 }),
+    body('archivoIds.*').isInt({ min: 1 }).toInt(),
     validator
 ];
