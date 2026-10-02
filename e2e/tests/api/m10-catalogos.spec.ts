@@ -127,4 +127,40 @@ test.describe('M10: Catálogos (áreas/clientes/servicios/formas)', () => {
     const body2 = await expectSuccess(notFound, 200);
     expect(body2.data.some((x: { id: number }) => x.id === c.id)).toBeFalsy();
   });
+
+  test('M10.11 - formas de facturación: totales por moneda, solo de los abonos ACTIVOS', async ({ adminApi }) => {
+    const forma = await create(adminApi, APP_ENDPOINTS.formasFacturacion, makeNombre('Forma Totales'));
+    const cliente = await create(adminApi, APP_ENDPOINTS.clientes, makeNombre('Cliente Totales'));
+    const servicio = await create(adminApi, APP_ENDPOINTS.servicios, makeNombre('Servicio Totales'));
+
+    /** Alta de abono con esta forma. */
+    const abono = async (moneda: string, precio: number, activo: boolean) => {
+      const res = await adminApi.post(APP_ENDPOINTS.abonos, {
+        data: {
+          clienteId: cliente.id, servicioId: servicio.id, formaFacturacionId: forma.id,
+          moneda, precio, fechaInicio: '2025-01-01', periodoMeses: 12, activo,
+        },
+      });
+      const body = await expectSuccess(res, 201);
+      cleanup.push(`abonos/${body.data.id}`);
+      return body.data;
+    };
+
+    await abono('ARS', 10000, true);
+    await abono('ARS', 25000, true);
+    await abono('USD', 300, true);
+    // El PAUSADO no suma: no se factura, y meterlo inflaría el total.
+    await abono('ARS', 999999, false);
+
+    const { data } = await expectSuccess(
+      await adminApi.get(`${APP_ENDPOINTS.formasFacturacion}?search=${encodeURIComponent(forma.nombre)}`), 200);
+    const fila = data.find((f: { id: number }) => f.id === forma.id);
+
+    // Cada moneda en la suya: sumarlas juntas daría un número que no es plata de ninguna parte.
+    expect(fila.totalArs).toBe(35000);
+    expect(fila.totalUsd).toBe(300);
+    // Y los conteos permiten reconciliar: 4 abonos pero el total cubre 3.
+    expect(fila.abonosCount).toBe(4);
+    expect(fila.abonosActivos).toBe(3);
+  });
 });

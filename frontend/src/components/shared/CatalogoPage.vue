@@ -216,7 +216,18 @@ defineExpose({ reload: load })
       </IonToolbar>
     </IonHeader>
     <IonContent class="page-content">
-      <div class="max-w-5xl mx-auto px-5 lg:px-8 py-6 ds-enter">
+      <!--
+        `overflow-x-hidden` para que la PÁGINA no scrollee de costado en el celular. La tabla
+        de un catálogo es ancha (los encabezados van `whitespace-nowrap`) y su ancho mínimo se
+        filtraba hacia arriba: a 390px la pantalla entera se corría 265px, y con ella el
+        encabezado y el buscador. Pasaba en TODOS los catálogos —Áreas y Servicios incluidos—,
+        no solo en los de muchas columnas.
+
+        La tabla sigue recorriéndose dentro de su `.ds-card.overflow-x-auto`, que es la regla
+        de la casa: una tabla ancha SE RECORRE, no se comprime. Lo que se corta acá es el
+        desborde de la página, no el de la tabla.
+      -->
+      <div class="max-w-5xl mx-auto px-5 lg:px-8 py-6 ds-enter overflow-x-hidden">
 
         <header class="flex items-center justify-between gap-4 pb-5">
           <div>

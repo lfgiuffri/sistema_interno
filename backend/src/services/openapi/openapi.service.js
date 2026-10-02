@@ -373,7 +373,10 @@ export const buildOpenApiSpec = () => ({
         // Catálogos (Fase 1): los cuatro comparten el mismo contrato REST.
         ...Object.fromEntries(['areas', 'clientes', 'servicios', 'formas-facturacion'].flatMap((key) => [
             [`/${key}`, {
-                get: op(`Listar ${key} (paginado, búsqueda, filtro activo)`, 'Catálogos', auth),
+                get: op(`Listar ${key} (paginado, búsqueda, filtro activo)${
+                    key === 'formas-facturacion'
+                        ? '. Cada fila suma abonosCount (todos), abonosActivos y los totales totalArs/totalUsd de los ACTIVOS, cada moneda en la suya (no se convierten: un abono es ARS o USD)'
+                        : ''}`, 'Catálogos', auth),
                 post: op(`Crear en ${key} (409 EXISTE_ELIMINADO si hay un homónimo eliminado)`, 'Catálogos', auth)
             }],
             [`/${key}/{id}`, {

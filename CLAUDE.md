@@ -229,6 +229,21 @@ Paginación en `meta` (helper `Paginate`). Validación: express-validator → 42
   protecciones de borrado con guards por presencia de modelos futuros, conteos sin N+1),
   frontend genérico de catálogo (`useCatalogo` + `CatalogoPage.vue` — REUSALO para todo
   ABM chico nuevo), seeds de áreas y formas.
+  **Formas de facturación con totales** (2026-10-02): además del conteo de abonos, cada fila
+  trae `totalArs` y `totalUsd` — **cada moneda en la suya, sin convertir**: un abono es ARS o
+  USD, sumarlas juntas daría un número que no es plata de ninguna parte, y convertir todo a
+  pesos escondería la composición («esta forma factura US$ 2.190» es el dato que se quiere
+  ver); el total convertido se saca de esos dos, al revés no. Los totales suman solo los
+  abonos **ACTIVOS** (uno pausado no se factura), y por eso va también `abonosActivos`: sin
+  ese número, una forma con 12 abonos y un total que cubre 11 parece un error de cálculo.
+  Todo sale de UNA consulta agrupada por `formaFacturacionId, moneda, activo`.
+  ⚠️ **`CatalogoPage` lleva `overflow-x-hidden` en su contenedor** desde ese mismo cambio: el
+  ancho mínimo de la tabla (encabezados `whitespace-nowrap`) se filtraba hacia arriba y a
+  390px **la página entera** se corría de costado —265px en formas, pero pasaba en TODOS los
+  catálogos, Áreas y Servicios incluidos—, llevándose el encabezado y el buscador. La tabla
+  se sigue recorriendo dentro de su `.ds-card.overflow-x-auto`, que es la regla de la casa.
+  Se descartó `table-layout: fixed`, que también lo arreglaba pero cambia el ancho de columnas
+  de TODAS las tablas del sistema.
 - ✅ **Fase 2** — abonos: módulo completo (ARS/USD, `periodoMeses` = período de ACTUALIZACIÓN
   de precio, nace inactivo, estado vencido/próximo/al-día en SQL — **corte en `dias <= 0`**:
   el día que TOCA actualizar ya es vencido, no «próximo»; el PHP legado cortaba en `< 0` y

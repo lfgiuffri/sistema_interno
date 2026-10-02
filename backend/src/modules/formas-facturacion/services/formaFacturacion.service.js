@@ -48,6 +48,9 @@ const checkNombreUnico = async (models, nombre, excludeId = null) => {
 
 /**
  * Lista formas de facturación con paginación, búsqueda y filtro de activo.
+ *
+ * Cada fila suma `abonosCount` (todos sus abonos), `abonosActivos` y los totales `totalArs` /
+ * `totalUsd` de los ACTIVOS, cada moneda en la suya. Todo sale de UNA consulta agrupada.
  * @param {object} models - Modelos de la app.
  * @param {object} [query] - { page, limit, search, activo }.
  * @returns {Promise<{rows: object[], count: number, page: number, limit: number}>}
@@ -69,19 +72,43 @@ export const listFormas = async (models, query = {}) => {
         distinct: true
     });
 
-    // Conteo de abonos por forma en UNA query (cuando el módulo exista).
-    let abonosPorForma = {};
+    // Conteo y totales de abonos por forma en UNA query (cuando el módulo exista).
+    //
+    // Se agrupa por forma Y MONEDA, y cada una se suma en la suya: un abono es ARS o USD, así
+    // que sumar las dos juntas daría un número que no es plata de ninguna parte. Convertir
+    // todo a pesos con la cotización escondería la composición —«esta forma factura US$ 1.200»
+    // es justamente el dato que se quiere ver— y el total convertido siempre se puede sacar
+    // después a partir de estos dos.
+    //
+    // Los TOTALES cuentan solo los abonos ACTIVOS: uno pausado no se factura y meterlo en la
+    // suma sería inflar la cifra. `abonosCount` sigue contando todos, como hasta ahora, así
+    // que se devuelve además `abonosActivos` para que los números se puedan reconciliar: sin
+    // eso, una forma con 12 abonos y un total que cubre 9 parece un error.
+    const porForma = {};
     if (Abono && rows.length) {
-        const counts = await Abono.findAll({
-            attributes: ['formaFacturacionId', [Abono.sequelize.fn('COUNT', Abono.sequelize.col('id')), 'n']],
+        const { fn, col } = Abono.sequelize;
+        const filas = await Abono.findAll({
+            attributes: [
+                'formaFacturacionId', 'moneda', 'activo',
+                [fn('COUNT', col('id')), 'n'],
+                [fn('SUM', col('precio')), 'total'],
+            ],
             where: { formaFacturacionId: { [Op.in]: rows.map(f => f.id) } },
-            group: ['formaFacturacionId'],
+            group: ['formaFacturacionId', 'moneda', 'activo'],
             raw: true
         });
-        abonosPorForma = Object.fromEntries(counts.map(c => [c.formaFacturacionId, Number(c.n)]));
+        for (const r of filas) {
+            const acc = porForma[r.formaFacturacionId] ??= { abonosCount: 0, abonosActivos: 0, totalArs: 0, totalUsd: 0 };
+            acc.abonosCount += Number(r.n);
+            if (!r.activo) continue;
+            acc.abonosActivos += Number(r.n);
+            if (r.moneda === 'USD') acc.totalUsd += Number(r.total);
+            else acc.totalArs += Number(r.total);
+        }
     }
 
-    const shaped = rows.map(f => ({ ...f.toJSON(), abonosCount: abonosPorForma[f.id] || 0 }));
+    const vacio = { abonosCount: 0, abonosActivos: 0, totalArs: 0, totalUsd: 0 };
+    const shaped = rows.map(f => ({ ...f.toJSON(), ...vacio, ...(porForma[f.id] ?? {}) }));
     return { rows: shaped, count, page, limit };
 };
 
