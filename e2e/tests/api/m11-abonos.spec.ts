@@ -218,6 +218,89 @@ test.describe('M11: Abonos', () => {
     expect(body.data).toHaveProperty('cotizacion');
   });
 
+  test('M11.17 - cambios desde la facturación: lo nuevo, lo modificado y las bajas', async ({ adminApi }) => {
+    // Tres abonos con tres destinos distintos. Todos en ARS para que la cotización no los
+    // mueva: lo que se prueba acá son las CUBETAS, no la conversión.
+    const aModificar = await createAbono(adminApi, { precio: 50000 });
+    const aDarDeBaja = await createAbono(adminApi, { precio: 60000 });
+
+    // Se factura un período propio (2031: lejos de cualquier dato real de la base).
+    await expectSuccess(await adminApi.post(`${APP_ENDPOINTS.abonos}/facturar`, {
+      data: { ids: [aModificar.id, aDarDeBaja.id], anio: 2031, mes: 3, operationId: opId() },
+    }), 200);
+
+    // Recién DESPUÉS de facturar pasan las tres cosas que el ERP tiene que registrar.
+    await expectSuccess(await adminApi.put(`${APP_ENDPOINTS.abonos}/${aModificar.id}`, {
+      data: {
+        clienteId, servicioId, moneda: 'ARS', precio: 77000,
+        fechaInicio: '2025-01-01', periodoMeses: 6, activo: true,
+      },
+    }), 200);
+    await expectSuccess(await adminApi.patch(`${APP_ENDPOINTS.abonos}/${aDarDeBaja.id}/active`), 200);
+    const recienCreado = await createAbono(adminApi, { precio: 12345 });
+
+    const { data } = await expectSuccess(await adminApi.get(`${APP_ENDPOINTS.abonos}/cambios`), 200);
+
+    // 1. MODIFICADO: con el precio de antes y el de ahora, para poder corregirlo en el ERP.
+    const mod = data.modificados.find((r: { abonoId: number }) => r.abonoId === aModificar.id);
+    expect(mod).toBeTruthy();
+    expect(mod.cambios).toContain('precio');
+    expect(mod.anterior.precio).toBe(50000);
+    expect(mod.precio).toBe(77000);
+
+    // 2. BAJA: estaba facturado y dejó de estar vigente.
+    const baja = data.bajas.find((r: { abonoId: number }) => r.abonoId === aDarDeBaja.id);
+    expect(baja).toBeTruthy();
+    expect(baja.motivoBaja).toBe('inactivo');
+    expect(baja.anterior.precio).toBe(60000);
+
+    // 3. NUEVO: activo y sin facturar nunca.
+    const nuevo = data.nuevos.find((r: { abonoId: number }) => r.abonoId === recienCreado.id);
+    expect(nuevo).toBeTruthy();
+    expect(nuevo.anterior).toBeNull();
+
+    // Y lo que NO cambió no aparece en ninguna cubeta: el listado es solo lo accionable.
+    const quieto = await createAbono(adminApi, { precio: 31000 });
+    await expectSuccess(await adminApi.post(`${APP_ENDPOINTS.abonos}/facturar`, {
+      data: { ids: [quieto.id], anio: 2031, mes: 3, operationId: opId() },
+    }), 200);
+    const segunda = (await expectSuccess(await adminApi.get(`${APP_ENDPOINTS.abonos}/cambios`), 200)).data;
+    const todas = [...segunda.nuevos, ...segunda.modificados, ...segunda.bajas];
+    expect(todas.find((r: { abonoId: number }) => r.abonoId === quieto.id)).toBeUndefined();
+  });
+
+  test('M11.18 - un abono en USD aparece si se movió la COTIZACIÓN, y lo dice', async ({ adminApi }) => {
+    // Decisión del negocio: lo que importa es el monto EN PESOS, que es lo que va a la factura
+    // del ERP. Entonces un abono en USD con el mismo precio igual cambió si se movió el dólar.
+    // Sin `cambios` el listado sería ilegible: hay que poder separar «subió el precio» de
+    // «solo se movió el dólar».
+    const configs = (await expectSuccess(await adminApi.get(APP_ENDPOINTS.appConfig), 200)).data;
+    const original = Number(configs.find((c: { name: string }) => c.name === 'COTIZACION_DOLAR').value);
+    const dolarizado = await createAbono(adminApi, { moneda: 'USD', precio: 200 });
+
+    await expectSuccess(await adminApi.post(`${APP_ENDPOINTS.abonos}/facturar`, {
+      data: { ids: [dolarizado.id], anio: 2031, mes: 4, operationId: opId() },
+    }), 200);
+
+    await expectSuccess(await adminApi.put(APP_ENDPOINTS.appConfig, {
+      data: { name: 'COTIZACION_DOLAR', value: String(original + 500) },
+    }), 200);
+    try {
+      const { data } = await expectSuccess(await adminApi.get(`${APP_ENDPOINTS.abonos}/cambios`), 200);
+      const fila = data.modificados.find((r: { abonoId: number }) => r.abonoId === dolarizado.id);
+      expect(fila).toBeTruthy();
+      // El precio en USD NO cambió: la fila existe por la cotización, y así lo dice.
+      expect(fila.cambios).toContain('cotizacion');
+      expect(fila.cambios).toContain('montoPesos');
+      expect(fila.cambios).not.toContain('precio');
+      expect(fila.precio).toBe(200);
+      expect(fila.montoPesos).toBeGreaterThan(fila.anterior.montoPesos);
+    } finally {
+      // La cotización es GLOBAL: dejarla movida rompería cualquier test que corra después.
+      await adminApi.put(APP_ENDPOINTS.appConfig, { data: { name: 'COTIZACION_DOLAR', value: String(original) } });
+    }
+  });
+
   test('M11.10 - capability gating: el fixture no ve abonos → 403', async ({ authedApi }) => {
     const res = await authedApi.get(APP_ENDPOINTS.abonos);
     const body = await expectError(res, 403);

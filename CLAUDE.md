@@ -245,6 +245,27 @@ Paginación en `meta` (helper `Paginate`). Validación: express-validator → 42
   helpers `getAppConfigNumber` en el barrel), módulo `dashboard` (bloques calculados solo
   con capability). Frontend: AbonosPage con selección múltiple + modales de dos pasos,
   AbonoFormPage con historial, FacturacionesPage con anular, panel real.
+  **Cambios para el ERP** (2026-10-02, `GET /abonos/cambios` + `views/abonos/CambiosErpPage.vue`,
+  `abonos:read`): el parte de qué registrar en el ERP externo antes de facturar — `nuevos`
+  (activos que nunca se facturaron), `modificados` y `bajas` (facturados que hoy están
+  inactivos o eliminados). **No hay bitácora nueva**: cada `Facturacion` YA es un snapshot
+  congelado del abono, o sea «lo que el ERP sabe», así que se compara el estado actual contra
+  él. Eso da tres cosas que un log de cambios no da: funciona con la historia que ya existe
+  (no hay que esperar a acumular), muestra la diferencia NETA (un precio que sube y vuelve a
+  bajar no son dos renglones) y se resetea solo — facturar vuelve a poner la base en cero. La
+  base es **por abono, su última facturación vigente**, no un período global: no todos se
+  facturan todos los meses y comparar uno de marzo contra septiembre lo mostraría como nuevo.
+  Las anuladas no cuentan (un cobro deshecho no es algo que el ERP tenga cargado), y el query
+  va con `paranoid: false` porque un abono ELIMINADO que estaba facturado es justamente una
+  baja. ⚠️ **El criterio es el monto EN PESOS** (decisión del negocio: es lo que va a la
+  factura), así que un abono en USD aparece aunque su precio en dólares no se haya tocado, si
+  se movió la cotización — con decenas de abonos dolarizados eso es casi todo el listado. Por
+  eso cada fila lleva `cambios` diciendo POR QUÉ cambió y la pantalla tiene un filtro para
+  esconder las que solo se movieron por el dólar: sin eso el listado es ilegible. Exporta a
+  CSV con una columna de cubeta (un archivo, no tres). Solo compara lo que el snapshot
+  congela (precio, moneda, cliente, servicio): cambiar la forma de facturación o la
+  descripción NO se detecta — haría falta sumarlas a `facturaciones` y recién serviría desde
+  la próxima facturación.
 - ✅ **Fase 3** — proyectos + cobranzas: módulo `proyectos` (5 estados + 5 fechas de ciclo de
   vida independientes — solo `fechaEstimadaEntrega` alimenta alertas, ventana 5 días; cerrados
   al final del listado), cuotas SIEMPRE en USD con tope = presupuesto→USD (0 = sin tope),

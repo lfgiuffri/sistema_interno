@@ -311,6 +311,144 @@ export const deleteAbono = async (models, id) => {
 };
 
 /**
+ * Diferencias entre lo FACTURADO y lo que hay hoy — el parte para cargar en el ERP.
+ *
+ * El problema: durante el mes se crean abonos, se cambian precios y se dan de baja, y antes
+ * de facturar en el ERP hay que saber qué se movió. No hace falta una bitácora nueva: cada
+ * `Facturacion` ya es un SNAPSHOT CONGELADO del abono (cliente, servicio, moneda, precio,
+ * cotización y monto en pesos) — o sea, exactamente «lo que el ERP sabe». Comparar el estado
+ * actual contra ese snapshot da la respuesta, funciona desde el primer día (las facturaciones
+ * ya existen) y, a diferencia de un log de cambios, muestra la diferencia NETA: un precio que
+ * subió y volvió a bajar no genera dos renglones que el ERP no necesita.
+ *
+ * Tres cubetas, cada una con su regla:
+ *  - `nuevos`: abono ACTIVO sin ninguna facturación vigente → el ERP no lo conoce.
+ *  - `modificados`: hay facturación vigente y algo difiere.
+ *  - `bajas`: hay facturación vigente pero hoy está inactivo o eliminado → dejar de facturarlo.
+ *
+ * Un abono creado y dado de baja sin llegar a facturarse no aparece en ninguna: el ERP nunca
+ * supo de él, así que no hay nada que registrar.
+ *
+ * La base de comparación es, POR ABONO, su última facturación vigente — no un período global:
+ * no todos los abonos se facturan todos los meses, y comparar uno de marzo contra el período
+ * de septiembre lo mostraría como nuevo.
+ * @param {object} models - Modelos de la app.
+ * @returns {Promise<object>} `{ cotizacion, periodo, totales, nuevos, modificados, bajas }`.
+ */
+export const cambiosDesdeFacturacion = async (models) => {
+    const { Abono, Facturacion } = models;
+    const config = await getConfigAbonos(models);
+
+    // Se leen TODAS las facturaciones vigentes (no las anuladas: una anulada es un cobro que
+    // se deshizo, así que no representa nada que el ERP tenga cargado) y se reduce a la última
+    // por abono. Se traen solo las columnas del snapshot: son unas pocas miles de filas y
+    // resolverlo acá evita una función de ventana que no todos los motores soportan igual.
+    const facturadas = await Facturacion.findAll({
+        where: { anuladaAt: null },
+        attributes: ['abonoId', 'anio', 'mes', 'moneda', 'precio', 'cotizacion', 'montoPesos', 'clienteId', 'servicioId', 'fecha'],
+        order: [['anio', 'ASC'], ['mes', 'ASC'], ['id', 'ASC']],
+        raw: true,
+    });
+    /** Última facturación vigente de cada abono (el orden ASC hace que gane la última). */
+    const ultima = new Map();
+    for (const f of facturadas) ultima.set(f.abonoId, f);
+
+    // `paranoid: false` a propósito: un abono ELIMINADO que estaba facturado es justamente una
+    // baja para el ERP, y con el filtro por defecto no vendría.
+    const abonos = await Abono.findAll({
+        include: abonoIncludes(models),
+        paranoid: false,
+        order: [[models.Cliente, 'nombre', 'ASC']],
+    });
+
+    const nuevos = [];
+    const modificados = [];
+    const bajas = [];
+
+    for (const fila of abonos) {
+        const abono = fila.toJSON();
+        const base = ultima.get(abono.id) ?? null;
+        const vigente = abono.activo && !abono.deletedAt;
+
+        if (!base) {
+            // Nunca facturado: solo interesa si HOY se factura. Si nació y murió en el mes, el
+            // ERP no se enteró nunca y no hay nada que hacer con él.
+            if (vigente) nuevos.push(filaCambio(abono, null, config));
+            continue;
+        }
+        if (!vigente) {
+            bajas.push({ ...filaCambio(abono, base, config), motivoBaja: abono.deletedAt ? 'eliminado' : 'inactivo' });
+            continue;
+        }
+        const fila2 = filaCambio(abono, base, config);
+        if (fila2.cambios.length) modificados.push(fila2);
+    }
+
+    // El período de referencia es el más nuevo que se facturó: sirve de encabezado («cambios
+    // desde la facturación de 09/2026»). Las bases por abono pueden ser anteriores.
+    const periodo = facturadas.length
+        ? { anio: facturadas[facturadas.length - 1].anio, mes: facturadas[facturadas.length - 1].mes }
+        : null;
+
+    return {
+        cotizacion: config.cotizacion,
+        periodo,
+        totales: { nuevos: nuevos.length, modificados: modificados.length, bajas: bajas.length },
+        nuevos, modificados, bajas,
+    };
+};
+
+/**
+ * Arma la fila de comparación de un abono contra su snapshot facturado.
+ *
+ * El monto EN PESOS es el criterio: es lo que termina en la factura del ERP. Eso implica que
+ * un abono en USD cuyo precio no cambió igual aparece si se movió la cotización — es correcto
+ * y es lo que se pidió, pero sería ilegible sin decir POR QUÉ cambió. De ahí `cambios`, que
+ * separa «subió el precio» de «solo se movió el dólar»: con 80 abonos en USD, esa distinción
+ * es la diferencia entre un listado útil y una pared de números.
+ * @param {object} abono - Abono actual (ya en JSON, con cliente y servicio).
+ * @param {object|null} base - Snapshot de su última facturación vigente, o null si nunca se facturó.
+ * @param {{cotizacion: number, redondeo: number}} config - Cotización y redondeo vigentes.
+ * @returns {object} Fila con los valores de antes y de ahora, y qué cambió.
+ */
+const filaCambio = (abono, base, config) => {
+    const montoPesos = precioEnPesos(abono, config.cotizacion, config.redondeo);
+    const cambios = [];
+
+    if (base) {
+        if (Number(base.precio) !== Number(abono.precio)) cambios.push('precio');
+        if (base.moneda !== abono.moneda) cambios.push('moneda');
+        if (base.clienteId !== abono.clienteId) cambios.push('cliente');
+        if (base.servicioId !== abono.servicioId) cambios.push('servicio');
+        // La cotización solo se anota si movió el monto y el precio quedó igual: si cambiaron
+        // los dos, decir «cambió el precio» ya explica la fila.
+        const montoDistinto = Number(base.montoPesos) !== montoPesos;
+        if (montoDistinto && !cambios.includes('precio') && !cambios.includes('moneda')) cambios.push('cotizacion');
+        if (montoDistinto) cambios.push('montoPesos');
+    }
+
+    return {
+        abonoId: abono.id,
+        cliente: abono.cliente?.nombre ?? null,
+        servicio: abono.servicio?.nombre ?? null,
+        descripcion: abono.descripcion,
+        formaFacturacion: abono.formaFacturacion?.nombre ?? null,
+        moneda: abono.moneda,
+        precio: Number(abono.precio),
+        montoPesos,
+        anterior: base
+            ? {
+                anio: base.anio, mes: base.mes, fecha: base.fecha,
+                moneda: base.moneda, precio: Number(base.precio),
+                cotizacion: base.cotizacion === null ? null : Number(base.cotizacion),
+                montoPesos: Number(base.montoPesos),
+            }
+            : null,
+        cambios,
+    };
+};
+
+/**
  * Historial de actualizaciones de un abono (con el usuario que las aplicó).
  * @param {object} models - Modelos de la app.
  * @param {number} abonoId - Id del abono.

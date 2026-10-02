@@ -11,7 +11,8 @@
 import {
   gridOutline, peopleOutline, shieldCheckmarkOutline,
   settingsOutline, briefcaseOutline, layersOutline, gitBranchOutline, receiptOutline,
-  walletOutline, documentTextOutline, folderOpenOutline, calendarOutline,
+  walletOutline,
+  swapHorizontalOutline, documentTextOutline, folderOpenOutline, calendarOutline,
   checkboxOutline, albumsOutline, personOutline, cashOutline, trendingUpOutline,
   calendarNumberOutline, cardOutline, statsChartOutline, libraryOutline, serverOutline,
   globeOutline, analyticsOutline, chatbubbleEllipsesOutline,
@@ -74,6 +75,9 @@ export const NAV: NavGroup[] = [
     items: [
       { label: 'Abonos', path: '/abonos', icon: walletOutline, module: 'abonos' },
       { label: 'Facturaciones', path: '/facturaciones', icon: documentTextOutline, module: 'facturaciones' },
+      // Va con `abonos` y no con `facturaciones`: lo que muestra son abonos (su precio de hoy
+      // contra el de la última factura), no importes facturados que no se vean ya en el listado.
+      { label: 'Cambios para el ERP', path: '/abonos/cambios', icon: swapHorizontalOutline, module: 'abonos' },
       { label: 'Formas de facturación', path: '/formas-facturacion', icon: receiptOutline, module: 'formas-facturacion' },
     ],
   },

@@ -46,6 +46,37 @@ export interface AbonoFiltros {
   dir?: string
 }
 
+/** Una fila del parte de cambios para el ERP. */
+export interface CambioErp {
+  abonoId: number
+  cliente: string | null
+  servicio: string | null
+  descripcion: string | null
+  formaFacturacion: string | null
+  moneda: string
+  precio: number
+  montoPesos: number
+  /** Qué difiere contra lo facturado: 'precio' | 'moneda' | 'cliente' | 'servicio' | 'cotizacion' | 'montoPesos'. */
+  cambios: string[]
+  /** Solo en las bajas. */
+  motivoBaja?: 'inactivo' | 'eliminado'
+  /** El snapshot facturado. null en los nuevos (nunca se facturaron). */
+  anterior: {
+    anio: number; mes: number; fecha: string
+    moneda: string; precio: number; cotizacion: number | null; montoPesos: number
+  } | null
+}
+
+/** Respuesta de `GET /abonos/cambios`. */
+export interface CambiosErp {
+  cotizacion: number
+  periodo: { anio: number; mes: number } | null
+  totales: { nuevos: number; modificados: number; bajas: number }
+  nuevos: CambioErp[]
+  modificados: CambioErp[]
+  bajas: CambioErp[]
+}
+
 export const useAbonosStore = defineStore('abonos', () => {
   const rows = ref<Abono[]>([])
   const meta = ref<PaginationMeta | null>(null)
@@ -171,6 +202,19 @@ export const useAbonosStore = defineStore('abonos', () => {
     }
   }
 
+  /**
+   * Diferencias entre lo facturado y lo actual, para cargar en el ERP.
+   * No se cachea en el store: es una foto del momento y se pide al abrir la pantalla.
+   */
+  async function fetchCambios(): Promise<CambiosErp | null> {
+    try {
+      const { data } = await api.get('/abonos/cambios')
+      return data.success ? (data.data as CambiosErp) : null
+    } catch {
+      return null
+    }
+  }
+
   function reset(): void {
     rows.value = []
     meta.value = null
@@ -180,7 +224,7 @@ export const useAbonosStore = defineStore('abonos', () => {
 
   return {
     rows, meta, resumen, loading, saving, error,
-    fetchAll, fetchOne, save, toggleActive, remove,
+    fetchAll, fetchOne, save, toggleActive, remove, fetchCambios,
     actualizarPreview, actualizarAplicar, facturarPreview, facturarAplicar,
     fetchFacturaciones, anularFacturacion, reset,
   }

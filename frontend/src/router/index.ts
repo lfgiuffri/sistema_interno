@@ -50,6 +50,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'abonos/nuevo', name: 'AbonoNuevo', component: () => import('@/views/abonos/AbonoFormPage.vue'), meta: { module: 'abonos' } },
       { path: 'abonos/:id/editar', name: 'AbonoEditar', component: () => import('@/views/abonos/AbonoFormPage.vue'), meta: { module: 'abonos' } },
       { path: 'facturaciones', name: 'Facturaciones', component: () => import('@/views/abonos/FacturacionesPage.vue'), meta: { module: 'facturaciones' } },
+      { path: 'abonos/cambios', name: 'CambiosErp', component: () => import('@/views/abonos/CambiosErpPage.vue'), meta: { module: 'abonos' } },
       { path: 'proyectos', name: 'Proyectos', component: () => import('@/views/proyectos/ProyectosPage.vue'), meta: { module: 'proyectos' } },
       { path: 'proyectos/nuevo', name: 'ProyectoNuevo', component: () => import('@/views/proyectos/ProyectoFormPage.vue'), meta: { module: 'proyectos' } },
       { path: 'proyectos/:id/editar', name: 'ProyectoEditar', component: () => import('@/views/proyectos/ProyectoFormPage.vue'), meta: { module: 'proyectos' } },

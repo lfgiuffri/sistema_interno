@@ -47,6 +47,19 @@ export const resumen = async (req, res) => {
 };
 
 /**
+ * GET /abonos/cambios — diferencias entre lo facturado y lo actual (para cargar en el ERP).
+ * @param {import('express').Request} req - Request.
+ * @param {import('express').Response} res - Response.
+ * @returns {Promise<void>}
+ */
+export const cambios = async (req, res) => {
+    try {
+        const data = await svc.cambiosDesdeFacturacion(req.models);
+        return await responseManager(200, data, req, res, false);
+    } catch (e) { return bizCatch(e, req, res); }
+};
+
+/**
  * GET /abonos/:id — un abono con cliente/servicio/forma y días calculados.
  * @param {import('express').Request} req - Request.
  * @param {import('express').Response} res - Response.

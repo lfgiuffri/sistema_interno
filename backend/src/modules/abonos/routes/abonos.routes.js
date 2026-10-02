@@ -23,6 +23,10 @@ router.post('/facturar', requireCapability('abonos:facturar'), validateFacturarA
 // ── Resumen del listado ──
 router.get('/resumen', requireCapability('abonos:read'), validateList, controller.resumen);
 
+// ⚠️ ANTES de `/:id`: con el orden invertido, Express toma «cambios» como un id y el validator
+// lo rechaza con un 422 en vez de llegar acá.
+router.get('/cambios', requireCapability('abonos:read'), controller.cambios);
+
 // ── CRUD ──
 router.get('/', requireCapability('abonos:read'), validateList, controller.list);
 router.get('/:id', requireCapability('abonos:read'), validateId, controller.getById);
