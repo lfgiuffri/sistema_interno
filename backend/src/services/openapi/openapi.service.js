@@ -105,7 +105,11 @@ export const buildOpenApiSpec = () => ({
             get: op('Listar abonos — SIN paginar: devuelve todos los del filtro para poder facturar/actualizar en masa (page y limit se ignoran). estado=vencido incluye el que vence HOY; proximo son 1..30 días', 'Abonos', auth),
             post: op('Crear abono (nace inactivo salvo indicación)', 'Abonos', auth)
         },
-        '/abonos/cambios': { get: op('Diferencias entre lo FACTURADO y lo actual, para cargar en el ERP (abonos:read): `nuevos` (activos nunca facturados), `modificados` (difieren del snapshot congelado de su última facturación vigente) y `bajas` (facturados pero hoy inactivos o eliminados). Compara contra el snapshot, no contra una bitácora: da la diferencia NETA. El criterio es el monto EN PESOS, así que un abono en USD aparece si se movió la cotización — `cambios` dice por qué', 'Abonos', auth) },
+        '/abonos/cambios': { get: op('Diferencias entre lo FACTURADO y lo actual, para cargar en el ERP (abonos:read): `nuevos` (activos nunca facturados), `modificados` (difieren del snapshot congelado de su última facturación vigente) y `bajas` (facturados pero hoy inactivos o eliminados). Compara contra el snapshot, no contra una bitácora: da la diferencia NETA. El criterio es el monto EN PESOS, así que un abono en USD aparece si se movió la cotización — `cambios` dice por qué. Cada fila trae `marcado`/`marcadoAt` (ver /abonos/cambios/{id}/marcar)', 'Abonos', auth) },
+        '/abonos/cambios/{id}/marcar': {
+            post: op('Tacha una fila del parte como YA cargada en el ERP (abonos:update). Guarda los valores del momento —recalculados en el servidor, no los que mande el navegador— así que la marca CADUCA sola si el abono vuelve a cambiar', 'Abonos', auth),
+            delete: op('Saca la marca (se marcó por error o hay que volver a cargarlo)', 'Abonos', auth)
+        },
         '/abonos/resumen': { get: op('Tiles del listado: activos, total mensual, próximos, vencidos', 'Abonos', auth) },
         '/abonos/{id}': {
             get: op('Un abono con días de actualización calculados', 'Abonos', auth),

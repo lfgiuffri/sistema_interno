@@ -12,7 +12,7 @@ export default {
     version: '1.0.0',
     description: 'Abonos de clientes: precios ARS/USD, actualizaciones con historial y facturación mensual.',
     basePath: '/abonos',
-    models: ['Abono', 'AbonoActualizacion', 'Facturacion'],
+    models: ['Abono', 'AbonoActualizacion', 'Facturacion', 'AbonoErpMarca'],
     capabilities: [
         'abonos:read', 'abonos:create', 'abonos:update', 'abonos:toggle', 'abonos:delete',
         'abonos:actualizar-precio', 'abonos:facturar',

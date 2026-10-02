@@ -21,12 +21,15 @@ import {
   onIonViewWillEnter, IonPage, IonContent, IonHeader, IonToolbar, IonButtons,
   IonMenuButton, IonIcon,
 } from '@ionic/vue'
-import { downloadOutline, refreshOutline, addCircleOutline, createOutline, removeCircleOutline } from 'ionicons/icons'
+import {
+  downloadOutline, refreshOutline, addCircleOutline, createOutline, removeCircleOutline,
+  copyOutline, checkmarkCircle, ellipseOutline,
+} from 'ionicons/icons'
 import { useAbonosStore, type CambiosErp, type CambioErp } from '@/stores/abonos'
 import { useMeStore } from '@/stores/me'
 import { useToast } from '@/composables/useToast'
 import { descargarCsv } from '@/composables/useCsv'
-import { moneda as fmtMoneda, MESES } from '@/composables/useFormato'
+import { moneda as fmtMoneda, fechaHora as fmtFechaHora, MESES } from '@/composables/useFormato'
 
 const store = useAbonosStore()
 const meStore = useMeStore()
@@ -53,6 +56,11 @@ const grupos = computed(() => [
 ])
 
 const hayAlgo = computed(() => grupos.value.some(g => g.filas.length > 0))
+/** Avance de la carga en el ERP, sobre lo que se está viendo. */
+const avance = computed(() => {
+  const todas = grupos.value.flatMap(g => g.filas)
+  return { hechas: todas.filter(f => f.marcado).length, total: todas.length }
+})
 const ocultas = computed(() =>
   soloDeNegocio.value ? (datos.value?.modificados.filter(esSoloCotizacion).length ?? 0) : 0)
 
@@ -60,6 +68,51 @@ const periodo = computed(() => {
   const p = datos.value?.periodo
   return p ? `${MESES[p.mes - 1]} ${p.anio}` : null
 })
+
+/**
+ * Copia el monto EN PESOS al portapapeles, sin separador de miles: va a pegarse en el ERP,
+ * que lo quiere como número y no como texto formateado. El ERP trabaja todo en pesos, así que
+ * el botón nunca copia el precio en dólares aunque el abono esté en USD.
+ * @param f - Fila del parte.
+ */
+async function copiarMonto(f: CambioErp): Promise<void> {
+  const crudo = String(f.montoPesos)
+  try {
+    await navigator.clipboard.writeText(crudo)
+  } catch {
+    // Sin permiso de portapapeles (o HTTP sin TLS): se copia con el método viejo.
+    const ta = document.createElement('textarea')
+    ta.value = crudo
+    ta.style.position = 'fixed'
+    ta.style.opacity = '0'
+    document.body.appendChild(ta)
+    ta.select()
+    document.execCommand('copy')
+    ta.remove()
+  }
+  copiado.value = f.abonoId
+  window.setTimeout(() => { if (copiado.value === f.abonoId) copiado.value = null }, 1400)
+}
+
+/** Última fila copiada, para confirmarlo sin un toast por cada copia. */
+const copiado = ref<number | null>(null)
+/** Filas con el marcado en vuelo (para no dejar apretar dos veces). */
+const marcando = ref<Set<number>>(new Set())
+
+/**
+ * Tacha o destacha una fila. Se actualiza el estado local al volver en vez de recargar todo:
+ * recargar reordenaría el listado debajo del dedo justo cuando se está yendo fila por fila.
+ * @param f - Fila del parte.
+ */
+async function alternarMarca(f: CambioErp): Promise<void> {
+  if (marcando.value.has(f.abonoId)) return
+  marcando.value = new Set(marcando.value).add(f.abonoId)
+  const r = await store.marcarErp(f.abonoId, !f.marcado)
+  marcando.value = new Set([...marcando.value].filter(id => id !== f.abonoId))
+  if (!r.ok) { toast.error(r.message); return }
+  f.marcado = !f.marcado
+  f.marcadoAt = f.marcado ? new Date().toISOString() : null
+}
 
 /** Etiqueta legible de cada tipo de cambio. */
 const ETIQUETA: Record<string, string> = {
@@ -93,6 +146,7 @@ function exportar(): void {
         f.anterior ? f.anterior.precio : '',
         f.anterior ? f.anterior.montoPesos : '',
         f.cambios.map(c => ETIQUETA[c] ?? c).join(' + ') || (f.motivoBaja ?? ''),
+        f.marcado ? 'sí' : 'no',
       ])
     }
   }
@@ -100,7 +154,7 @@ function exportar(): void {
   descargarCsv('cambios-erp', [
     'Tipo', 'Abono', 'Cliente', 'Servicio', 'Descripción', 'Forma de facturación',
     'Moneda', 'Precio actual', 'Monto en $ actual',
-    'Período facturado', 'Precio facturado', 'Monto en $ facturado', 'Qué cambió',
+    'Período facturado', 'Precio facturado', 'Monto en $ facturado', 'Qué cambió', 'Cargado en el ERP',
   ], filas)
 }
 </script>
@@ -148,6 +202,12 @@ function exportar(): void {
             <span v-for="g in grupos" :key="g.clave" class="text-2xs text-ink-soft">
               {{ g.titulo }} <strong class="text-ink tnum">{{ g.filas.length }}</strong>
             </span>
+            <span v-if="avance.total" class="text-2xs text-ink-soft">
+              Cargado en el ERP
+              <strong class="tnum" :class="avance.hechas === avance.total ? 'text-ok' : 'text-ink'">
+                {{ avance.hechas }}/{{ avance.total }}
+              </strong>
+            </span>
             <label class="ml-auto flex items-center gap-2 text-2xs text-ink-soft cursor-pointer">
               <input v-model="soloDeNegocio" type="checkbox" class="accent-accent" />
               Esconder los que solo cambiaron por la cotización
@@ -177,10 +237,11 @@ function exportar(): void {
                       <th class="text-right">Antes</th>
                       <th class="text-right">Ahora</th>
                       <th>Qué cambió</th>
+                      <th class="text-center whitespace-nowrap">En el ERP</th>
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-for="f in g.filas" :key="f.abonoId">
+                    <tr v-for="f in g.filas" :key="f.abonoId" :class="{ 'opacity-45': f.marcado }">
                       <td class="sticky left-0 bg-surface z-10">
                         <span class="font-medium text-ink">{{ f.cliente ?? '—' }}</span>
                         <span v-if="f.descripcion" class="block text-2xs text-ink-faint truncate max-w-[220px]">
@@ -197,8 +258,29 @@ function exportar(): void {
                       </td>
                       <td class="text-right tnum">
                         <template v-if="g.clave !== 'bajas'">
-                          {{ fmtMoneda(f.precio, f.moneda as 'ARS' | 'USD') }}
-                          <span class="block text-2xs text-ink-faint">{{ fmtMoneda(f.montoPesos) }}</span>
+                          <div class="flex items-center justify-end gap-1.5">
+                            <div>
+                              {{ fmtMoneda(f.precio, f.moneda as 'ARS' | 'USD') }}
+                              <span class="block text-2xs text-ink-faint">{{ fmtMoneda(f.montoPesos) }}</span>
+                            </div>
+                            <!--
+                              Copia el monto EN PESOS y sin separador de miles: se pega en el
+                              ERP, que lo quiere como número. Nunca copia el precio en USD —
+                              el ERP trabaja todo en pesos.
+                            -->
+                            <button
+                              type="button" class="row-action shrink-0"
+                              :title="`Copiar ${f.montoPesos} (monto en pesos, sin puntos)`"
+                              :aria-label="`Copiar el monto en pesos de ${f.cliente ?? 'este abono'}`"
+                              @click="copiarMonto(f)"
+                            >
+                              <IonIcon
+                                :icon="copiado === f.abonoId ? checkmarkCircle : copyOutline"
+                                class="text-[15px]"
+                                :class="copiado === f.abonoId ? 'text-ok' : ''"
+                              />
+                            </button>
+                          </div>
                         </template>
                         <span v-else class="text-ink-faint">—</span>
                       </td>
@@ -211,6 +293,29 @@ function exportar(): void {
                             :class="c === 'cotizacion' || c === 'montoPesos' ? 'ds-badge-neutral' : 'ds-badge-warn'"
                           >{{ ETIQUETA[c] ?? c }}</span>
                         </span>
+                      </td>
+                      <td class="text-center">
+                        <button
+                          v-if="meStore.can('abonos:update')"
+                          type="button" class="row-action mx-auto"
+                          :disabled="marcando.has(f.abonoId)"
+                          :title="f.marcado
+                            ? `Cargado en el ERP${f.marcadoAt ? ' el ' + fmtFechaHora(f.marcadoAt) : ''} — clic para destildar`
+                            : 'Marcar como cargado en el ERP'"
+                          :aria-label="f.marcado ? 'Destildar' : 'Marcar como cargado en el ERP'"
+                          :aria-pressed="f.marcado"
+                          @click="alternarMarca(f)"
+                        >
+                          <IonIcon
+                            :icon="f.marcado ? checkmarkCircle : ellipseOutline"
+                            class="text-[17px]"
+                            :class="f.marcado ? 'text-ok' : 'text-ink-faint'"
+                          />
+                        </button>
+                        <IonIcon
+                          v-else-if="f.marcado" :icon="checkmarkCircle" class="text-[17px] text-ok"
+                          title="Cargado en el ERP"
+                        />
                       </td>
                     </tr>
                   </tbody>
@@ -227,4 +332,12 @@ function exportar(): void {
 <style scoped>
 .page-content { --background: rgb(var(--s-canvas)); }
 .app-toolbar { --background: rgb(var(--s-canvas)); --border-width: 0; --min-height: 44px; }
+
+/* Misma definición que el resto de las pantallas con acciones por fila. */
+.row-action {
+  display: grid; place-items: center; width: 28px; height: 28px; border-radius: 7px;
+  color: rgb(var(--s-ink-faint)); transition: background-color 0.12s ease, color 0.12s ease;
+}
+.row-action:hover { background: rgb(var(--s-surface-2)); color: rgb(var(--s-ink)); }
+.row-action:disabled { opacity: 0.5; }
 </style>

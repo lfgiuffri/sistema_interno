@@ -262,7 +262,18 @@ Paginación en `meta` (helper `Paginate`). Validación: express-validator → 42
   se movió la cotización — con decenas de abonos dolarizados eso es casi todo el listado. Por
   eso cada fila lleva `cambios` diciendo POR QUÉ cambió y la pantalla tiene un filtro para
   esconder las que solo se movieron por el dólar: sin eso el listado es ilegible. Exporta a
-  CSV con una columna de cubeta (un archivo, no tres). Solo compara lo que el snapshot
+  CSV con una columna de cubeta (un archivo, no tres). Cada fila tiene **copiar el monto** (el
+  de PESOS siempre, aunque el abono sea en USD: el ERP trabaja todo en pesos) **sin separador
+  de miles**, porque se pega como número; y **tachar como cargado en el ERP** para no perder
+  el hilo yendo fila por fila (`abono_erp_marcas`, migración `0013`, capability `abonos:update`
+  — se reusa y no se crea una nueva porque una capability nueva nace sin que nadie la tenga).
+  ⚠️ La marca guarda los VALORES marcados, no solo el `abonoId`: con una marca por id, un abono
+  al que después le cambian el precio otra vez quedaría tachado para siempre y ese cambio nuevo
+  no llegaría nunca al ERP. Así **caduca sola** cuando algo se mueve (la cotización incluida) y
+  la fila vuelve a aparecer pendiente. Los valores los recalcula el SERVIDOR al marcar: si los
+  mandara el navegador, una pantalla vieja tacharía un precio que ya no existe. Una fila por
+  abono (UNIQUE) y es de la EMPRESA, no de quien marcó: si uno carga media lista y sigue otro,
+  el segundo ve lo hecho. Solo compara lo que el snapshot
   congela (precio, moneda, cliente, servicio): cambiar la forma de facturación o la
   descripción NO se detecta — haría falta sumarlas a `facturaciones` y recién serviría desde
   la próxima facturación.

@@ -60,6 +60,9 @@ export interface CambioErp {
   cambios: string[]
   /** Solo en las bajas. */
   motivoBaja?: 'inactivo' | 'eliminado'
+  /** Ya se cargó en el ERP. Caduca sola si el abono vuelve a cambiar. */
+  marcado: boolean
+  marcadoAt: string | null
   /** El snapshot facturado. null en los nuevos (nunca se facturaron). */
   anterior: {
     anio: number; mes: number; fecha: string
@@ -215,6 +218,23 @@ export const useAbonosStore = defineStore('abonos', () => {
     }
   }
 
+  /**
+   * Marca (o desmarca) una fila del parte como cargada en el ERP.
+   *
+   * El backend recalcula los valores que guarda: no se le mandan desde acá a propósito, para
+   * que una pantalla vieja no pueda tachar un precio que ya no existe.
+   */
+  async function marcarErp(abonoId: number, marcar: boolean) {
+    try {
+      const { data } = marcar
+        ? await api.post(`/abonos/cambios/${abonoId}/marcar`)
+        : await api.delete(`/abonos/cambios/${abonoId}/marcar`)
+      return { ok: !!data.success, message: data.message }
+    } catch (e) {
+      return { ok: false, message: apiErrorMessage(e) }
+    }
+  }
+
   function reset(): void {
     rows.value = []
     meta.value = null
@@ -224,7 +244,7 @@ export const useAbonosStore = defineStore('abonos', () => {
 
   return {
     rows, meta, resumen, loading, saving, error,
-    fetchAll, fetchOne, save, toggleActive, remove, fetchCambios,
+    fetchAll, fetchOne, save, toggleActive, remove, fetchCambios, marcarErp,
     actualizarPreview, actualizarAplicar, facturarPreview, facturarAplicar,
     fetchFacturaciones, anularFacturacion, reset,
   }

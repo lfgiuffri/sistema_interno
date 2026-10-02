@@ -60,6 +60,34 @@ export const cambios = async (req, res) => {
 };
 
 /**
+ * POST /abonos/cambios/:id/marcar — tacha una fila del parte como cargada en el ERP.
+ * @param {import('express').Request} req - Request.
+ * @param {import('express').Response} res - Response.
+ * @returns {Promise<void>}
+ */
+export const marcarErp = async (req, res) => {
+    try {
+        const { id } = matchedData(req);
+        const data = await svc.marcarCambioErp(req.models, id, req.user?.id ?? null);
+        return await responseManager(200, data, req, res, false);
+    } catch (e) { return bizCatch(e, req, res); }
+};
+
+/**
+ * DELETE /abonos/cambios/:id/marcar — saca la marca (se marcó por error).
+ * @param {import('express').Request} req - Request.
+ * @param {import('express').Response} res - Response.
+ * @returns {Promise<void>}
+ */
+export const desmarcarErp = async (req, res) => {
+    try {
+        const { id } = matchedData(req);
+        await svc.desmarcarCambioErp(req.models, id);
+        return await responseManager(200, { abonoId: id }, req, res, false);
+    } catch (e) { return bizCatch(e, req, res); }
+};
+
+/**
  * GET /abonos/:id — un abono con cliente/servicio/forma y días calculados.
  * @param {import('express').Request} req - Request.
  * @param {import('express').Response} res - Response.

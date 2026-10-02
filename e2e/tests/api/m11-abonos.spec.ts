@@ -269,6 +269,58 @@ test.describe('M11: Abonos', () => {
     expect(todas.find((r: { abonoId: number }) => r.abonoId === quieto.id)).toBeUndefined();
   });
 
+  test('M11.19 - marcar como cargado en el ERP, y que la marca CADUQUE si vuelve a cambiar', async ({ adminApi }) => {
+    const abono = await createAbono(adminApi, { precio: 40000 });
+    await expectSuccess(await adminApi.post(`${APP_ENDPOINTS.abonos}/facturar`, {
+      data: { ids: [abono.id], anio: 2032, mes: 1, operationId: opId() },
+    }), 200);
+    // Un cambio para tener algo que cargar en el ERP.
+    await expectSuccess(await adminApi.put(`${APP_ENDPOINTS.abonos}/${abono.id}`, {
+      data: {
+        clienteId, servicioId, moneda: 'ARS', precio: 45000,
+        fechaInicio: '2025-01-01', periodoMeses: 6, activo: true,
+      },
+    }), 200);
+
+    /** La fila del parte para este abono. */
+    const fila = async () => {
+      const { data } = await expectSuccess(await adminApi.get(`${APP_ENDPOINTS.abonos}/cambios`), 200);
+      return [...data.nuevos, ...data.modificados, ...data.bajas]
+        .find((r: { abonoId: number }) => r.abonoId === abono.id);
+    };
+
+    expect((await fila()).marcado).toBe(false);
+
+    await expectSuccess(await adminApi.post(`${APP_ENDPOINTS.abonos}/cambios/${abono.id}/marcar`), 200);
+    const marcada = await fila();
+    expect(marcada.marcado).toBe(true);
+    expect(marcada.marcadoAt).toBeTruthy();
+
+    // 🔑 Lo que hace que marcar sirva: si el abono VUELVE a cambiar, la marca caduca sola. Con
+    // una marca por id, este segundo cambio quedaría tachado y no llegaría nunca al ERP.
+    await expectSuccess(await adminApi.put(`${APP_ENDPOINTS.abonos}/${abono.id}`, {
+      data: {
+        clienteId, servicioId, moneda: 'ARS', precio: 51000,
+        fechaInicio: '2025-01-01', periodoMeses: 6, activo: true,
+      },
+    }), 200);
+    const otraVez = await fila();
+    expect(otraVez.marcado).toBe(false);
+    expect(otraVez.precio).toBe(51000);
+
+    // Marcar de nuevo PISA la marca vieja (una por abono), y destildar la borra.
+    await expectSuccess(await adminApi.post(`${APP_ENDPOINTS.abonos}/cambios/${abono.id}/marcar`), 200);
+    expect((await fila()).marcado).toBe(true);
+    await expectSuccess(await adminApi.delete(`${APP_ENDPOINTS.abonos}/cambios/${abono.id}/marcar`), 200);
+    expect((await fila()).marcado).toBe(false);
+  });
+
+  test('M11.20 - marcar exige `abonos:update`: con solo lectura no se puede tachar', async ({ authedApi }) => {
+    // El fixture no tiene ninguna capability de abonos: ni lee el parte ni marca.
+    await expectError(await authedApi.get(`${APP_ENDPOINTS.abonos}/cambios`), 403);
+    await expectError(await authedApi.post(`${APP_ENDPOINTS.abonos}/cambios/1/marcar`), 403);
+  });
+
   test('M11.18 - un abono en USD aparece si se movió la COTIZACIÓN, y lo dice', async ({ adminApi }) => {
     // Decisión del negocio: lo que importa es el monto EN PESOS, que es lo que va a la factura
     // del ERP. Entonces un abono en USD con el mismo precio igual cambió si se movió el dólar.

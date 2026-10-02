@@ -26,6 +26,11 @@ router.get('/resumen', requireCapability('abonos:read'), validateList, controlle
 // ⚠️ ANTES de `/:id`: con el orden invertido, Express toma «cambios» como un id y el validator
 // lo rechaza con un 422 en vez de llegar acá.
 router.get('/cambios', requireCapability('abonos:read'), controller.cambios);
+// Marcar/desmarcar NO edita el abono, pero sí escribe estado compartido de la empresa, así que
+// pide `abonos:update` en vez de `abonos:read`. Se reusa esa capability y no se crea una nueva
+// a propósito: una capability nueva nace sin que nadie la tenga y habría que repartirla a mano.
+router.post('/cambios/:id/marcar', requireCapability('abonos:update'), validateId, controller.marcarErp);
+router.delete('/cambios/:id/marcar', requireCapability('abonos:update'), validateId, controller.desmarcarErp);
 
 // ── CRUD ──
 router.get('/', requireCapability('abonos:read'), validateList, controller.list);

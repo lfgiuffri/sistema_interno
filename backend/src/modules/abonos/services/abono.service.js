@@ -336,8 +336,16 @@ export const deleteAbono = async (models, id) => {
  * @returns {Promise<object>} `{ cotizacion, periodo, totales, nuevos, modificados, bajas }`.
  */
 export const cambiosDesdeFacturacion = async (models) => {
-    const { Abono, Facturacion } = models;
+    const { Abono, Facturacion, AbonoErpMarca } = models;
     const config = await getConfigAbonos(models);
+
+    // Marcas de «ya lo cargué en el ERP». Valen solo mientras el abono siga igual a como
+    // estaba al marcarlo: ver `marcaVigente`.
+    const marcas = new Map();
+    if (AbonoErpMarca) {
+        const filas = await AbonoErpMarca.findAll({ raw: true });
+        for (const m of filas) marcas.set(m.abonoId, m);
+    }
 
     // Se leen TODAS las facturaciones vigentes (no las anuladas: una anulada es un cobro que
     // se deshizo, así que no representa nada que el ERP tenga cargado) y se reduce a la última
@@ -373,15 +381,18 @@ export const cambiosDesdeFacturacion = async (models) => {
         if (!base) {
             // Nunca facturado: solo interesa si HOY se factura. Si nació y murió en el mes, el
             // ERP no se enteró nunca y no hay nada que hacer con él.
-            if (vigente) nuevos.push(filaCambio(abono, null, config));
+            if (vigente) nuevos.push(conMarca(filaCambio(abono, null, config), marcas.get(abono.id), false));
             continue;
         }
         if (!vigente) {
-            bajas.push({ ...filaCambio(abono, base, config), motivoBaja: abono.deletedAt ? 'eliminado' : 'inactivo' });
+            bajas.push(conMarca({
+                ...filaCambio(abono, base, config),
+                motivoBaja: abono.deletedAt ? 'eliminado' : 'inactivo',
+            }, marcas.get(abono.id), true));
             continue;
         }
         const fila2 = filaCambio(abono, base, config);
-        if (fila2.cambios.length) modificados.push(fila2);
+        if (fila2.cambios.length) modificados.push(conMarca(fila2, marcas.get(abono.id), false));
     }
 
     // El período de referencia es el más nuevo que se facturó: sirve de encabezado («cambios
@@ -396,6 +407,96 @@ export const cambiosDesdeFacturacion = async (models) => {
         totales: { nuevos: nuevos.length, modificados: modificados.length, bajas: bajas.length },
         nuevos, modificados, bajas,
     };
+};
+
+/**
+ * Marca un abono como «ya cargado en el ERP», guardando los valores del momento.
+ *
+ * Los valores NO vienen del cliente HTTP: se recalculan acá. Si los mandara el navegador, una
+ * pantalla vieja marcaría un precio que ya no existe y el cambio real quedaría tachado sin
+ * haberse cargado nunca — justo el error que esta función tiene que hacer imposible.
+ * @param {object} models - Modelos de la app.
+ * @param {number} abonoId - Abono a marcar.
+ * @param {number|null} userId - Quién marcó (autoría).
+ * @returns {Promise<object>} La marca guardada.
+ * @throws {Error} 404 si el abono no existe.
+ */
+export const marcarCambioErp = async (models, abonoId, userId) => {
+    const { Abono, AbonoErpMarca } = models;
+    const config = await getConfigAbonos(models);
+
+    // `paranoid: false`: una BAJA se marca igual, y un abono eliminado es justamente eso.
+    const abono = await Abono.findByPk(Number(abonoId), { include: abonoIncludes(models), paranoid: false });
+    if (!abono) throw bizError(404, 'Abono no encontrado');
+
+    const json = abono.toJSON();
+    const fila = filaCambio(json, null, config);
+    const datos = {
+        abonoId: json.id,
+        moneda: fila.moneda,
+        precio: fila.precio,
+        montoPesos: fila.montoPesos,
+        clienteId: json.clienteId,
+        servicioId: json.servicioId,
+        baja: !json.activo || !!json.deletedAt,
+        userId: userId ?? null,
+    };
+
+    // Una marca por abono: la anterior ya no significa nada, se pisa.
+    const existente = await AbonoErpMarca.findOne({ where: { abonoId: json.id } });
+    if (existente) {
+        await existente.update(datos);
+        return existente.toJSON();
+    }
+    const creada = await AbonoErpMarca.create(datos);
+    return creada.toJSON();
+};
+
+/**
+ * Saca la marca de un abono (se marcó por error, o hay que volver a cargarlo).
+ * @param {object} models - Modelos de la app.
+ * @param {number} abonoId - Abono.
+ * @returns {Promise<boolean>} true si había una marca y se borró.
+ */
+export const desmarcarCambioErp = async (models, abonoId) => {
+    const { AbonoErpMarca } = models;
+    const borradas = await AbonoErpMarca.destroy({ where: { abonoId: Number(abonoId) } });
+    return borradas > 0;
+};
+
+/**
+ * ¿La marca sigue representando lo que hay hoy?
+ *
+ * Es el corazón de que marcar sirva: una marca por id dejaría el abono tachado para siempre,
+ * y el día que le vuelvan a cambiar el precio ese cambio no llegaría nunca al ERP. Acá la
+ * marca se compara contra los MISMOS campos que compara el parte, así que si algo se movió
+ * —incluida la cotización, que mueve el monto en pesos— la marca caduca sola y la fila vuelve
+ * a aparecer pendiente.
+ * @param {object|null} marca - Fila de `abono_erp_marcas`, si hay.
+ * @param {object} fila - Fila del parte ya calculada.
+ * @param {boolean} esBaja - Si la fila es una baja.
+ * @returns {boolean} true si lo marcado coincide con lo actual.
+ */
+const marcaVigente = (marca, fila, esBaja) => {
+    if (!marca) return false;
+    return Number(marca.precio) === fila.precio
+        && marca.moneda === fila.moneda
+        && Number(marca.montoPesos) === fila.montoPesos
+        && marca.clienteId === fila.clienteId
+        && marca.servicioId === fila.servicioId
+        && Boolean(marca.baja) === esBaja;
+};
+
+/**
+ * Suma a la fila si está marcada como cargada en el ERP (y desde cuándo).
+ * @param {object} fila - Fila del parte.
+ * @param {object|null} marca - Marca guardada, si hay.
+ * @param {boolean} esBaja - Si la fila es una baja.
+ * @returns {object} La fila con `marcado` y `marcadoAt`.
+ */
+const conMarca = (fila, marca, esBaja) => {
+    const ok = marcaVigente(marca, fila, esBaja);
+    return { ...fila, marcado: ok, marcadoAt: ok ? marca.updatedAt : null };
 };
 
 /**
@@ -431,6 +532,9 @@ const filaCambio = (abono, base, config) => {
         abonoId: abono.id,
         cliente: abono.cliente?.nombre ?? null,
         servicio: abono.servicio?.nombre ?? null,
+        // Los ids viajan además del nombre: son los que compara la marca del ERP.
+        clienteId: abono.clienteId,
+        servicioId: abono.servicioId,
         descripcion: abono.descripcion,
         formaFacturacion: abono.formaFacturacion?.nombre ?? null,
         moneda: abono.moneda,
