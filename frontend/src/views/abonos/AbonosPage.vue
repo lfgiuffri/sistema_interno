@@ -15,6 +15,7 @@ import {
   trendingUpOutline, receiptOutline, walletOutline, downloadOutline,
 } from 'ionicons/icons'
 import { descargarCsv } from '@/composables/useCsv'
+import api from '@/services/api'
 import { useAbonosStore, type Abono, type AbonoFiltros } from '@/stores/abonos'
 import CotizacionDolar from '@/components/shared/CotizacionDolar.vue'
 import ThOrdenable from '@/components/shared/ThOrdenable.vue'
@@ -30,7 +31,20 @@ const meStore = useMeStore()
 const toast = useToast()
 const router = useRouter()
 
-const filtros = ref<AbonoFiltros>({ estado: '', moneda: '', activo: '', search: '' })
+const filtros = ref<AbonoFiltros>({ estado: '', moneda: '', activo: '', search: '', formaFacturacionId: '' })
+
+/**
+ * Formas de facturación para el filtro. Se piden una sola vez al entrar: es un catálogo chico
+ * y estable, y pedirlo en cada recarga del listado sería tráfico por nada.
+ */
+const formas = ref<Array<{ id: number; nombre: string }>>([])
+async function cargarFormas(): Promise<void> {
+  if (formas.value.length) return
+  const { data } = await api.get('/formas-facturacion', { params: { limit: 200, activo: 'true' } })
+    .catch(() => ({ data: { success: false } }))
+  if (!data.success) return
+  formas.value = data.data.map((f: { id: number; nombre: string }) => ({ id: f.id, nombre: f.nombre }))
+}
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 
 const seleccion = ref<Set<number>>(new Set())
@@ -131,7 +145,7 @@ function exportarCsv(): void {
 }
 
 let loadedOnce = false
-onMounted(() => { loadedOnce = true; void load() })
+onMounted(() => { loadedOnce = true; void load(); void cargarFormas() })
 onIonViewWillEnter(() => { if (loadedOnce) void load() })
 </script>
 
@@ -205,6 +219,11 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
             <option value="">Moneda: todas</option>
             <option value="ARS">Pesos</option>
             <option value="USD">Dólares</option>
+          </select>
+          <!-- El backend ya filtraba por `formaFacturacionId`: solo faltaba el control. -->
+          <select v-model="filtros.formaFacturacionId" class="ds-input h-9 w-52" @change="onFiltro">
+            <option value="">Forma: todas</option>
+            <option v-for="f in formas" :key="f.id" :value="f.id">{{ f.nombre }}</option>
           </select>
           <select v-model="filtros.activo" class="ds-input h-9 w-36" @change="onFiltro">
             <option value="">Todos</option>
@@ -307,7 +326,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
                     <div class="w-10 h-10 rounded-lg bg-surface-2 grid place-items-center mb-3">
                       <IonIcon :icon="walletOutline" class="text-[18px] text-ink-faint" />
                     </div>
-                    <p class="text-sm font-medium text-ink">{{ filtros.search || filtros.estado || filtros.moneda ? 'Sin resultados con estos filtros' : 'Todavía no hay abonos' }}</p>
+                    <p class="text-sm font-medium text-ink">{{ filtros.search || filtros.estado || filtros.moneda || filtros.formaFacturacionId ? 'Sin resultados con estos filtros' : 'Todavía no hay abonos' }}</p>
                     <p class="text-xs text-ink-faint mt-1">Creá el primero con «Nuevo abono».</p>
                   </div>
                 </td>

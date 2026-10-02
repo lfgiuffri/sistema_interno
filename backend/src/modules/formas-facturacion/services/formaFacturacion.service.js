@@ -46,11 +46,17 @@ const checkNombreUnico = async (models, nombre, excludeId = null) => {
     }
 };
 
+/** Totales en cero: toda forma los devuelve, tenga abonos o no. */
+const VACIO = { abonosCount: 0, abonosActivos: 0, totalArs: 0, totalUsd: 0, totalEnPesos: 0 };
+
 /**
  * Lista formas de facturación con paginación, búsqueda y filtro de activo.
  *
- * Cada fila suma `abonosCount` (todos sus abonos), `abonosActivos` y los totales `totalArs` /
- * `totalUsd` de los ACTIVOS, cada moneda en la suya. Todo sale de UNA consulta agrupada.
+ * Cada fila suma `abonosCount` (todos sus abonos), `abonosActivos` y tres totales de los
+ * ACTIVOS: `totalArs` y `totalUsd` (cada moneda en la suya, sin convertir) y `totalEnPesos`
+ * (todo junto, pasando los dólares por la cotización de hoy). La respuesta incluye además la
+ * `cotizacion` usada, para poder mostrarla: un total convertido sin decir a qué cambio no se
+ * puede verificar.
  * @param {object} models - Modelos de la app.
  * @param {object} [query] - { page, limit, search, activo }.
  * @returns {Promise<{rows: object[], count: number, page: number, limit: number}>}
@@ -85,31 +91,39 @@ export const listFormas = async (models, query = {}) => {
     // que se devuelve además `abonosActivos` para que los números se puedan reconciliar: sin
     // eso, una forma con 12 abonos y un total que cubre 9 parece un error.
     const porForma = {};
+    let cotizacion = 0;
     if (Abono && rows.length) {
-        const { fn, col } = Abono.sequelize;
-        const filas = await Abono.findAll({
-            attributes: [
-                'formaFacturacionId', 'moneda', 'activo',
-                [fn('COUNT', col('id')), 'n'],
-                [fn('SUM', col('precio')), 'total'],
-            ],
+        // Import DIFERIDO del service de abonos (y guard por `models.Abono` arriba): este
+        // módulo no depende de aquel —de hecho es al revés, `abonos` lo declara en su
+        // `dependsOn`—, así que un import estático armaría un ciclo. Mismo patrón que usa
+        // tareas con incidencias.
+        const { precioEnPesos, getConfigAbonos } = await import('../../abonos/services/abono.service.js');
+        const config = await getConfigAbonos(models);
+        cotizacion = config.cotizacion;
+
+        // Se traen las filas y se agregan acá en vez de un GROUP BY con SUM, porque el total
+        // general tiene que redondear CADA abono al convertirlo de USD (`REDONDEO_ABONOS`) y
+        // recién después sumar — que es lo que hace `resumenAbonos` para el tile «total
+        // mensual» del listado. Sumando primero y redondeando al final, la misma empresa daría
+        // dos números distintos en dos pantallas. Son decenas de filas: no se nota.
+        const abonos = await Abono.findAll({
+            attributes: ['formaFacturacionId', 'moneda', 'precio', 'activo'],
             where: { formaFacturacionId: { [Op.in]: rows.map(f => f.id) } },
-            group: ['formaFacturacionId', 'moneda', 'activo'],
             raw: true
         });
-        for (const r of filas) {
-            const acc = porForma[r.formaFacturacionId] ??= { abonosCount: 0, abonosActivos: 0, totalArs: 0, totalUsd: 0 };
-            acc.abonosCount += Number(r.n);
-            if (!r.activo) continue;
-            acc.abonosActivos += Number(r.n);
-            if (r.moneda === 'USD') acc.totalUsd += Number(r.total);
-            else acc.totalArs += Number(r.total);
+        for (const a of abonos) {
+            const acc = porForma[a.formaFacturacionId] ??= { ...VACIO };
+            acc.abonosCount += 1;
+            if (!a.activo) continue;
+            acc.abonosActivos += 1;
+            if (a.moneda === 'USD') acc.totalUsd += Number(a.precio);
+            else acc.totalArs += Number(a.precio);
+            acc.totalEnPesos += precioEnPesos(a, config.cotizacion, config.redondeo);
         }
     }
 
-    const vacio = { abonosCount: 0, abonosActivos: 0, totalArs: 0, totalUsd: 0 };
-    const shaped = rows.map(f => ({ ...f.toJSON(), ...vacio, ...(porForma[f.id] ?? {}) }));
-    return { rows: shaped, count, page, limit };
+    const shaped = rows.map(f => ({ ...f.toJSON(), ...VACIO, ...(porForma[f.id] ?? {}) }));
+    return { rows: shaped, count, page, limit, cotizacion };
 };
 
 /**

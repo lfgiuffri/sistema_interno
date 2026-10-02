@@ -29,8 +29,10 @@ const bizCatch = async (e, req, res) => {
  */
 export const list = async (req, res) => {
     try {
-        const { rows, count, page, limit } = await formaService.listFormas(req.models, req.query);
-        return await responseManager(200, rows, req, res, false, { meta: Paginate(count, limit, page) });
+        const { rows, count, page, limit, cotizacion } = await formaService.listFormas(req.models, req.query);
+        // La cotización viaja en `meta`: el total general convierte los dólares con ella y un
+        // número convertido sin decir a qué cambio no se puede verificar.
+        return await responseManager(200, rows, req, res, false, { meta: { ...Paginate(count, limit, page), cotizacion } });
     } catch (e) { return bizCatch(e, req, res); }
 };
 

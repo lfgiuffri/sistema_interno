@@ -152,9 +152,10 @@ test.describe('M10: Catálogos (áreas/clientes/servicios/formas)', () => {
     // El PAUSADO no suma: no se factura, y meterlo inflaría el total.
     await abono('ARS', 999999, false);
 
-    const { data } = await expectSuccess(
+    const body = await expectSuccess(
       await adminApi.get(`${APP_ENDPOINTS.formasFacturacion}?search=${encodeURIComponent(forma.nombre)}`), 200);
-    const fila = data.find((f: { id: number }) => f.id === forma.id);
+    const fila = body.data.find((f: { id: number }) => f.id === forma.id);
+    expect(body.meta.cotizacion).toBeGreaterThan(0);
 
     // Cada moneda en la suya: sumarlas juntas daría un número que no es plata de ninguna parte.
     expect(fila.totalArs).toBe(35000);
@@ -162,5 +163,13 @@ test.describe('M10: Catálogos (áreas/clientes/servicios/formas)', () => {
     // Y los conteos permiten reconciliar: 4 abonos pero el total cubre 3.
     expect(fila.abonosCount).toBe(4);
     expect(fila.abonosActivos).toBe(3);
+
+    // El total GENERAL junta las dos monedas al cambio de hoy. La cotización viaja en `meta`:
+    // un número convertido sin decir a qué cambio no se puede verificar.
+    const cotizacion = Number(
+      (await expectSuccess(await adminApi.get(APP_ENDPOINTS.appConfig), 200)).data
+        .find((c: { name: string }) => c.name === 'COTIZACION_DOLAR').value,
+    );
+    expect(fila.totalEnPesos).toBe(35000 + 300 * cotizacion);
   });
 });

@@ -353,6 +353,24 @@ test.describe('M11: Abonos', () => {
     }
   });
 
+  test('M11.21 - el listado filtra por forma de facturación', async ({ adminApi }) => {
+    const forma = await expectSuccess(await adminApi.post(APP_ENDPOINTS.formasFacturacion, {
+      data: makeNombre('Forma Filtro'),
+    }), 201);
+    cleanup.push(`formas-facturacion/${forma.data.id}`);
+
+    const conForma = await createAbono(adminApi, { formaFacturacionId: forma.data.id });
+    const sinForma = await createAbono(adminApi);
+
+    const { data } = await expectSuccess(
+      await adminApi.get(`${APP_ENDPOINTS.abonos}?formaFacturacionId=${forma.data.id}`), 200);
+    const ids = data.map((a: { id: number }) => a.id);
+    expect(ids).toContain(conForma.id);
+    expect(ids).not.toContain(sinForma.id);
+    // Y el filtro recorta de verdad: no devuelve todo el universo.
+    expect(data.every((a: { formaFacturacionId: number }) => a.formaFacturacionId === forma.data.id)).toBe(true);
+  });
+
   test('M11.10 - capability gating: el fixture no ve abonos → 403', async ({ authedApi }) => {
     const res = await authedApi.get(APP_ENDPOINTS.abonos);
     const body = await expectError(res, 403);

@@ -236,7 +236,17 @@ Paginación en `meta` (helper `Paginate`). Validación: express-validator → 42
   ver); el total convertido se saca de esos dos, al revés no. Los totales suman solo los
   abonos **ACTIVOS** (uno pausado no se factura), y por eso va también `abonosActivos`: sin
   ese número, una forma con 12 abonos y un total que cubre 11 parece un error de cálculo.
-  Todo sale de UNA consulta agrupada por `formaFacturacionId, moneda, activo`.
+  Y un tercero, **`totalEnPesos`**, que SÍ junta las dos al cambio de hoy (la `cotizacion` usada
+  viaja en `meta`: un número convertido sin decir a qué cambio no se puede verificar).
+  ⚠️ Ese total **redondea CADA abono al convertirlo** (`REDONDEO_ABONOS`) y recién después
+  suma, igual que `resumenAbonos` para el tile «total mensual» del listado: sumando primero y
+  redondeando al final, la misma empresa daría dos números distintos en dos pantallas. Para
+  no copiar esa regla, el service de formas hace un **import diferido** de `precioEnPesos` del
+  módulo abonos (estático sería un ciclo: `abonos` ya declara `formas-facturacion` en su
+  `dependsOn`), con el guard por `models.Abono` que el módulo ya tenía.
+  El **listado de abonos filtra por forma** (`?formaFacturacionId=`): el backend ya lo
+  soportaba, faltaba el selector. ⚠️ `params()` del store de abonos es una **lista blanca**:
+  un filtro que no esté ahí se descarta en silencio y la pantalla parece ignorarlo.
   ⚠️ **`CatalogoPage` lleva `overflow-x-hidden` en su contenedor** desde ese mismo cambio: el
   ancho mínimo de la tabla (encabezados `whitespace-nowrap`) se filtraba hacia arriba y a
   390px **la página entera** se corría de costado —265px en formas, pero pasaba en TODOS los

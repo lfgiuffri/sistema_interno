@@ -102,7 +102,7 @@ export const buildOpenApiSpec = () => ({
             post: op('Crear webhook saliente', 'Webhooks', auth)
         },
         '/abonos': {
-            get: op('Listar abonos — SIN paginar: devuelve todos los del filtro para poder facturar/actualizar en masa (page y limit se ignoran). estado=vencido incluye el que vence HOY; proximo son 1..30 días', 'Abonos', auth),
+            get: op('Listar abonos — SIN paginar: devuelve todos los del filtro para poder facturar/actualizar en masa (page y limit se ignoran). estado=vencido incluye el que vence HOY; proximo son 1..30 días. Filtros: clienteId, formaFacturacionId, moneda, estado, activo, search, orden/dir', 'Abonos', auth),
             post: op('Crear abono (nace inactivo salvo indicación)', 'Abonos', auth)
         },
         '/abonos/cambios': { get: op('Diferencias entre lo FACTURADO y lo actual, para cargar en el ERP (abonos:read): `nuevos` (activos nunca facturados), `modificados` (difieren del snapshot congelado de su última facturación vigente) y `bajas` (facturados pero hoy inactivos o eliminados). Compara contra el snapshot, no contra una bitácora: da la diferencia NETA. El criterio es el monto EN PESOS, así que un abono en USD aparece si se movió la cotización — `cambios` dice por qué. Cada fila trae `marcado`/`marcadoAt` (ver /abonos/cambios/{id}/marcar)', 'Abonos', auth) },
@@ -375,7 +375,7 @@ export const buildOpenApiSpec = () => ({
             [`/${key}`, {
                 get: op(`Listar ${key} (paginado, búsqueda, filtro activo)${
                     key === 'formas-facturacion'
-                        ? '. Cada fila suma abonosCount (todos), abonosActivos y los totales totalArs/totalUsd de los ACTIVOS, cada moneda en la suya (no se convierten: un abono es ARS o USD)'
+                        ? '. Cada fila suma abonosCount (todos), abonosActivos y tres totales de los ACTIVOS: totalArs y totalUsd (cada moneda en la suya) y totalEnPesos (las dos juntas, redondeando cada abono al convertirlo como hace el resumen de abonos). La cotizacion usada va en meta'
                         : ''}`, 'Catálogos', auth),
                 post: op(`Crear en ${key} (409 EXISTE_ELIMINADO si hay un homónimo eliminado)`, 'Catálogos', auth)
             }],

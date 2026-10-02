@@ -37,6 +37,7 @@ export interface ResumenAbonos {
 
 export interface AbonoFiltros {
   clienteId?: number
+  formaFacturacionId?: number | string
   moneda?: string
   estado?: string
   activo?: string
@@ -93,6 +94,9 @@ export const useAbonosStore = defineStore('abonos', () => {
   // seleccionar TODO lo que matchea el filtro, no la página visible).
   const params = (filtros: AbonoFiltros) => ({
     clienteId: filtros.clienteId || undefined,
+    // ⚠️ Esta lista es BLANCA: un filtro que no esté acá se descarta en silencio y la pantalla
+    // parece ignorarlo (pasó al sumar el de forma de facturación).
+    formaFacturacionId: filtros.formaFacturacionId || undefined,
     moneda: filtros.moneda || undefined,
     estado: filtros.estado || undefined,
     activo: filtros.activo || undefined,
