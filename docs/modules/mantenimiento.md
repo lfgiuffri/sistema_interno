@@ -442,6 +442,11 @@ ahí adentro, y eso no tiene por qué ser el mismo que aprieta el botón.
   nadie se acuerda de haberlo pedido, es peor que uno que no corrió.
 - **El comando se COPIA al trabajo al lanzarlo**: si alguien lo edita mientras el agente lo está
   por tomar, corre el que se aprobó.
+- **Los `omitido` NO se listan en la pantalla.** Son las carpetas de la ruta recorrida sin un
+  `config_site.php` legible, y en `/home` casi siempre son cosas que no son sitios de clientes
+  (scripts, usuarios del sistema): mezclarlas con las bases actualizadas llenaba la tabla de
+  filas que no dicen nada. Se siguen GUARDANDO —que una carpeta no tenga config es un dato— y
+  la pantalla muestra solo el conteo al pie.
 - **Historial base por base.** El script PHP anotaba la query en un `.txt` y nada más: si fallaba
   en el sitio 12 de 30, el registro decía igual que se había corrido. Ahora cada base deja su
   fila con filas afectadas o el error textual.

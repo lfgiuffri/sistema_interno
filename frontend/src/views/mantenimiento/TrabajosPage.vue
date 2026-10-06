@@ -100,6 +100,24 @@ async function cancelar(t: Trabajo): Promise<void> {
   await load()
 }
 
+/**
+ * Resultados que se listan: los que tocaron una base de verdad.
+ *
+ * Quedan afuera los `omitido`, que son las carpetas de la ruta recorrida sin un
+ * `config_site.php` legible. En `/home` casi siempre son cosas que no son sitios de clientes
+ * —scripts, usuarios del sistema— así que mezclarlas con las bases actualizadas llenaba la
+ * tabla de filas que no dicen nada. El conteo se sigue mostrando aparte: que una carpeta no
+ * tenga config es un dato, pero no es un renglón de la ejecución.
+ * @param t - Trabajo.
+ * @returns Resultados sobre bases reales.
+ */
+const resultadosReales = (t: Trabajo) =>
+  (detalles.value[t.id]?.resultados ?? []).filter(r => r.estado !== 'omitido')
+
+/** Cuántas carpetas se saltearon por no tener config legible. */
+const omitidos = (t: Trabajo) =>
+  (detalles.value[t.id]?.resultados ?? []).filter(r => r.estado === 'omitido').length
+
 const puedeAprobar = (t: Trabajo) =>
   t.tipo === 'sql' ? meStore.can('servidores:bd-ejecutar') : meStore.can('servidores:deploy-ejecutar')
 </script>
@@ -182,13 +200,13 @@ const puedeAprobar = (t: Trabajo) =>
               <pre v-if="detalles[t.id]?.comando" class="text-2xs font-mono bg-surface-2 rounded p-2 overflow-x-auto whitespace-pre-wrap break-words">{{ detalles[t.id].comando }}</pre>
 
               <!-- Resultado base por base: lo que el script viejo no guardaba. -->
-              <div v-if="detalles[t.id]?.resultados?.length" class="mt-3 overflow-x-auto">
+              <div v-if="resultadosReales(t).length" class="mt-3 overflow-x-auto">
                 <table class="ds-table min-w-[560px]">
                   <thead>
                     <tr><th>Base</th><th>Sitio</th><th class="text-right">Filas</th><th>Resultado</th></tr>
                   </thead>
                   <tbody>
-                    <tr v-for="r in detalles[t.id].resultados" :key="r.id">
+                    <tr v-for="r in resultadosReales(t)" :key="r.id">
                       <td class="text-ink">
                         {{ r.base ?? '—' }}
                         <span v-if="r.esCanario" class="ds-badge-neutral ml-1">prueba</span>
@@ -205,6 +223,10 @@ const puedeAprobar = (t: Trabajo) =>
                   </tbody>
                 </table>
               </div>
+
+              <p v-if="omitidos(t)" class="mt-2 text-2xs text-ink-faint">
+                {{ omitidos(t) }} carpeta(s) de la ruta no tienen una base configurada y no se tocaron.
+              </p>
 
               <div v-if="detalles[t.id]?.salida" class="mt-3">
                 <p class="text-2xs font-medium uppercase tracking-wide text-ink-faint mb-1">Salida</p>
