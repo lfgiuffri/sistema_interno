@@ -4,7 +4,9 @@ import * as controller from '../controllers/mantenimiento.controller.js';
 import {
     validateId, validateCreate, validateUpdate,
     validateCreateSitio, validateUpdateSitio,
-    validateCreateVista, validateUpdateVista, validateOrdenVistas, validateVelocidad
+    validateCreateVista, validateUpdateVista, validateOrdenVistas, validateVelocidad,
+    validateConfigBd, validateConfigDeploy, validateAnalizarSql, validateCrearTrabajos,
+    validateListTrabajos
 } from '../validators/mantenimiento.validator.js';
 
 const router = Router();
@@ -16,6 +18,30 @@ router.put('/servidores/:id', requireCapability('servidores:update'), validateUp
 router.post('/servidores/:id/token', requireCapability('servidores:update'), validateId, controller.regenerarToken);
 router.patch('/servidores/:id/active', requireCapability('servidores:toggle'), validateId, controller.toggle);
 router.delete('/servidores/:id', requireCapability('servidores:delete'), validateId, controller.remove);
+
+/* ── FullGlass: configuración y ejecución ──────────────────────────────────────────────
+ *
+ * CUATRO capabilities, dos por función, porque configurar y ejecutar son riesgos distintos:
+ * el comando de deploy corre COMO ROOT en el VPS, así que quien puede editarlo puede hacer
+ * cualquier cosa ahí adentro — no tiene por qué ser el mismo que aprieta el botón.
+ *
+ * Los campos sensibles viven en estos endpoints y NO en el PUT del servidor: como `matchedData`
+ * whitelistea, alguien con `servidores:update` no puede setear un comando ni la ruta a recorrer
+ * aunque los mande en el body.
+ */
+router.get('/servidores/:id/sitios', requireCapability('servidores:bd-ejecutar'), validateId, controller.listSitiosServidor);
+router.put('/servidores/:id/config-bd', requireCapability('servidores:bd-config'), validateConfigBd, controller.configBd);
+router.put('/servidores/:id/config-deploy', requireCapability('servidores:deploy-config'), validateConfigDeploy, controller.configDeploy);
+
+// Analizar es PURO (no crea nada) pero muestra el SQL que se va a correr: pide ejecutar.
+router.post('/trabajos/analizar', requireCapability('servidores:bd-ejecutar'), validateAnalizarSql, controller.analizarSql);
+// El lanzamiento valida la capability según el tipo DENTRO del controller: un mismo endpoint
+// sirve SQL y deploy, y cada uno pide la suya.
+router.post('/trabajos', validateCrearTrabajos, controller.crearTrabajos);
+router.get('/trabajos', validateListTrabajos, controller.listTrabajos);
+router.get('/trabajos/:id', validateId, controller.getTrabajo);
+router.post('/trabajos/:id/aprobar', validateId, controller.aprobarTrabajo);
+router.post('/trabajos/:id/cancelar', validateId, controller.cancelarTrabajo);
 
 // Sitios web. Chequear y consultar el dominio a demanda piden `update`: escriben estado.
 router.get('/sitios', requireCapability('sitios:read'), controller.listSitios);

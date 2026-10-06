@@ -22,13 +22,20 @@ export default {
     basePath: '/mantenimiento',
     models: [
         'Servidor', 'ServidorMetrica', 'ServidorMetricaDia', 'ServidorIncidente',
-        'SitioWeb', 'SitioVista', 'SitioChequeo', 'SitioIncidente', 'SitioVelocidadDia'
+        'SitioWeb', 'SitioVista', 'SitioChequeo', 'SitioIncidente', 'SitioVelocidadDia',
+        'ServidorTrabajo', 'ServidorTrabajoResultado', 'ServidorSitio'
     ],
     capabilities: [
         'servidores:read', 'servidores:create', 'servidores:update',
         'servidores:toggle', 'servidores:delete',
         'sitios:read', 'sitios:create', 'sitios:update',
-        'sitios:toggle', 'sitios:delete'
+        'sitios:toggle', 'sitios:delete',
+        // FullGlass. CONFIGURAR y EJECUTAR son capabilities distintas, y están separadas entre
+        // base de datos y deploy: el comando de deploy corre como root en el VPS, así que
+        // editarlo es tan sensible como tener acceso al servidor — no es lo mismo que apretar
+        // el botón. Ninguna se otorga sola: hay que repartirlas a mano desde Roles.
+        'servidores:bd-config', 'servidores:bd-ejecutar',
+        'servidores:deploy-config', 'servidores:deploy-ejecutar'
     ],
     dependsOn: [],
     router

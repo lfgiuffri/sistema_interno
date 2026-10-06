@@ -47,7 +47,24 @@ export const defineServidorModel = (db) => {
         ultimoContactoAt: { type: DataTypes.DATE, allowNull: true },
         estado: { type: DataTypes.ENUM('online', 'offline', 'desconocido'), allowNull: false, defaultValue: 'desconocido' },
         so: { type: DataTypes.STRING(120), allowNull: true },
-        observaciones: { type: DataTypes.TEXT, allowNull: true }
+        observaciones: { type: DataTypes.TEXT, allowNull: true },
+
+        // ── FullGlass: actualización de bases y deploy ────────────────────────────────────
+        // No todos los servidores alojan FullGlass. Este flag es el que habilita las dos
+        // funciones nuevas: sin él, el servidor no muestra ni acepta nada de esto, y la API
+        // rechaza los trabajos. Es el primer filtro contra mandarle un deploy al VPS equivocado.
+        tieneFullglass: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+        /**
+         * Carpeta que el agente recorre buscando sitios (una subcarpeta por cliente, cada una
+         * con `configs/config_site.php`). Configurable por servidor porque no todos tienen el
+         * mismo layout; el default es el del script PHP que esto reemplaza.
+         */
+        rutaSitios: { type: DataTypes.STRING(255), allowNull: false, defaultValue: '/home' },
+        // Los comandos corren COMO ROOT en el VPS. Quien los edita puede hacer cualquier cosa
+        // ahí adentro: por eso editarlos pide `servidores:deploy-config`, que es una capability
+        // distinta de la que habilita apretar el botón.
+        comandoDeployProd: { type: DataTypes.TEXT, allowNull: true },
+        comandoDeployDev: { type: DataTypes.TEXT, allowNull: true }
     }, {
         tableName: 'servidores',
         timestamps: true,

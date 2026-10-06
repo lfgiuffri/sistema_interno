@@ -335,6 +335,24 @@ export const buildOpenApiSpec = () => ({
             put: op('Editar servidor (umbrales propios y qué alertas crea: alertaOffline/Cpu/Ram/Disco)', 'Mantenimiento', auth),
             delete: op('Eliminar servidor (baja lógica; borra su historial)', 'Mantenimiento', auth)
         },
+        // ── FullGlass: SQL masivo y deploy ──
+        '/mantenimiento/servidores/{id}/config-bd': { put: op('Ruta que recorre el agente buscando sitios (servidores:bd-config). Va en endpoint PROPIO y no en el PUT del servidor: matchedData whitelistea, así que servidores:update no alcanza', 'Mantenimiento', auth) },
+        '/mantenimiento/servidores/{id}/config-deploy': { put: op('Comandos de deploy de producción y desarrollo (servidores:deploy-config). Corren COMO ROOT en el VPS: por eso su capability es distinta de la de ejecutarlos. null o vacío los desconfigura', 'Mantenimiento', auth) },
+        '/mantenimiento/servidores/{id}/sitios': { get: op('Inventario de sitios que reportó el agente (servidores:bd-ejecutar): ruta y nombre de base, NUNCA credenciales. Alimenta la vista previa antes de lanzar', 'Mantenimiento', auth) },
+        '/mantenimiento/trabajos/analizar': { post: op('Qué tiene de peligroso un SQL (DROP, TRUNCATE, UPDATE sin WHERE) ANTES de lanzarlo. Puro: no crea nada', 'Mantenimiento', auth) },
+        '/mantenimiento/trabajos': {
+            get: op('Historial de ejecuciones (filtros: servidorId, tipo, estado)', 'Mantenimiento', auth),
+            post: op('Lanza un lote: UN trabajo por servidor elegido. tipo=sql pide servidores:bd-ejecutar y tipo=deploy servidores:deploy-ejecutar. El SQL con sentencias peligrosas exige confirmacion=CONFIRMO. Un servidor sin contacto NO se encola: su trabajo nace en error', 'Mantenimiento', auth)
+        },
+        '/mantenimiento/trabajos/{id}': { get: op('Un trabajo con el detalle BASE POR BASE (filas afectadas o el error textual)', 'Mantenimiento', auth) },
+        '/mantenimiento/trabajos/{id}/aprobar': { post: op('Aplicar el SQL al resto de las bases después de un canario OK. Sin esto el trabajo NO sigue', 'Mantenimiento', auth) },
+        '/mantenimiento/trabajos/{id}/cancelar': { post: op('Cancela lo que el agente no tomó; pasados 45 min sin reportar, DESTRABA un trabajo huérfano', 'Mantenimiento', auth) },
+        // Lado del AGENTE (token propio, sin sesión).
+        '/agente/config': { get: op('Config que el agente necesita de SU servidor (ruta a recorrer)', 'Mantenimiento', {}) },
+        '/agente/trabajos': { get: op('Trabajos pendientes de ESTE servidor, con la fase (canario / resto / unico)', 'Mantenimiento', {}) },
+        '/agente/trabajos/{id}/tomar': { post: op('El agente avisa que empezó', 'Mantenimiento', {}) },
+        '/agente/trabajos/{id}/resultado': { post: op('Cómo terminó, con el resultado por base', 'Mantenimiento', {}) },
+        '/agente/sitios': { post: op('Inventario de sitios del servidor (sin credenciales)', 'Mantenimiento', {}) },
         '/mantenimiento/servidores/{id}/token': { post: op('Regenerar el token del agente (invalida el anterior)', 'Mantenimiento', auth) },
         '/mantenimiento/servidores/{id}/active': { patch: op('Activar/desactivar el monitoreo del servidor', 'Mantenimiento', auth) },
         '/mantenimiento/sitios': {

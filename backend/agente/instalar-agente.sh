@@ -9,6 +9,10 @@
 # Deja: el script en /usr/local/bin, la config en /etc (solo root), y un timer de systemd
 # que lo corre cada minuto. Es idempotente: correrlo de nuevo actualiza y reinicia.
 #
+# Con FULLGLASS=1 instala ADEMÁS el worker de FullGlass (SQL masivo + deploy), con su propia
+# unidad de systemd:
+#   ... | API_URL=... AGENT_TOKEN=... FULLGLASS=1 bash
+#
 set -euo pipefail
 
 : "${API_URL:?Falta API_URL (ej. https://sys.positivemedia.com.ar/api)}"
@@ -66,8 +70,58 @@ Unit=sistema-interno-agente.service
 WantedBy=timers.target
 EOF
 
+# ── 4. Worker de FullGlass (opcional) ────────────────────────────────────────────────────
+#
+# Va en una unidad APARTE y no dentro del agente de métricas a propósito. El agente corre con
+# ProtectHome=true y el filesystem en solo lectura, y tiene que seguir así: es lo que corre
+# cada minuto en todos los servidores. El worker necesita lo contrario —leer /home para
+# encontrar los config_site.php y escribir para hacer un deploy—, así que esos permisos se le
+# dan SOLO a él. Separarlos acota el daño: una falla del worker no toca al agente, y el agente
+# sigue sin poder leer nada de /home.
+if [ "${FULLGLASS:-0}" = "1" ]; then
+    command -v php >/dev/null || { echo "Falta php (lo necesita el worker de FullGlass)"; exit 1; }
+
+    WORKER=/usr/local/bin/sistema-interno-fullglass.php
+    curl -fsSL "${API_URL%/}/agente/fullglass-worker.php" -o "$WORKER"
+    chmod 700 "$WORKER"   # solo root: ejecuta SQL y comandos de deploy
+
+    cat > /etc/systemd/system/sistema-interno-fullglass.service <<EOF
+[Unit]
+Description=Worker de FullGlass del Sistema Interno (SQL masivo y deploy)
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/env php $WORKER
+# Sin ProtectHome ni ProtectSystem=strict: este worker SÍ necesita leer /home (los
+# config_site.php de cada cliente) y escribir (el deploy). Es la contrapartida consciente de
+# habilitar ejecución remota; por eso vive separado del agente de métricas, que no los tiene.
+NoNewPrivileges=true
+# Un deploy puede tardar: el timeout duro lo pone el propio worker (30 min).
+TimeoutStartSec=2100
+EOF
+
+    cat > /etc/systemd/system/sistema-interno-fullglass.timer <<EOF
+[Unit]
+Description=Consulta de trabajos de FullGlass (cada 10 segundos)
+
+[Timer]
+OnBootSec=30
+# Cada 10s: lanzar algo desde la app se tiene que sentir inmediato. Cuando no hay trabajo es
+# una sola petición HTTPS que termina al instante, así que el costo es despreciable.
+OnUnitActiveSec=10
+AccuracySec=1s
+Unit=sistema-interno-fullglass.service
+
+[Install]
+WantedBy=timers.target
+EOF
+    echo "   ✓ worker de FullGlass instalado"
+fi
+
 systemctl daemon-reload
 systemctl enable --now sistema-interno-agente.timer
+[ "${FULLGLASS:-0}" = "1" ] && systemctl enable --now sistema-interno-fullglass.timer
 
 # 4. Prueba inmediata: si el token o la URL están mal, se ve acá y no dentro de una hora.
 echo "── Probando el primer reporte…"

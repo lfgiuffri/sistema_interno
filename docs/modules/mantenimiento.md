@@ -348,3 +348,94 @@ El panel **se refresca solo cada minuto** (`composables/useAutoRefresh.ts`), pen
 - deja **pausar y reanudar** desde ese mismo indicador, y recuerda la preferencia en `localStorage`.
 
 El gráfico reusa `GraficoLinea.vue`, que ahora acepta `labels` propias y `formato="porcentaje"` (antes tenía los meses y el eje en pesos fijos, porque nació para facturación).
+
+## FullGlass: actualización de bases y deploy (2026-10-06)
+
+Dos funciones que antes se hacían entrando por SSH a cada VPS: correr SQL sobre **todas las
+bases de los clientes** de un servidor, y disparar el **deploy** de FullGlass. Solo aplica a
+los servidores marcados con `tieneFullglass`.
+
+### Por qué el agente PREGUNTA en vez de que la app entre
+
+El módulo vive de una propiedad: *la app no guarda credenciales de acceso a los servidores ni
+abre puertos en ellos*. Habilitar ejecución remota por SSH la habría roto — el servidor de la
+app pasaría a ser la llave de todos los VPS. En cambio el agente hace **pull**: pregunta si hay
+trabajo, lo ejecuta él, y reporta. Siguen siendo solo peticiones HTTPS salientes.
+
+El worker (`backend/agente/fullglass-worker.php`) está en **PHP y no en bash**: estos
+servidores tienen PHP porque es lo que corre FullGlass, así que lee `config_site.php` con un
+`include` —igual que el script `update_databases.php` que reemplaza— y habla con MySQL por
+`mysqli`. Desde bash habría que parsear PHP y JSON a mano.
+
+Se instala aparte, con `FULLGLASS=1`:
+
+```bash
+curl -fsSL https://sys.positivemedia.com.ar/api/agente/instalar-agente.sh | \
+  API_URL=https://sys.positivemedia.com.ar/api AGENT_TOKEN=<token> FULLGLASS=1 bash
+```
+
+⚠️ **Su unidad de systemd tiene menos blindaje que la del agente de métricas, a propósito.** El
+agente corre con `ProtectHome=true` y el filesystem en solo lectura y tiene que seguir así: es
+lo que corre cada minuto en todos los servidores. El worker necesita leer `/home` y escribir
+(el deploy), así que esos permisos se le dan **solo a él**. Separarlos acota el daño.
+
+Timer cada **10 segundos**: lanzar algo desde la app se tiene que sentir inmediato, y cuando no
+hay trabajo es una sola petición que termina al instante.
+
+### El canario: por qué el SQL no se aplica a todo de una
+
+`ALTER TABLE` **no se puede deshacer** — MySQL hace commit implícito en DDL—, así que «lo
+envolvemos en una transacción» no existe para lo que estas corridas hacen. La única red real es
+romper una base en vez de doscientas:
+
+1. Se lanza → el agente corre el SQL en **UNA** base y reporta.
+2. El trabajo queda en `espera_ok`. **No sigue solo.**
+3. Una persona aprueba desde *Ejecuciones* → el agente toma el resto.
+
+Es **una base por servidor**, no una global: que un servidor tenga el esquema viejo es
+exactamente lo que rompe estas corridas, y con un canario global no se vería hasta estar
+corriendo ahí. Si el canario falla, el trabajo queda en `error` y el resto no se toca.
+
+### Sentencias peligrosas
+
+`DROP DATABASE/TABLE/COLUMN`, `TRUNCATE`, `UPDATE`/`DELETE` sin `WHERE` y `GRANT`/`REVOKE` se
+detectan y exigen escribir **CONFIRMO**. No se bloquean: el día que haga falta un DROP de
+verdad, bloquearlo obligaría a entrar al servidor a mano, que es lo que queremos dejar de hacer.
+No es una defensa de seguridad —quien escribe el SQL ya tiene permiso para romper cosas—: es un
+freno contra el copiar/pegar equivocado y el dedo rápido.
+
+### Permisos
+
+Cuatro capabilities, **configurar y ejecutar separados**, y separados entre base y deploy:
+
+| | configura | ejecuta |
+|---|---|---|
+| Bases | `servidores:bd-config` | `servidores:bd-ejecutar` |
+| Deploy | `servidores:deploy-config` | `servidores:deploy-ejecutar` |
+
+El comando de deploy **corre como root** en el VPS: quien lo edita puede hacer cualquier cosa
+ahí adentro, y eso no tiene por qué ser el mismo que aprieta el botón.
+
+⚠️ Los campos sensibles viven en endpoints propios (`PUT /servidores/:id/config-bd` y
+`/config-deploy`) y **no** en el PUT del servidor. Como `matchedData` whitelistea, alguien con
+`servidores:update` no puede setear un comando aunque lo mande en el body.
+
+### Detalles que importan
+
+- **Sin contacto = error, no cola.** Un deploy que se dispara solo tres días después, cuando ya
+  nadie se acuerda de haberlo pedido, es peor que uno que no corrió.
+- **El comando se COPIA al trabajo al lanzarlo**: si alguien lo edita mientras el agente lo está
+  por tomar, corre el que se aprobó.
+- **Historial base por base.** El script PHP anotaba la query en un `.txt` y nada más: si fallaba
+  en el sitio 12 de 30, el registro decía igual que se había corrido. Ahora cada base deja su
+  fila con filas afectadas o el error textual.
+- **Las credenciales de los clientes nunca salen del servidor.** El agente lee
+  `config_site.php`, conecta, y reporta solo sitio, base y resultado. El inventario
+  (`servidor_sitios`) que alimenta la vista previa tampoco las tiene.
+- **Huérfanos.** Si el agente muere a mitad, el trabajo quedaría en `canario`/`corriendo` para
+  siempre. El worker reporta igual ante un fatal (`register_shutdown_function`), y pasados
+  **45 minutos** sin reportar se puede destrabar a mano. El registro dice que lo cortó una
+  persona y que **puede haber quedado aplicado** en el servidor: afirmar que «falló» sería
+  inventar lo que pasó allá.
+- **Dependencia**: el worker necesita `php` con `mysqli`. Si falta, el trabajo se marca con ese
+  error en vez de quedar colgado.

@@ -74,6 +74,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'mantenimiento/servidores', name: 'Servidores', component: () => import('@/views/mantenimiento/ServidoresPage.vue'), meta: { module: 'servidores' } },
       { path: 'mantenimiento/servidores/:id', name: 'ServidorFicha', component: () => import('@/views/mantenimiento/ServidorFichaPage.vue'), meta: { module: 'servidores' } },
       { path: 'mantenimiento/sitios', name: 'Sitios', component: () => import('@/views/mantenimiento/SitiosPage.vue'), meta: { module: 'sitios' } },
+      { path: 'mantenimiento/ejecuciones', name: 'Ejecuciones', component: () => import('@/views/mantenimiento/TrabajosPage.vue'), meta: { module: 'servidores' } },
       { path: 'espacios', name: 'Espacios', component: () => import('@/views/espacios/EspaciosPage.vue'), meta: { module: 'espacios' } },
       { path: 'empleados', name: 'Empleados', component: () => import('@/views/empleados/EmpleadosPage.vue'), meta: { module: 'empleados' } },
       { path: 'empleados/nuevo', name: 'EmpleadoNuevo', component: () => import('@/views/empleados/EmpleadoFormPage.vue'), meta: { module: 'empleados' } },

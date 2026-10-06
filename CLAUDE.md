@@ -549,6 +549,72 @@ Monitoreo de los VPS de la empresa. Doc completa en `docs/modules/mantenimiento.
   runbook en `docs/deploy-vps-oracle.md` (§ Watchdog externo). El chequeo no debe apuntar a la
   raíz del dominio: nginx sirve el frontend aunque el backend esté muerto.
 
+## FullGlass en servidores: SQL masivo y deploy (2026-10-06)
+
+Reemplaza entrar por SSH a cada VPS. Dos funciones, la misma maquinaria: **actualizar las
+bases de todos los clientes** de un servidor (lo que hacía el script PHP `update_databases.php`)
+y **disparar el deploy** de FullGlass. Doc completa en `docs/modules/mantenimiento.md`.
+
+Es lo más peligroso que tiene el sistema: un error acá tumba producción de los clientes. Lo
+que sigue es por qué está hecho así.
+
+- **El agente pasa de PUSH a PUSH + PULL.** La app sigue sin conectarse a ningún servidor ni
+  guardar credenciales de acceso: es el agente el que PREGUNTA si tiene trabajo y lo ejecuta
+  él. Esa propiedad —ningún puerto abierto, cero llaves en la app— es la razón de ser del
+  módulo y no se negoció; la alternativa (SSH desde la app) habría convertido al servidor de
+  la app en la llave de todos los VPS.
+- **El worker está en PHP, no en bash** (`backend/agente/fullglass-worker.php`). Estos
+  servidores tienen PHP por definición —es lo que corre FullGlass—, así que lee
+  `config_site.php` con un `include` igual que el script que reemplaza y habla con MySQL por
+  `mysqli`. Desde bash habría que parsear PHP y JSON a mano, que es donde esto se rompe.
+- **Unidad de systemd APARTE, con menos blindaje que el agente de métricas.** El agente corre
+  con `ProtectHome=true` y el filesystem en solo lectura, y tiene que seguir así: es lo que
+  corre cada minuto en TODOS los servidores. El worker necesita lo contrario (leer `/home`,
+  escribir para el deploy), así que esos permisos se le dan solo a él. Se instala con
+  `FULLGLASS=1` en el instalador. Timer cada **10 s**: lanzar algo se tiene que sentir
+  inmediato, y sin trabajo es una sola petición que termina al instante.
+- **Canario obligatorio en el SQL.** Corre primero en UNA base por servidor y **no sigue**
+  hasta que una persona aprueba. Un `ALTER TABLE` no se puede deshacer (MySQL hace commit
+  implícito en DDL), así que la única red real es romper una base en vez de doscientas. Una
+  base por servidor y no una global: que un servidor tenga el esquema viejo es justo lo que
+  rompe estas corridas. Si el canario falla, el trabajo queda en `error` y el resto no se toca.
+- **Sentencias catastróficas** (`DROP`, `TRUNCATE`, `UPDATE`/`DELETE` sin `WHERE`, `GRANT`) se
+  detectan y exigen escribir **CONFIRMO**. No se bloquean: el día que haga falta un DROP de
+  verdad, bloquearlo obligaría a entrar al servidor a mano, que es lo que queremos dejar de
+  hacer. No es una defensa de seguridad —quien escribe el SQL ya puede romper cosas—, es un
+  freno contra el copiar/pegar equivocado.
+- **CUATRO capabilities**: `servidores:bd-config`, `servidores:bd-ejecutar`,
+  `servidores:deploy-config`, `servidores:deploy-ejecutar`. Configurar y ejecutar están
+  separadas porque el comando de deploy **corre como root** en el VPS: quien lo edita puede
+  hacer cualquier cosa ahí adentro, y eso no es lo mismo que apretar el botón. ⚠️ Los campos
+  sensibles viven en endpoints PROPIOS (`/config-bd`, `/config-deploy`) y NO en el PUT del
+  servidor: como `matchedData` whitelistea, alguien con `servidores:update` no puede setear un
+  comando aunque lo mande en el body (test M24.7). Ninguna se otorga sola: hay que repartirlas
+  a mano desde Roles.
+- **`tieneFullglass` es el primer filtro**: sin esa marca, el servidor no muestra ni acepta
+  nada de esto. No todos los VPS lo alojan y mandarle un deploy al equivocado es el error que
+  más caro sale.
+- **Un servidor sin contacto NO se encola**: su trabajo nace en `error`. Un deploy que se
+  dispara solo tres días después, cuando ya nadie se acuerda de haberlo pedido, es peor que uno
+  que no corrió.
+- **El comando se COPIA al trabajo al lanzarlo**: si alguien lo edita mientras el agente lo
+  está por tomar, corre el que se aprobó, no el nuevo.
+- **Historial base por base** (`servidor_trabajo_resultados`), que es lo que el script PHP no
+  tenía: anotaba la query en un `.txt` y si fallaba en el sitio 12 de 30 el registro decía
+  igual que se había corrido. Ahora cada base deja su fila con filas afectadas o el error
+  textual.
+- **Las credenciales de los clientes NUNCA salen del servidor.** El agente lee
+  `config_site.php`, conecta, y a la app le reporta solo el sitio, el nombre de la base y el
+  resultado. El inventario que alimenta la vista previa (`servidor_sitios`) tampoco las tiene.
+- **Trabajos huérfanos**: si el agente muere a mitad (reinicio del VPS, un kill), el trabajo
+  quedaría en `canario`/`corriendo` para siempre. El worker tiene una red (`register_shutdown_function`)
+  que reporta igual ante un fatal, y pasados **45 min** sin reportar se puede destrabar a mano
+  — el registro dice explícitamente que lo cortó una persona y que puede haber quedado aplicado
+  en el servidor, porque afirmar que «falló» sería inventar lo que pasó.
+- Migración `0014`. Pantalla **Ejecuciones** (`/mantenimiento/ejecuciones`, en el menú bajo
+  Mantenimiento) para el historial y la aprobación del canario; el lanzamiento sale de la ficha
+  del servidor o de la selección múltiple del listado.
+
 ## Pantalla «Análisis de tareas» (2026-08-25)
 
 `GET /tareas/analisis` (**`tareas:analisis`** — capability PROPIA, no `tareas:read`) →

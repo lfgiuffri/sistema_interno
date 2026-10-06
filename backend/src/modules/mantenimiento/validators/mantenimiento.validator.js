@@ -24,6 +24,79 @@ const camposServidor = [
     body('alertaRam').optional().isBoolean().toBoolean(),
     body('alertaDisco').optional().isBoolean().toBoolean(),
     body('observaciones').optional({ nullable: true }).isString().trim(),
+    // Dato de inventario: si este VPS aloja FullGlass. Habilita las pantallas de SQL masivo y
+    // deploy, pero por sí solo no deja ejecutar nada (eso pide las capabilities `*-ejecutar`),
+    // ni configurar el comando (eso pide `servidores:deploy-config`).
+    body('tieneFullglass').optional().isBoolean().toBoolean(),
+];
+
+/**
+ * Configuración de la actualización de bases (`servidores:bd-config`).
+ *
+ * ⚠️ Va en un endpoint propio y NO en el PUT del servidor a propósito: `matchedData` whitelistea,
+ * así que quien tiene `servidores:update` no puede tocar esto aunque lo mande en el body.
+ */
+export const validateConfigBd = [
+    param('id').isInt({ min: 1 }),
+    body('rutaSitios').isString().trim().notEmpty().withMessage('La ruta a recorrer es obligatoria')
+        .isLength({ max: 255 })
+        // Ruta absoluta y sin `..`: el agente la usa para recorrer el disco del servidor.
+        .matches(/^\/[^\s]*$/).withMessage('Tiene que ser una ruta absoluta')
+        .custom(v => !v.includes('..')).withMessage('La ruta no puede contener «..»'),
+    validator
+];
+
+/**
+ * Comandos de deploy (`servidores:deploy-config`). Corren COMO ROOT en el VPS: editar esto es
+ * tan sensible como tener acceso al servidor, por eso su capability es distinta de la que
+ * habilita apretar el botón de deploy.
+ */
+export const validateConfigDeploy = [
+    param('id').isInt({ min: 1 }),
+    // ⚠️ `optional({ values: 'undefined' })` y NO `optional({ nullable: true })`: con `nullable`
+    // express-validator SALTEA la validación cuando el valor es null, y entonces `matchedData`
+    // descarta el campo — mandar null no borraba nada y un comando de deploy quedaba puesto
+    // para siempre. Acá null se valida (y pasa), así que llega al service y limpia.
+    // La cadena vacía se normaliza a null: «borrarlo» desde un textarea es dejarlo en blanco.
+    body('comandoDeployProd').optional({ values: 'undefined' })
+        .customSanitizer(v => (v === null || String(v).trim() === '' ? null : v))
+        .custom(v => v === null || (typeof v === 'string' && v.length <= 2000))
+        .withMessage('El comando no puede superar los 2000 caracteres'),
+    body('comandoDeployDev').optional({ values: 'undefined' })
+        .customSanitizer(v => (v === null || String(v).trim() === '' ? null : v))
+        .custom(v => v === null || (typeof v === 'string' && v.length <= 2000))
+        .withMessage('El comando no puede superar los 2000 caracteres'),
+    validator
+];
+
+/** Análisis de riesgo de un SQL, antes de lanzarlo. */
+export const validateAnalizarSql = [
+    body('sql').isString().notEmpty().withMessage('Escribí el SQL').isLength({ max: 200000 }),
+    validator
+];
+
+/** Lanzamiento de un lote de trabajos. */
+export const validateCrearTrabajos = [
+    body('tipo').isIn(['sql', 'deploy']).withMessage('Tipo de trabajo inválido'),
+    body('servidorIds').isArray({ min: 1, max: 50 }).withMessage('Elegí al menos un servidor'),
+    body('servidorIds.*').isInt({ min: 1 }).toInt(),
+    body('sql').if(body('tipo').equals('sql')).isString().notEmpty().withMessage('Escribí el SQL').isLength({ max: 200000 }),
+    body('entorno').if(body('tipo').equals('deploy')).isIn(['produccion', 'desarrollo']).withMessage('Entorno inválido'),
+    // Sitios elegidos en la vista previa. Vacío/ausente = todos los que encuentre el agente.
+    body('sitios').optional({ nullable: true }).isArray({ max: 500 }),
+    body('sitios.*').isString().isLength({ max: 255 }),
+    // La palabra que habilita las sentencias peligrosas (el service exige «CONFIRMO»).
+    body('confirmacion').optional().isString().isLength({ max: 20 }),
+    validator
+];
+
+/** Filtros del historial de trabajos. */
+export const validateListTrabajos = [
+    query('servidorId').optional({ checkFalsy: true }).isInt({ min: 1 }).toInt(),
+    query('tipo').optional({ checkFalsy: true }).isIn(['sql', 'deploy']),
+    query('estado').optional({ checkFalsy: true }).isString(),
+    query('limit').optional({ checkFalsy: true }).isInt({ min: 1, max: 500 }).toInt(),
+    validator
 ];
 
 export const validateCreate = [...camposServidor, validator];

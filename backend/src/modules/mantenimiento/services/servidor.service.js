@@ -243,6 +243,24 @@ export const deleteServidor = async (models, id) => {
 // ─── Ingesta del agente ──────────────────────────────────────────────────────────────
 
 /**
+ * Resuelve el servidor a partir del token del agente (header `x-agent-token`).
+ *
+ * Es la ÚNICA puerta de autenticación de todo lo que entra por `/agente`, así que vive en un
+ * solo lugar: las métricas y los trabajos de FullGlass pasan por acá. Si la comprobación
+ * estuviera copiada, el día que se endurezca una se olvidaría la otra.
+ * @param {object} models - Modelos de la app.
+ * @param {string} token - Token en claro que mandó el agente.
+ * @returns {Promise<object>} El servidor.
+ * @throws {Error} 401 si el token no corresponde a nadie; 403 si el servidor no está en monitoreo.
+ */
+export const servidorPorToken = async (models, token) => {
+    const servidor = await models.Servidor.findOne({ where: { tokenHash: hashToken(token) } });
+    if (!servidor) throw bizError(401, 'Token de agente inválido');
+    if (!servidor.activo || !servidor.monitorea) throw bizError(403, 'El servidor no está en monitoreo');
+    return servidor;
+};
+
+/**
  * Registra un reporte del agente: guarda la métrica, marca el servidor como online y
  * evalúa los umbrales (abriendo o cerrando incidentes según corresponda).
  *
@@ -257,9 +275,7 @@ export const deleteServidor = async (models, id) => {
 export const registrarMetrica = async (models, io, token, datos) => {
     const { Servidor, ServidorMetrica } = models;
 
-    const servidor = await Servidor.findOne({ where: { tokenHash: hashToken(token) } });
-    if (!servidor) throw bizError(401, 'Token de agente inválido');
-    if (!servidor.activo || !servidor.monitorea) throw bizError(403, 'El servidor no está en monitoreo');
+    const servidor = await servidorPorToken(models, token);
 
     const cpu = Number(datos.cpu);
     const ram = Number(datos.ram);

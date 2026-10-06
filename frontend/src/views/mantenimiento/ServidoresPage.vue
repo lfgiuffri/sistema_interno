@@ -18,6 +18,7 @@ import {
 } from 'ionicons/icons'
 import IndicadorAutoRefresh from '@/components/shared/IndicadorAutoRefresh.vue'
 import { useAutoRefresh } from '@/composables/useAutoRefresh'
+import FullglassLanzarModal from '@/components/mantenimiento/FullglassLanzarModal.vue'
 import { useMantenimientoStore, type Servidor, type ServidorInput } from '@/stores/mantenimiento'
 import ThOrdenable from '@/components/shared/ThOrdenable.vue'
 import { useOrdenTabla } from '@/composables/useOrdenTabla'
@@ -42,6 +43,34 @@ const orden = useOrdenTabla(
 const modalForm = ref(false)
 const editando = ref<Servidor | null>(null)
 const form = ref<ServidorInput>({ nombre: '', ip: '', monitorea: true, puertoChequeo: 443 })
+
+/* ── FullGlass en lote ────────────────────────────────────────────────────────────────
+ *
+ * Solo se pueden elegir los servidores marcados con FullGlass: a los demás la API les
+ * rechaza el trabajo igual, pero dejar que se tilden sería invitar al error justo en la
+ * pantalla donde el error cuesta caro.
+ */
+const seleccion = ref<Set<number>>(new Set())
+const modalLanzar = ref(false)
+const tipoLanzar = ref<'sql' | 'deploy'>('sql')
+
+const servidoresFullglass = computed(() => store.servidores.filter(s => s.tieneFullglass && s.activo))
+const elegidos = computed(() => servidoresFullglass.value.filter(s => seleccion.value.has(s.id)))
+const todosElegidos = computed(() =>
+  servidoresFullglass.value.length > 0 && elegidos.value.length === servidoresFullglass.value.length)
+
+function alternarSeleccion(id: number): void {
+  const s = new Set(seleccion.value)
+  if (s.has(id)) s.delete(id); else s.add(id)
+  seleccion.value = s
+}
+function alternarTodos(): void {
+  seleccion.value = todosElegidos.value ? new Set() : new Set(servidoresFullglass.value.map(s => s.id))
+}
+function lanzarLote(tipo: 'sql' | 'deploy'): void {
+  tipoLanzar.value = tipo
+  modalLanzar.value = true
+}
 const formError = ref('')
 useEscapeToClose(modalForm, () => { modalForm.value = false })
 
@@ -101,12 +130,14 @@ function abrirForm(s?: Servidor): void {
     ? {
       nombre: s.nombre, ip: s.ip, monitorea: s.monitorea, puertoChequeo: s.puertoChequeo,
       umbralCpu: s.umbralCpu, umbralRam: s.umbralRam, umbralDisco: s.umbralDisco,
+      tieneFullglass: s.tieneFullglass,
       alertaOffline: s.alertaOffline, alertaCpu: s.alertaCpu,
       alertaRam: s.alertaRam, alertaDisco: s.alertaDisco,
       observaciones: s.observaciones,
     }
     : {
       nombre: '', ip: '', monitorea: true, puertoChequeo: 443,
+      tieneFullglass: false,
       alertaOffline: true, alertaCpu: true, alertaRam: true, alertaDisco: true,
     }
   formError.value = ''
@@ -208,6 +239,25 @@ onIonViewWillLeave(() => auto.parar())
           </div>
         </header>
 
+        <!-- Barra de acciones en lote. Aparece solo con algo elegido y nombra cuántos
+             servidores van a recibir la orden: es el último lugar donde se puede frenar. -->
+        <div v-if="elegidos.length" class="ds-card p-3 mb-3 flex flex-wrap items-center gap-3">
+          <span class="text-sm text-ink">
+            <strong class="tnum">{{ elegidos.length }}</strong> servidor(es) elegido(s)
+          </span>
+          <div class="flex flex-wrap gap-2 ml-auto">
+            <button
+              v-if="meStore.can('servidores:bd-ejecutar')"
+              class="ds-btn-secondary h-8 px-3 text-xs" @click="lanzarLote('sql')"
+            >Actualizar bases</button>
+            <button
+              v-if="meStore.can('servidores:deploy-ejecutar')"
+              class="ds-btn-secondary h-8 px-3 text-xs" @click="lanzarLote('deploy')"
+            >Deploy</button>
+            <button class="ds-btn-ghost h-8 px-3 text-xs" @click="seleccion = new Set()">Limpiar</button>
+          </div>
+        </div>
+
         <div v-if="store.loading && !store.servidores.length" class="space-y-2">
           <div v-for="i in 3" :key="i" class="ds-skeleton h-16"></div>
         </div>
@@ -216,6 +266,12 @@ onIonViewWillLeave(() => auto.parar())
           <table class="ds-table">
             <thead>
               <tr>
+                <th v-if="servidoresFullglass.length" class="w-8">
+                  <input
+                    type="checkbox" class="accent-accent" :checked="todosElegidos"
+                    aria-label="Elegir todos los servidores con FullGlass" @change="alternarTodos"
+                  />
+                </th>
                 <ThOrdenable columna="nombre" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Servidor</ThOrdenable>
                 <ThOrdenable columna="cpu" :activa="orden.columna.value" :dir="orden.dir.value" class="w-20" @ordenar="orden.ordenarPor">CPU</ThOrdenable>
                 <ThOrdenable columna="ram" :activa="orden.columna.value" :dir="orden.dir.value" class="w-20" @ordenar="orden.ordenarPor">RAM</ThOrdenable>
@@ -226,6 +282,14 @@ onIonViewWillLeave(() => auto.parar())
             </thead>
             <tbody>
               <tr v-for="s in orden.ordenadas.value" :key="s.id" :class="{ 'opacity-50': !s.activo }">
+                <td v-if="servidoresFullglass.length">
+                  <input
+                    v-if="s.tieneFullglass && s.activo"
+                    type="checkbox" class="accent-accent"
+                    :checked="seleccion.has(s.id)" :aria-label="`Elegir ${s.nombre}`"
+                    @change="alternarSeleccion(s.id)"
+                  />
+                </td>
                 <td>
                   <button class="text-left group" @click="router.push(`/mantenimiento/servidores/${s.id}`)">
                     <div class="flex items-center gap-2">
@@ -331,6 +395,18 @@ onIonViewWillLeave(() => auto.parar())
                 </span>
               </label>
 
+              <!-- Solo tiene sentido con agente: sin él no hay quién ejecute nada. -->
+              <label v-if="form.monitorea" class="flex items-start gap-2 text-sm text-ink cursor-pointer">
+                <input v-model="form.tieneFullglass" type="checkbox" class="accent-[#0F7660] mt-0.5" />
+                <span>
+                  Aloja FullGlass
+                  <span class="block text-2xs text-ink-faint">
+                    Habilita actualizar las bases de los clientes y disparar deploys desde acá. Marcarlo
+                    no da permiso de ejecutar: eso va por rol.
+                  </span>
+                </span>
+              </label>
+
               <div v-if="!form.monitorea">
                 <label class="ds-label" for="sv-puerto">Puerto a chequear</label>
                 <input id="sv-puerto" v-model.number="form.puertoChequeo" class="ds-input w-32 font-mono" type="number" min="1" max="65535" />
@@ -419,6 +495,13 @@ onIonViewWillLeave(() => auto.parar())
           </div>
         </div>
       </Teleport>
+    <FullglassLanzarModal
+      :open="modalLanzar"
+      :servidores="elegidos"
+      :tipo="tipoLanzar"
+      @close="modalLanzar = false"
+      @lanzado="seleccion = new Set(); router.push('/mantenimiento/ejecuciones')"
+    />
     </IonContent>
   </IonPage>
 </template>

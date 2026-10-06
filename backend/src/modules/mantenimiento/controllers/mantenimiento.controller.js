@@ -6,7 +6,7 @@
  */
 
 import { matchedData } from 'express-validator';
-import { responseManager } from '../../../kernel/index.js';
+import { responseManager, getRoleCapabilities, roleHasCapability } from '../../../kernel/index.js';
 import * as svc from '../services/servidor.service.js';
 import * as sitios from '../services/sitio.service.js';
 import { chequearSitio } from '../services/chequeo.service.js';
@@ -14,6 +14,7 @@ import { urlDeVista, marcadorDeVista } from '../services/vista.service.js';
 import * as vistasSvc from '../services/vista.service.js';
 import { velocidadDeSitio } from '../services/velocidad.service.js';
 import { vencimientoDominio } from '../services/rdap.service.js';
+import * as trabajos from '../services/trabajo.service.js';
 
 /**
  * Mapea un error de negocio del service al envelope.
@@ -319,6 +320,287 @@ export const ingesta = async (req, res) => {
         if (!token) return await responseManager(401, 'Falta el token del agente', req, res, false);
         const data = await svc.registrarMetrica(req.models, req.io, String(token), matchedData(req));
         return await responseManager(200, data, req, res, false);
+    } catch (e) { return bizCatch(e, req, res); }
+};
+
+/* ──────────────── FullGlass: SQL masivo y deploy (lado interno) ──────────────── */
+
+/**
+ * Exige una capability DENTRO del controller.
+ *
+ * Hace falta porque `POST /trabajos` sirve los dos tipos y cada uno pide la suya: un mismo
+ * endpoint no puede declararla como middleware. Devuelve false habiendo respondido ya el 403.
+ * @param {import('express').Request} req - Request.
+ * @param {import('express').Response} res - Response.
+ * @param {string} cap - Capability requerida.
+ * @returns {Promise<boolean>} true si puede seguir.
+ */
+const puede = async (req, res, cap) => {
+    const caps = await getRoleCapabilities(req.models, req.tenant?.id || 'default', req.user?.roleId);
+    if (roleHasCapability(caps, cap)) return true;
+    await responseManager(403, `No tenés el permiso requerido: ${cap}`, req, res, false);
+    return false;
+};
+
+/** Capability de ejecución que corresponde a cada tipo de trabajo. */
+const CAP_EJECUTAR = { sql: 'servidores:bd-ejecutar', deploy: 'servidores:deploy-ejecutar' };
+
+/**
+ * Deja pasar si tiene CUALQUIERA de las dos capabilities de ejecución (para leer el historial).
+ * @param {import('express').Request} req - Request.
+ * @param {import('express').Response} res - Response.
+ * @returns {Promise<boolean>} true si puede seguir.
+ */
+const puedeAlguna = async (req, res) => {
+    const caps = await getRoleCapabilities(req.models, req.tenant?.id || 'default', req.user?.roleId);
+    if (Object.values(CAP_EJECUTAR).some(c => roleHasCapability(caps, c))) return true;
+    await responseManager(403, 'No tenés permiso para ver las ejecuciones de los servidores', req, res, false);
+    return false;
+};
+
+/**
+ * Exige la capability del TIPO del trabajo al que se apunta (aprobar / cancelar).
+ * @param {import('express').Request} req - Request.
+ * @param {import('express').Response} res - Response.
+ * @returns {Promise<boolean>} true si puede seguir.
+ */
+const puedeDelTrabajo = async (req, res) => {
+    const trabajo = await req.models.ServidorTrabajo.findByPk(Number(req.params.id), { attributes: ['tipo'] });
+    if (!trabajo) { await responseManager(404, 'Trabajo no encontrado', req, res, false); return false; }
+    return puede(req, res, CAP_EJECUTAR[trabajo.tipo]);
+};
+
+/**
+ * PUT /mantenimiento/servidores/:id/config-bd — ruta que recorre el agente.
+ * @param {import('express').Request} req - Request.
+ * @param {import('express').Response} res - Response.
+ * @returns {Promise<void>}
+ */
+export const configBd = async (req, res) => {
+    try {
+        const { id, rutaSitios } = matchedData(req);
+        const data = await svc.updateServidor(req.models, id, { rutaSitios });
+        if (!data) return await responseManager(404, 'Servidor no encontrado', req, res, false);
+        return await responseManager(200, data, req, res, false);
+    } catch (e) { return bizCatch(e, req, res); }
+};
+
+/**
+ * PUT /mantenimiento/servidores/:id/config-deploy — comandos de producción y desarrollo.
+ * @param {import('express').Request} req - Request.
+ * @param {import('express').Response} res - Response.
+ * @returns {Promise<void>}
+ */
+export const configDeploy = async (req, res) => {
+    try {
+        const { id, ...comandos } = matchedData(req);
+        const data = await svc.updateServidor(req.models, id, comandos);
+        if (!data) return await responseManager(404, 'Servidor no encontrado', req, res, false);
+        return await responseManager(200, data, req, res, false);
+    } catch (e) { return bizCatch(e, req, res); }
+};
+
+/**
+ * POST /mantenimiento/trabajos/analizar — qué tiene de peligroso un SQL, ANTES de lanzarlo.
+ * Puro: no crea nada. Es lo que alimenta el cartel de confirmación de la pantalla.
+ * @param {import('express').Request} req - Request.
+ * @param {import('express').Response} res - Response.
+ * @returns {Promise<void>}
+ */
+export const analizarSql = async (req, res) => {
+    try {
+        const { sql } = matchedData(req);
+        return await responseManager(200, trabajos.analizarSql(sql), req, res, false);
+    } catch (e) { return bizCatch(e, req, res); }
+};
+
+/**
+ * POST /mantenimiento/trabajos — lanza un lote (un trabajo por servidor elegido).
+ * @param {import('express').Request} req - Request.
+ * @param {import('express').Response} res - Response.
+ * @returns {Promise<void>} 201 con `{ loteId, trabajos }`.
+ */
+export const crearTrabajos = async (req, res) => {
+    try {
+        const datos = matchedData(req);
+        if (!await puede(req, res, CAP_EJECUTAR[datos.tipo])) return undefined;
+        const data = await trabajos.crearLote(req.models, req.user, datos);
+        if (req.io) req.io.to('app').emit('servidor:trabajos', { loteId: data.loteId });
+        return await responseManager(201, data, req, res, false);
+    } catch (e) { return bizCatch(e, req, res); }
+};
+
+/**
+ * GET /mantenimiento/trabajos — historial (filtros: servidorId, tipo, estado).
+ * @param {import('express').Request} req - Request.
+ * @param {import('express').Response} res - Response.
+ * @returns {Promise<void>}
+ */
+export const listTrabajos = async (req, res) => {
+    try {
+        // Ver el historial de SQL alcanza con poder ejecutar CUALQUIERA de las dos: el listado
+        // mezcla los dos tipos y filtrarlo por capability fila a fila sería confuso de leer.
+        if (!await puedeAlguna(req, res)) return undefined;
+        return await responseManager(200, await trabajos.listTrabajos(req.models, req.query), req, res, false);
+    } catch (e) { return bizCatch(e, req, res); }
+};
+
+/**
+ * GET /mantenimiento/trabajos/:id — un trabajo con su detalle base por base.
+ * @param {import('express').Request} req - Request.
+ * @param {import('express').Response} res - Response.
+ * @returns {Promise<void>} 404 si no existe.
+ */
+export const getTrabajo = async (req, res) => {
+    try {
+        if (!await puedeAlguna(req, res)) return undefined;
+        const data = await trabajos.getTrabajo(req.models, req.params.id);
+        if (!data) return await responseManager(404, 'Trabajo no encontrado', req, res, false);
+        return await responseManager(200, data, req, res, false);
+    } catch (e) { return bizCatch(e, req, res); }
+};
+
+/**
+ * POST /mantenimiento/trabajos/:id/aprobar — seguir con el resto tras un canario OK.
+ * @param {import('express').Request} req - Request.
+ * @param {import('express').Response} res - Response.
+ * @returns {Promise<void>}
+ */
+export const aprobarTrabajo = async (req, res) => {
+    try {
+        // Aprobar el canario es decidir que el SQL se aplique a TODO: pide la de ejecutar.
+        if (!await puedeDelTrabajo(req, res)) return undefined;
+        const data = await trabajos.aprobarTrabajo(req.models, req.user, req.params.id);
+        if (req.io) req.io.to('app').emit('servidor:trabajos', { id: data.id });
+        return await responseManager(200, data, req, res, false);
+    } catch (e) { return bizCatch(e, req, res); }
+};
+
+/**
+ * POST /mantenimiento/trabajos/:id/cancelar — frenar lo que el agente todavía no tomó.
+ * @param {import('express').Request} req - Request.
+ * @param {import('express').Response} res - Response.
+ * @returns {Promise<void>}
+ */
+export const cancelarTrabajo = async (req, res) => {
+    try {
+        if (!await puedeDelTrabajo(req, res)) return undefined;
+        const data = await trabajos.cancelarTrabajo(req.models, req.params.id);
+        if (req.io) req.io.to('app').emit('servidor:trabajos', { id: data.id });
+        return await responseManager(200, data, req, res, false);
+    } catch (e) { return bizCatch(e, req, res); }
+};
+
+/**
+ * GET /mantenimiento/servidores/:id/sitios — inventario para la vista previa.
+ * @param {import('express').Request} req - Request.
+ * @param {import('express').Response} res - Response.
+ * @returns {Promise<void>}
+ */
+export const listSitiosServidor = async (req, res) => {
+    try {
+        return await responseManager(200, await trabajos.listSitios(req.models, req.params.id), req, res, false);
+    } catch (e) { return bizCatch(e, req, res); }
+};
+
+/* ──────────────── FullGlass: lado del AGENTE (token, sin sesión) ──────────────── */
+
+/**
+ * Resuelve el servidor desde el header `x-agent-token`, o responde el error y devuelve null.
+ * @param {import('express').Request} req - Request.
+ * @param {import('express').Response} res - Response.
+ * @returns {Promise<object|null>} El servidor, o null si ya se respondió el error.
+ */
+const servidorDelAgente = async (req, res) => {
+    const token = req.headers['x-agent-token'];
+    if (!token) { await responseManager(401, 'Falta el token del agente', req, res, false); return null; }
+    try {
+        return await svc.servidorPorToken(req.models, String(token));
+    } catch (e) {
+        await bizCatch(e, req, res);
+        return null;
+    }
+};
+
+/**
+ * GET /agente/config — lo que el agente necesita saber de SU configuración.
+ *
+ * Existe para que la ruta a recorrer viva en UN solo lugar (la ficha del servidor). Si se
+ * guardara también en el `.env` del VPS, el día que alguien la cambie en la app el agente
+ * seguiría recorriendo la vieja y nadie se enteraría.
+ * @param {import('express').Request} req - Request.
+ * @param {import('express').Response} res - Response.
+ * @returns {Promise<void>}
+ */
+export const agenteConfig = async (req, res) => {
+    const servidor = await servidorDelAgente(req, res);
+    if (!servidor) return undefined;
+    return await responseManager(200, {
+        tieneFullglass: servidor.tieneFullglass,
+        rutaSitios: servidor.rutaSitios,
+    }, req, res, false);
+};
+
+/**
+ * GET /agente/trabajos — qué tiene para ejecutar este servidor.
+ * @param {import('express').Request} req - Request.
+ * @param {import('express').Response} res - Response.
+ * @returns {Promise<void>}
+ */
+export const agenteTrabajos = async (req, res) => {
+    const servidor = await servidorDelAgente(req, res);
+    if (!servidor) return undefined;
+    try {
+        return await responseManager(200, await trabajos.trabajosPendientes(req.models, servidor), req, res, false);
+    } catch (e) { return bizCatch(e, req, res); }
+};
+
+/**
+ * POST /agente/trabajos/:id/tomar — el agente avisa que lo empezó.
+ * @param {import('express').Request} req - Request.
+ * @param {import('express').Response} res - Response.
+ * @returns {Promise<void>}
+ */
+export const agenteTomar = async (req, res) => {
+    const servidor = await servidorDelAgente(req, res);
+    if (!servidor) return undefined;
+    try {
+        const ok = await trabajos.marcarTomado(req.models, servidor, req.params.id);
+        if (!ok) return await responseManager(409, 'El trabajo ya no está disponible', req, res, false);
+        if (req.io) req.io.to('app').emit('servidor:trabajos', { id: Number(req.params.id) });
+        return await responseManager(200, { tomado: true }, req, res, false);
+    } catch (e) { return bizCatch(e, req, res); }
+};
+
+/**
+ * POST /agente/trabajos/:id/resultado — cómo terminó (o cómo le fue al canario).
+ * @param {import('express').Request} req - Request.
+ * @param {import('express').Response} res - Response.
+ * @returns {Promise<void>}
+ */
+export const agenteResultado = async (req, res) => {
+    const servidor = await servidorDelAgente(req, res);
+    if (!servidor) return undefined;
+    try {
+        const data = await trabajos.reportarResultado(req.models, servidor, req.params.id, req.body || {});
+        if (!data) return await responseManager(404, 'Trabajo no encontrado', req, res, false);
+        if (req.io) req.io.to('app').emit('servidor:trabajos', { id: data.id, estado: data.estado });
+        return await responseManager(200, { estado: data.estado }, req, res, false);
+    } catch (e) { return bizCatch(e, req, res); }
+};
+
+/**
+ * POST /agente/sitios — inventario de sitios del servidor (para la vista previa).
+ * @param {import('express').Request} req - Request.
+ * @param {import('express').Response} res - Response.
+ * @returns {Promise<void>}
+ */
+export const agenteSitios = async (req, res) => {
+    const servidor = await servidorDelAgente(req, res);
+    if (!servidor) return undefined;
+    try {
+        const n = await trabajos.guardarInventario(req.models, servidor, req.body?.sitios);
+        return await responseManager(200, { sitios: n }, req, res, false);
     } catch (e) { return bizCatch(e, req, res); }
 };
 

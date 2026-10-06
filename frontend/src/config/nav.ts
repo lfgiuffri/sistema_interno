@@ -15,7 +15,8 @@ import {
   swapHorizontalOutline, documentTextOutline, folderOpenOutline, calendarOutline,
   checkboxOutline, albumsOutline, personOutline, cashOutline, trendingUpOutline,
   calendarNumberOutline, cardOutline, statsChartOutline, libraryOutline, serverOutline,
-  globeOutline, analyticsOutline, chatbubbleEllipsesOutline,
+  globeOutline,
+  terminalOutline, analyticsOutline, chatbubbleEllipsesOutline,
 } from 'ionicons/icons'
 
 export interface NavItem {
@@ -99,6 +100,9 @@ export const NAV: NavGroup[] = [
     items: [
       { label: 'Servidores', path: '/mantenimiento/servidores', icon: serverOutline, module: 'servidores' },
       { label: 'Sitios web', path: '/mantenimiento/sitios', icon: globeOutline, module: 'sitios' },
+      // Se gatea con la capability EXACTA de ejecutar SQL: ver qué se corrió en las bases de
+      // los clientes no es lo mismo que ver el estado de los servidores.
+      { label: 'Ejecuciones', path: '/mantenimiento/ejecuciones', icon: terminalOutline, module: 'servidores', cap: 'servidores:bd-ejecutar' },
     ],
   },
   {

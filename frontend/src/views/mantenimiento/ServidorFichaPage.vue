@@ -16,9 +16,14 @@ import GraficoLinea, { type Serie } from '@/components/dashboard/GraficoLinea.vu
 import IndicadorAutoRefresh from '@/components/shared/IndicadorAutoRefresh.vue'
 import { useAutoRefresh } from '@/composables/useAutoRefresh'
 import { useMantenimientoStore, type ServidorDetalle } from '@/stores/mantenimiento'
+import { useMeStore } from '@/stores/me'
+import { useToast } from '@/composables/useToast'
 import { fechaHora, fecha as fmtFecha } from '@/composables/useFormato'
+import FullglassLanzarModal from '@/components/mantenimiento/FullglassLanzarModal.vue'
 
 const store = useMantenimientoStore()
+const meStore = useMeStore()
+const toast = useToast()
 const route = useRoute()
 const router = useRouter()
 
@@ -94,8 +99,70 @@ onMounted(async () => {
 })
 onIonViewWillEnter(() => { if (loadedOnce) { void auto.refrescarAhora(); auto.arrancar() } })
 onIonViewWillLeave(() => auto.parar())
-</script>
 
+/* ── FullGlass: configuración y lanzamiento ───────────────────────────────────────────
+ *
+ * Configurar y ejecutar son capabilities distintas a propósito: el comando de deploy corre
+ * COMO ROOT en el VPS, así que quien lo escribe puede hacer cualquier cosa ahí adentro, y eso
+ * no tiene por qué ser lo mismo que apretar el botón.
+ */
+const modalLanzar = ref(false)
+const tipoLanzar = ref<'sql' | 'deploy'>('sql')
+const editandoConfig = ref(false)
+const guardandoConfig = ref(false)
+const form = ref({ rutaSitios: '/home', comandoDeployProd: '', comandoDeployDev: '' })
+
+const puedeConfigBd = computed(() => meStore.can('servidores:bd-config'))
+const puedeConfigDeploy = computed(() => meStore.can('servidores:deploy-config'))
+const puedeSql = computed(() => meStore.can('servidores:bd-ejecutar'))
+const puedeDeploy = computed(() => meStore.can('servidores:deploy-ejecutar'))
+
+function abrirConfig(): void {
+  if (!servidor.value) return
+  form.value = {
+    rutaSitios: servidor.value.rutaSitios || '/home',
+    comandoDeployProd: servidor.value.comandoDeployProd ?? '',
+    comandoDeployDev: servidor.value.comandoDeployDev ?? '',
+  }
+  editandoConfig.value = true
+}
+
+/**
+ * Guarda la configuración. Son DOS llamadas porque son dos capabilities: quien solo tiene una
+ * de las dos guarda lo suyo y el resto ni se le muestra.
+ */
+async function guardarConfig(): Promise<void> {
+  if (!servidor.value) return
+  guardandoConfig.value = true
+  const errores: string[] = []
+
+  if (puedeConfigBd.value) {
+    const r = await store.guardarConfigBd(servidor.value.id, form.value.rutaSitios)
+    if (!r.ok) errores.push(r.message)
+  }
+  if (puedeConfigDeploy.value) {
+    const r = await store.guardarConfigDeploy(servidor.value.id, {
+      // Vacío = borrar el comando. Un deploy que no se puede desconfigurar sería una puerta
+      // abierta para siempre.
+      comandoDeployProd: form.value.comandoDeployProd.trim() || null,
+      comandoDeployDev: form.value.comandoDeployDev.trim() || null,
+    })
+    if (!r.ok) errores.push(r.message)
+  }
+
+  guardandoConfig.value = false
+  if (errores.length) { toast.error(errores[0]); return }
+  toast.success('Configuración guardada')
+  editandoConfig.value = false
+  await cargar()
+}
+
+function lanzar(tipo: 'sql' | 'deploy'): void {
+  tipoLanzar.value = tipo
+  modalLanzar.value = true
+}
+
+</script>
 <template>
   <IonPage>
     <IonHeader class="ion-no-border">
@@ -233,7 +300,82 @@ onIonViewWillLeave(() => auto.parar())
               <p class="text-sm text-ink">Sin incidentes registrados</p>
             </div>
           </section>
+
+        <!-- ── FullGlass ──────────────────────────────────────────────────────────────
+             Solo aparece si el servidor está marcado como que lo aloja: en los demás, estas
+             acciones no existen (y la API también las rechaza). -->
+        <section v-if="servidor.tieneFullglass" class="mt-6">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <h2 class="text-sm font-semibold text-ink">FullGlass</h2>
+            <div class="flex flex-wrap gap-2">
+              <button v-if="puedeSql" class="ds-btn-secondary h-8 px-3 text-xs" @click="lanzar('sql')">
+                Actualizar bases
+              </button>
+              <button v-if="puedeDeploy" class="ds-btn-secondary h-8 px-3 text-xs" @click="lanzar('deploy')">
+                Deploy
+              </button>
+              <button
+                v-if="puedeConfigBd || puedeConfigDeploy"
+                class="ds-btn-ghost h-8 px-3 text-xs" @click="abrirConfig"
+              >Configurar</button>
+            </div>
+          </div>
+
+          <div v-if="!editandoConfig" class="ds-card p-4 space-y-2 text-sm">
+            <p><span class="text-ink-faint">Carpeta que recorre el agente:</span>
+              <code class="ml-1 text-ink">{{ servidor.rutaSitios }}</code></p>
+            <p v-if="puedeConfigDeploy || puedeDeploy">
+              <span class="text-ink-faint">Deploy de producción:</span>
+              <code v-if="servidor.comandoDeployProd" class="ml-1 text-ink break-all">{{ servidor.comandoDeployProd }}</code>
+              <span v-else class="ml-1 text-ink-faint">sin configurar</span>
+            </p>
+            <p v-if="puedeConfigDeploy || puedeDeploy">
+              <span class="text-ink-faint">Deploy de desarrollo:</span>
+              <code v-if="servidor.comandoDeployDev" class="ml-1 text-ink break-all">{{ servidor.comandoDeployDev }}</code>
+              <span v-else class="ml-1 text-ink-faint">sin configurar</span>
+            </p>
+          </div>
+
+          <form v-else class="ds-card p-4 space-y-3" @submit.prevent="guardarConfig">
+            <div v-if="puedeConfigBd">
+              <label class="ds-label" for="fg-ruta">Carpeta que recorre el agente</label>
+              <input id="fg-ruta" v-model="form.rutaSitios" class="ds-input" placeholder="/home" />
+              <p class="ds-hint">
+                Una subcarpeta por cliente, cada una con <code>configs/config_site.php</code>.
+              </p>
+            </div>
+            <template v-if="puedeConfigDeploy">
+              <div>
+                <label class="ds-label" for="fg-prod">Comando de deploy — producción</label>
+                <textarea id="fg-prod" v-model="form.comandoDeployProd" rows="2"
+                          class="ds-input !h-auto py-2 font-mono text-xs"></textarea>
+              </div>
+              <div>
+                <label class="ds-label" for="fg-dev">Comando de deploy — desarrollo</label>
+                <textarea id="fg-dev" v-model="form.comandoDeployDev" rows="2"
+                          class="ds-input !h-auto py-2 font-mono text-xs"></textarea>
+                <p class="ds-hint">
+                  Corren como root en este servidor. Dejalos en blanco para desconfigurarlos.
+                </p>
+              </div>
+            </template>
+            <footer class="flex justify-end gap-2">
+              <button type="button" class="ds-btn-secondary" @click="editandoConfig = false">Cancelar</button>
+              <button type="submit" class="ds-btn-primary" :disabled="guardandoConfig">
+                {{ guardandoConfig ? 'Guardando…' : 'Guardar' }}
+              </button>
+            </footer>
+          </form>
+        </section>
         </template>
+
+        <FullglassLanzarModal
+          :open="modalLanzar"
+          :servidores="servidor ? [servidor] : []"
+          :tipo="tipoLanzar"
+          @close="modalLanzar = false"
+          @lanzado="router.push('/mantenimiento/ejecuciones')"
+        />
       </div>
     </IonContent>
   </IonPage>
