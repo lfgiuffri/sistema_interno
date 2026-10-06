@@ -43,6 +43,8 @@ export interface Servidor {
   rutaSitios: string
   comandoDeployProd: string | null
   comandoDeployDev: string | null
+  /** Última vez que el agente reportó su inventario. null = nunca habló. */
+  sitiosReportadosAt: string | null
   ultima: MetricaActual | null
   incidentes: string[]
 }

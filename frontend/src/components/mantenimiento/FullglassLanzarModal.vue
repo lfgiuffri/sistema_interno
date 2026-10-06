@@ -19,6 +19,7 @@ import { warningOutline, serverOutline } from 'ionicons/icons'
 import { useMantenimientoStore, type Servidor, type SitioServidor, type AnalisisSql } from '@/stores/mantenimiento'
 import { useToast } from '@/composables/useToast'
 import { useEscapeToClose } from '@/composables/useEscapeToClose'
+import { fechaHora as fmtFechaHora } from '@/composables/useFormato'
 
 const props = defineProps<{
   open: boolean
@@ -223,8 +224,17 @@ async function lanzar(): Promise<void> {
             <div class="ds-card p-2 max-h-44 overflow-y-auto space-y-2">
               <div v-for="s in servidores" :key="s.id">
                 <p class="text-2xs text-ink-faint">{{ s.nombre }}</p>
+                <!-- Dos causas distintas que antes decían lo mismo y mandaban a buscar el
+                     problema a lugares opuestos. -->
                 <p v-if="!(sitiosPorServidor[s.id] ?? []).length" class="text-2xs text-ink-faint italic">
-                  El agente todavía no reportó sus sitios.
+                  <template v-if="s.sitiosReportadosAt">
+                    El agente recorrió «{{ s.rutaSitios }}» y no encontró ningún sitio
+                    ({{ fmtFechaHora(s.sitiosReportadosAt) }}). Revisá la ruta en «Configurar».
+                  </template>
+                  <template v-else>
+                    El agente nunca reportó sus sitios: puede que el worker de FullGlass no esté
+                    instalado en este servidor (se instala con <code>FULLGLASS=1</code>).
+                  </template>
                 </p>
                 <label
                   v-for="x in sitiosPorServidor[s.id] ?? []" :key="x.ruta"

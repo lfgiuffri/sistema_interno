@@ -64,7 +64,13 @@ export const defineServidorModel = (db) => {
         // ahí adentro: por eso editarlos pide `servidores:deploy-config`, que es una capability
         // distinta de la que habilita apretar el botón.
         comandoDeployProd: { type: DataTypes.TEXT, allowNull: true },
-        comandoDeployDev: { type: DataTypes.TEXT, allowNull: true }
+        comandoDeployDev: { type: DataTypes.TEXT, allowNull: true },
+        /**
+         * Última vez que el agente reportó su inventario de sitios. Distingue «el worker nunca
+         * habló» (null) de «recorrió y no encontró nada» (con fecha y la tabla vacía), que se
+         * ven igual y mandan a buscar el problema a lugares opuestos.
+         */
+        sitiosReportadosAt: { type: DataTypes.DATE, allowNull: true }
     }, {
         tableName: 'servidores',
         timestamps: true,

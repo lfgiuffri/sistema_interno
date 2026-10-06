@@ -414,6 +414,9 @@ export const guardarInventario = async (models, servidor, sitios) => {
     await ServidorSitio.sequelize.transaction(async (t) => {
         await ServidorSitio.destroy({ where: { servidorId: servidor.id }, transaction: t });
         if (filas.length) await ServidorSitio.bulkCreate(filas, { transaction: t });
+        // Se sella aunque la lista venga VACÍA: es la única forma de distinguir después «no
+        // encontró sitios» de «el worker nunca habló».
+        await servidor.update({ sitiosReportadosAt: ahora }, { transaction: t });
     });
     return filas.length;
 };

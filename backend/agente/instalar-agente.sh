@@ -80,6 +80,10 @@ EOF
 # sigue sin poder leer nada de /home.
 if [ "${FULLGLASS:-0}" = "1" ]; then
     command -v php >/dev/null || { echo "Falta php (lo necesita el worker de FullGlass)"; exit 1; }
+    # mysqli se chequea ACÁ y no al primer SQL: enterarse de que falta el día que se lanza una
+    # actualización masiva es el peor momento posible.
+    php -r 'exit(function_exists("mysqli_connect") ? 0 : 1);' \
+        || { echo "Falta la extensión mysqli de PHP: apt install -y php-mysql"; exit 1; }
 
     WORKER=/usr/local/bin/sistema-interno-fullglass.php
     curl -fsSL "${API_URL%/}/agente/fullglass-worker.php" -o "$WORKER"
@@ -131,4 +135,22 @@ if systemctl start sistema-interno-agente.service; then
 else
     echo "❌ El primer reporte falló. Revisá: journalctl -u sistema-interno-agente -n 20"
     exit 1
+fi
+
+# ── 5. Prueba del worker de FullGlass ────────────────────────────────────────────────────
+#
+# Se corre una vez a propósito: instalarlo y no probarlo deja el caso en que el worker falla
+# en silencio y la app dice «el agente todavía no reportó sus sitios» para siempre, sin que
+# nadie sepa que hay que mirar acá.
+if [ "${FULLGLASS:-0}" = "1" ]; then
+    echo "── Probando el worker de FullGlass…"
+    if systemctl start sistema-interno-fullglass.service; then
+        journalctl -u sistema-interno-fullglass -n 10 --no-pager || true
+        echo "✅ Worker de FullGlass instalado (consulta cada 10 s)."
+        echo "   Si la app sigue diciendo que no reportó sitios, mirá:"
+        echo "   journalctl -u sistema-interno-fullglass -n 30"
+    else
+        echo "❌ El worker de FullGlass falló al arrancar:"
+        journalctl -u sistema-interno-fullglass -n 20 --no-pager || true
+    fi
 fi

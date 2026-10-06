@@ -245,6 +245,32 @@ test.describe('M24: FullGlass — SQL masivo y deploy', () => {
     expect(segundo.data).toHaveLength(1);
   });
 
+  test('M24.13 - se distingue «el worker nunca habló» de «recorrió y no encontró nada»', async ({ adminApi, playwright }) => {
+    // Son dos causas opuestas que dejan la tabla de sitios vacía: sin diferenciarlas, la
+    // pantalla manda a revisar la ruta cuando en realidad el worker no está instalado.
+    const nuevo = await expectSuccess(await adminApi.post(APP_ENDPOINTS.servidores, {
+      data: { ...makeNombre('VPS Mudo'), ip: ipUnica(), monitorea: true, tieneFullglass: true },
+    }), 201);
+    cleanup.push(`servidores/${nuevo.data.id}`);
+
+    // Nunca reportó.
+    const antes = await expectSuccess(await adminApi.get(`${APP_ENDPOINTS.servidores}/${nuevo.data.id}`), 200);
+    expect(antes.data.sitiosReportadosAt ?? null).toBeNull();
+
+    // Reporta una lista VACÍA: la tabla sigue vacía, pero ahora consta que habló.
+    const mudo = await playwright.request.newContext({
+      baseURL: `${API_BASE}/`,
+      extraHTTPHeaders: { 'x-agent-token': nuevo.data.token },
+    });
+    await expectSuccess(await mudo.post('agente/sitios', { data: { sitios: [] } }), 200);
+    await mudo.dispose();
+
+    const despues = await expectSuccess(await adminApi.get(`${APP_ENDPOINTS.servidores}/${nuevo.data.id}`), 200);
+    expect(despues.data.sitiosReportadosAt).toBeTruthy();
+    const sitios = await expectSuccess(await adminApi.get(`${APP_ENDPOINTS.servidores}/${nuevo.data.id}/sitios`), 200);
+    expect(sitios.data).toHaveLength(0);
+  });
+
   test('M24.9 - un agente no puede tocar los trabajos de OTRO servidor', async ({ adminApi, playwright }) => {
     const otro = await expectSuccess(await adminApi.post(APP_ENDPOINTS.servidores, {
       data: { ...makeNombre('VPS Ajeno'), ip: ipUnica(), monitorea: true, tieneFullglass: true },
