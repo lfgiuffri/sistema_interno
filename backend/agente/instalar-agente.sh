@@ -95,6 +95,11 @@ fi
 
 if [ "${FULLGLASS:-0}" = "1" ]; then
     command -v php >/dev/null || { echo "Falta php (lo necesita el worker de FullGlass)"; exit 1; }
+    # El worker está escrito para PHP 7.0+. Se verifica ACÁ porque una función que no existe en
+    # la versión del servidor explota en tiempo de EJECUCIÓN, no al instalar: el worker muere en
+    # el journal y la app se queda diciendo «el agente no reportó sus sitios» sin más pistas.
+    php -r 'exit(PHP_VERSION_ID >= 70000 ? 0 : 1);' \
+        || { echo "El worker necesita PHP 7.0 o superior (este servidor tiene $(php -r 'echo PHP_VERSION;'))"; exit 1; }
     # mysqli se chequea ACÁ y no al primer SQL: enterarse de que falta el día que se lanza una
     # actualización masiva es el peor momento posible.
     php -r 'exit(function_exists("mysqli_connect") ? 0 : 1);' \

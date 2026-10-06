@@ -15,6 +15,13 @@
  * conectar, y a la app solo se le reporta el nombre del sitio, el de la base y el resultado.
  *
  * Config: /etc/sistema-interno-agente.env (API_URL y AGENT_TOKEN), la misma del agente.
+ *
+ * ⚠️ Escrito para PHP 7.0+ A PROPÓSITO, y por eso parece anticuado: sin arrow functions
+ * (`fn()`, 7.4), sin `str_contains()` (8.0) y sin tipos en las firmas. Los VPS de clientes
+ * corren la versión de PHP que necesita cada FullGlass, no la última, y un `Call to undefined
+ * function` acá no se ve en ningún lado: el worker muere, nadie reporta, y la app se queda
+ * diciendo «el agente no reportó sus sitios» para siempre. Antes de usar una función nueva,
+ * verificá contra qué versión corre el servidor más viejo.
  */
 
 const TIMEOUT_HTTP = 30;
@@ -26,12 +33,12 @@ const MAX_SALIDA = 256 * 1024;
  * @param string $ruta Archivo de configuración.
  * @return array<string,string> Claves leídas.
  */
-function leerConfig(string $ruta): array
+function leerConfig($ruta)
 {
     $out = [];
     foreach (@file($ruta, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [] as $linea) {
-        if ($linea === '' || $linea[0] === '#' || !str_contains($linea, '=')) continue;
-        [$k, $v] = explode('=', $linea, 2);
+        if ($linea === '' || $linea[0] === '#' || strpos($linea, '=') === false) continue;
+        list($k, $v) = explode('=', $linea, 2);
         $out[trim($k)] = trim($v);
     }
     return $out;
@@ -52,7 +59,7 @@ if ($apiUrl === '' || $token === '') {
  * @param array|null $cuerpo Payload JSON, o null.
  * @return array{code:int,data:mixed} Código HTTP y `data` del envelope.
  */
-function api(string $metodo, string $ruta, ?array $cuerpo = null): array
+function api($metodo, $ruta, $cuerpo = null)
 {
     global $apiUrl, $token;
     $ch = curl_init("$apiUrl/$ruta");
@@ -78,7 +85,7 @@ function api(string $metodo, string $ruta, ?array $cuerpo = null): array
  * @param string $rutaBase Carpeta a recorrer (una subcarpeta por cliente).
  * @return array<int,array<string,mixed>> Sitios con `ruta`, `cfg` y, si falló, `problema`.
  */
-function descubrirSitios(string $rutaBase): array
+function descubrirSitios($rutaBase)
 {
     $sitios = [];
     foreach (glob(rtrim($rutaBase, '/') . '/*', GLOB_ONLYDIR) ?: [] as $dir) {
@@ -113,7 +120,7 @@ function descubrirSitios(string $rutaBase): array
  * @param string $sql SQL a ejecutar.
  * @return array<string,mixed> Resultado para reportar (sin credenciales).
  */
-function correrSql(array $sitio, string $sql): array
+function correrSql($sitio, $sql)
 {
     $t0 = microtime(true);
     $base = ['sitio' => $sitio['ruta'], 'base' => $sitio['base'] ?? null];
@@ -158,18 +165,20 @@ function correrSql(array $sitio, string $sql): array
  * @param array $t Trabajo recibido de la API.
  * @return array{ok:bool,resultados:array} Lo que se reporta.
  */
-function ejecutarSql(array $t): array
+function ejecutarSql($t)
 {
     $sitios = descubrirSitios($t['rutaSitios'] ?? '/home');
     // Los que la app no pudo leer no se tocan, pero se reportan: un sitio que no se actualiza
     // en silencio es el peor resultado posible.
-    $validos = array_values(array_filter($sitios, fn($s) => isset($s['cfg'])));
-    $rotos = array_values(array_filter($sitios, fn($s) => !isset($s['cfg'])));
+    $validos = array_values(array_filter($sitios, function ($s) { return isset($s['cfg']); }));
+    $rotos = array_values(array_filter($sitios, function ($s) { return !isset($s['cfg']); }));
 
     // Si se eligieron sitios en la vista previa, se respeta esa selección.
     if (!empty($t['sitios'])) {
         $elegidos = array_flip($t['sitios']);
-        $validos = array_values(array_filter($validos, fn($s) => isset($elegidos[$s['ruta']])));
+        $validos = array_values(array_filter($validos, function ($s) use ($elegidos) {
+            return isset($elegidos[$s['ruta']]);
+        }));
     }
 
     if (!$validos) {
@@ -192,7 +201,7 @@ function ejecutarSql(array $t): array
             $resultados[] = ['sitio' => $r['ruta'], 'base' => null, 'estado' => 'omitido', 'error' => $r['problema']];
         }
     }
-    $hayError = (bool) array_filter($resultados, fn($r) => $r['estado'] === 'error');
+    $hayError = (bool) array_filter($resultados, function ($r) { return $r['estado'] === 'error'; });
     return ['ok' => !$hayError, 'resultados' => $resultados];
 }
 
@@ -201,7 +210,7 @@ function ejecutarSql(array $t): array
  * @param array $t Trabajo con el `comando` ya resuelto por la app.
  * @return array{ok:bool,salida:string} Resultado.
  */
-function ejecutarDeploy(array $t): array
+function ejecutarDeploy($t)
 {
     $comando = (string) ($t['comando'] ?? '');
     if (trim($comando) === '') return ['ok' => false, 'salida' => '', 'error' => 'El trabajo no trae comando'];
@@ -236,7 +245,10 @@ if (!$res['data']) {
     if (($conf['data']['tieneFullglass'] ?? false) !== true) exit(0);
     $sitios = descubrirSitios($conf['data']['rutaSitios'] ?? '/home');
     api('POST', 'agente/sitios', ['sitios' => array_map(
-        fn($s) => ['ruta' => $s['ruta'], 'base' => $s['base'] ?? null, 'problema' => $s['problema'] ?? null],
+        function ($s) {
+            return ['ruta' => $s['ruta'], 'base' => isset($s['base']) ? $s['base'] : null,
+                    'problema' => isset($s['problema']) ? $s['problema'] : null];
+        },
         $sitios
     )]);
     exit(0);

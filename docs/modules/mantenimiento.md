@@ -453,5 +453,13 @@ ahí adentro, y eso no tiene por qué ser el mismo que aprieta el botón.
   **45 minutos** sin reportar se puede destrabar a mano. El registro dice que lo cortó una
   persona y que **puede haber quedado aplicado** en el servidor: afirmar que «falló» sería
   inventar lo que pasó allá.
-- **Dependencia**: el worker necesita `php` con `mysqli`. Si falta, el trabajo se marca con ese
+- **Dependencia**: el worker necesita `php` **7.0 o superior** con `mysqli`. El instalador
+  verifica las dos cosas; si falta mysqli en tiempo de ejecución, el trabajo se marca con ese
   error en vez de quedar colgado.
+  ⚠️ **El worker está escrito para PHP 7.0 a propósito** y por eso parece anticuado: sin arrow
+  functions (`fn()`, 7.4), sin `str_contains()` (8.0) y sin tipos en las firmas. Los VPS de
+  clientes corren la versión que necesita cada FullGlass, no la última. Una función de más
+  explota en EJECUCIÓN, no al hacer `php -l`, así que no se ve en ningún lado: el worker muere
+  en el journal y la app queda diciendo «el agente no reportó sus sitios». Antes de usar algo
+  nuevo ahí, probalo de verdad contra la versión más vieja:
+  `docker run --rm -v "$PWD:/app" php:7.0-cli php /app/fullglass-worker.php`.
