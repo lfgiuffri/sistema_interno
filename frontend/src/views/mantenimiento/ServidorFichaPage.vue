@@ -11,7 +11,10 @@ import {
   onIonViewWillEnter, onIonViewWillLeave, IonPage, IonContent, IonHeader, IonToolbar,
   IonButtons, IonMenuButton, IonIcon,
 } from '@ionic/vue'
-import { arrowBackOutline, serverOutline, alertCircleOutline, checkmarkCircleOutline } from 'ionicons/icons'
+import {
+  arrowBackOutline, serverOutline, alertCircleOutline, checkmarkCircleOutline,
+  layersOutline, rocketOutline,
+} from 'ionicons/icons'
 import GraficoLinea, { type Serie } from '@/components/dashboard/GraficoLinea.vue'
 import IndicadorAutoRefresh from '@/components/shared/IndicadorAutoRefresh.vue'
 import { useAutoRefresh } from '@/composables/useAutoRefresh'
@@ -203,6 +206,96 @@ function lanzar(tipo: 'sql' | 'deploy'): void {
               <IndicadorAutoRefresh :auto="auto" />
             </div>
           </header>
+          <!-- ── FullGlass ────────────────────────────────────────────────────────────
+               Va ARRIBA de las métricas a propósito: cuando se entra a la ficha de un
+               servidor con FullGlass casi siempre es para actualizar las bases o desplegar;
+               las estadísticas se miran cuando algo anda mal, que es menos seguido.
+
+               Solo aparece si el servidor está marcado como que lo aloja: en los demás estas
+               acciones no existen (y la API también las rechaza). -->
+          <section v-if="servidor.tieneFullglass" class="ds-card p-4 mb-5">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+              <div class="min-w-0">
+                <h2 class="text-sm font-semibold text-ink">FullGlass</h2>
+                <p class="text-2xs text-ink-faint">
+                  Las bases de los clientes de este servidor y el despliegue de la aplicación.
+                </p>
+              </div>
+              <button
+                v-if="puedeConfigBd || puedeConfigDeploy"
+                class="ds-btn-ghost h-8 px-3 text-xs shrink-0" @click="abrirConfig"
+              >Configurar</button>
+            </div>
+
+            <!-- Las dos acciones del bloque, al tamaño de un botón principal: son el motivo
+                 por el que se entra acá. `flex-1` + `min-w` para que en el celular se apilen
+                 enteros en vez de quedar dos botones espachurrados. -->
+            <div v-if="puedeSql || puedeDeploy" class="flex flex-wrap gap-2 mb-3">
+              <button
+                v-if="puedeSql"
+                class="ds-btn-primary flex-1 min-w-[190px] justify-center"
+                @click="lanzar('sql')"
+              >
+                <IonIcon :icon="layersOutline" class="text-[17px]" />
+                Actualizar bases de datos
+              </button>
+              <button
+                v-if="puedeDeploy"
+                class="ds-btn-primary flex-1 min-w-[190px] justify-center"
+                @click="lanzar('deploy')"
+              >
+                <IonIcon :icon="rocketOutline" class="text-[17px]" />
+                Deploy de FullGlass
+              </button>
+            </div>
+
+          <div v-if="!editandoConfig" class="space-y-2 text-sm border-t border-line-soft pt-3">
+            <p><span class="text-ink-faint">Carpeta que recorre el agente:</span>
+              <code class="ml-1 text-ink">{{ servidor.rutaSitios }}</code></p>
+            <p v-if="puedeConfigDeploy || puedeDeploy">
+              <span class="text-ink-faint">Deploy de producción:</span>
+              <code v-if="servidor.comandoDeployProd" class="ml-1 text-ink break-all">{{ servidor.comandoDeployProd }}</code>
+              <span v-else class="ml-1 text-ink-faint">sin configurar</span>
+            </p>
+            <p v-if="puedeConfigDeploy || puedeDeploy">
+              <span class="text-ink-faint">Deploy de desarrollo:</span>
+              <code v-if="servidor.comandoDeployDev" class="ml-1 text-ink break-all">{{ servidor.comandoDeployDev }}</code>
+              <span v-else class="ml-1 text-ink-faint">sin configurar</span>
+            </p>
+          </div>
+
+          <form v-else class="space-y-3 border-t border-line-soft pt-3" @submit.prevent="guardarConfig">
+            <div v-if="puedeConfigBd">
+              <label class="ds-label" for="fg-ruta">Carpeta que recorre el agente</label>
+              <input id="fg-ruta" v-model="form.rutaSitios" class="ds-input" placeholder="/home" />
+              <p class="ds-hint">
+                Una subcarpeta por cliente, cada una con <code>configs/config_site.php</code>.
+              </p>
+            </div>
+            <template v-if="puedeConfigDeploy">
+              <div>
+                <label class="ds-label" for="fg-prod">Comando de deploy — producción</label>
+                <textarea id="fg-prod" v-model="form.comandoDeployProd" rows="2"
+                          class="ds-input !h-auto py-2 font-mono text-xs"></textarea>
+              </div>
+              <div>
+                <label class="ds-label" for="fg-dev">Comando de deploy — desarrollo</label>
+                <textarea id="fg-dev" v-model="form.comandoDeployDev" rows="2"
+                          class="ds-input !h-auto py-2 font-mono text-xs"></textarea>
+                <p class="ds-hint">
+                  Corren como root en este servidor. Dejalos en blanco para desconfigurarlos.
+                </p>
+              </div>
+            </template>
+            <footer class="flex justify-end gap-2">
+              <button type="button" class="ds-btn-secondary" @click="editandoConfig = false">Cancelar</button>
+              <button type="submit" class="ds-btn-primary" :disabled="guardandoConfig">
+                {{ guardandoConfig ? 'Guardando…' : 'Guardar' }}
+              </button>
+            </footer>
+          </form>
+        </section>
+
 
           <!-- Métricas actuales -->
           <section class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
@@ -301,72 +394,6 @@ function lanzar(tipo: 'sql' | 'deploy'): void {
             </div>
           </section>
 
-        <!-- ── FullGlass ──────────────────────────────────────────────────────────────
-             Solo aparece si el servidor está marcado como que lo aloja: en los demás, estas
-             acciones no existen (y la API también las rechaza). -->
-        <section v-if="servidor.tieneFullglass" class="mt-6">
-          <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
-            <h2 class="text-sm font-semibold text-ink">FullGlass</h2>
-            <div class="flex flex-wrap gap-2">
-              <button v-if="puedeSql" class="ds-btn-secondary h-8 px-3 text-xs" @click="lanzar('sql')">
-                Actualizar bases
-              </button>
-              <button v-if="puedeDeploy" class="ds-btn-secondary h-8 px-3 text-xs" @click="lanzar('deploy')">
-                Deploy
-              </button>
-              <button
-                v-if="puedeConfigBd || puedeConfigDeploy"
-                class="ds-btn-ghost h-8 px-3 text-xs" @click="abrirConfig"
-              >Configurar</button>
-            </div>
-          </div>
-
-          <div v-if="!editandoConfig" class="ds-card p-4 space-y-2 text-sm">
-            <p><span class="text-ink-faint">Carpeta que recorre el agente:</span>
-              <code class="ml-1 text-ink">{{ servidor.rutaSitios }}</code></p>
-            <p v-if="puedeConfigDeploy || puedeDeploy">
-              <span class="text-ink-faint">Deploy de producción:</span>
-              <code v-if="servidor.comandoDeployProd" class="ml-1 text-ink break-all">{{ servidor.comandoDeployProd }}</code>
-              <span v-else class="ml-1 text-ink-faint">sin configurar</span>
-            </p>
-            <p v-if="puedeConfigDeploy || puedeDeploy">
-              <span class="text-ink-faint">Deploy de desarrollo:</span>
-              <code v-if="servidor.comandoDeployDev" class="ml-1 text-ink break-all">{{ servidor.comandoDeployDev }}</code>
-              <span v-else class="ml-1 text-ink-faint">sin configurar</span>
-            </p>
-          </div>
-
-          <form v-else class="ds-card p-4 space-y-3" @submit.prevent="guardarConfig">
-            <div v-if="puedeConfigBd">
-              <label class="ds-label" for="fg-ruta">Carpeta que recorre el agente</label>
-              <input id="fg-ruta" v-model="form.rutaSitios" class="ds-input" placeholder="/home" />
-              <p class="ds-hint">
-                Una subcarpeta por cliente, cada una con <code>configs/config_site.php</code>.
-              </p>
-            </div>
-            <template v-if="puedeConfigDeploy">
-              <div>
-                <label class="ds-label" for="fg-prod">Comando de deploy — producción</label>
-                <textarea id="fg-prod" v-model="form.comandoDeployProd" rows="2"
-                          class="ds-input !h-auto py-2 font-mono text-xs"></textarea>
-              </div>
-              <div>
-                <label class="ds-label" for="fg-dev">Comando de deploy — desarrollo</label>
-                <textarea id="fg-dev" v-model="form.comandoDeployDev" rows="2"
-                          class="ds-input !h-auto py-2 font-mono text-xs"></textarea>
-                <p class="ds-hint">
-                  Corren como root en este servidor. Dejalos en blanco para desconfigurarlos.
-                </p>
-              </div>
-            </template>
-            <footer class="flex justify-end gap-2">
-              <button type="button" class="ds-btn-secondary" @click="editandoConfig = false">Cancelar</button>
-              <button type="submit" class="ds-btn-primary" :disabled="guardandoConfig">
-                {{ guardandoConfig ? 'Guardando…' : 'Guardar' }}
-              </button>
-            </footer>
-          </form>
-        </section>
         </template>
 
         <FullglassLanzarModal

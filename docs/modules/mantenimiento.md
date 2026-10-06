@@ -355,6 +355,11 @@ Dos funciones que antes se hacían entrando por SSH a cada VPS: correr SQL sobre
 bases de los clientes** de un servidor, y disparar el **deploy** de FullGlass. Solo aplica a
 los servidores marcados con `tieneFullglass`.
 
+En la ficha del servidor el bloque va **arriba de las métricas**, con los dos botones al
+tamaño de una acción principal: cuando se entra a un servidor con FullGlass casi siempre es
+para actualizar las bases o desplegar; las estadísticas se miran cuando algo anda mal, que es
+menos seguido.
+
 ### Por qué el agente PREGUNTA en vez de que la app entre
 
 El módulo vive de una propiedad: *la app no guarda credenciales de acceso a los servidores ni
