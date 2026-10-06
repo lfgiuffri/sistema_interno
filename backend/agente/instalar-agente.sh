@@ -9,9 +9,13 @@
 # Deja: el script en /usr/local/bin, la config en /etc (solo root), y un timer de systemd
 # que lo corre cada minuto. Es idempotente: correrlo de nuevo actualiza y reinicia.
 #
-# Con FULLGLASS=1 instala ADEMÁS el worker de FullGlass (SQL masivo + deploy), con su propia
-# unidad de systemd:
-#   ... | API_URL=... AGENT_TOKEN=... FULLGLASS=1 bash
+# Si el servidor está marcado como «Aloja FullGlass» en la app, instala ADEMÁS el worker de
+# FullGlass (SQL masivo + deploy) con su propia unidad de systemd. NO hay que pedir nada
+# especial: se consulta a la app con el mismo token. La alternativa —una variable que hay que
+# acordarse de pasar— deja el caso silencioso de un servidor marcado en la app pero sin worker
+# instalado, y ahí la pantalla dice «el agente no reportó sus sitios» sin que nadie sepa por qué.
+#
+# `FULLGLASS=1` sigue existiendo como override, para instalarlo ANTES de marcar el servidor.
 #
 set -euo pipefail
 
@@ -78,6 +82,17 @@ EOF
 # encontrar los config_site.php y escribir para hacer un deploy—, así que esos permisos se le
 # dan SOLO a él. Separarlos acota el daño: una falla del worker no toca al agente, y el agente
 # sigue sin poder leer nada de /home.
+# ¿Este servidor tiene FullGlass? Lo decide la APP, que es donde se marca. Se pregunta con el
+# mismo token del agente. Si la consulta falla (red, versión vieja del backend), se sigue sin
+# worker en vez de abortar: el monitoreo tiene que quedar instalado igual.
+if [ "${FULLGLASS:-0}" != "1" ]; then
+    RESPUESTA=$(curl -fsS --max-time 15 "${API_URL%/}/agente/config" -H "x-agent-token: $AGENT_TOKEN" 2>/dev/null || true)
+    case "$RESPUESTA" in
+        *'"tieneFullglass":true'*) FULLGLASS=1; echo "── La app dice que este servidor aloja FullGlass." ;;
+        *) FULLGLASS=0 ;;
+    esac
+fi
+
 if [ "${FULLGLASS:-0}" = "1" ]; then
     command -v php >/dev/null || { echo "Falta php (lo necesita el worker de FullGlass)"; exit 1; }
     # mysqli se chequea ACÁ y no al primer SQL: enterarse de que falta el día que se lanza una
@@ -139,6 +154,9 @@ fi
 
 # ── 5. Prueba del worker de FullGlass ────────────────────────────────────────────────────
 #
+# Si no se instaló, se dice POR QUÉ: el silencio acá es lo que hace que después nadie entienda
+# por qué la app no muestra las bases del servidor.
+#
 # Se corre una vez a propósito: instalarlo y no probarlo deja el caso en que el worker falla
 # en silencio y la app dice «el agente todavía no reportó sus sitios» para siempre, sin que
 # nadie sepa que hay que mirar acá.
@@ -153,4 +171,7 @@ if [ "${FULLGLASS:-0}" = "1" ]; then
         echo "❌ El worker de FullGlass falló al arrancar:"
         journalctl -u sistema-interno-fullglass -n 20 --no-pager || true
     fi
+else
+    echo "ℹ️  Sin worker de FullGlass: este servidor no está marcado como que lo aloja."
+    echo "   Si debería tenerlo, tildá «Aloja FullGlass» en su ficha y volvé a correr este instalador."
 fi

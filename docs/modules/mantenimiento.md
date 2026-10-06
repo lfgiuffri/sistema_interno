@@ -372,12 +372,23 @@ servidores tienen PHP porque es lo que corre FullGlass, así que lee `config_sit
 `include` —igual que el script `update_databases.php` que reemplaza— y habla con MySQL por
 `mysqli`. Desde bash habría que parsear PHP y JSON a mano.
 
-Se instala aparte, con `FULLGLASS=1`:
+**No hay que pedirlo**: el instalador le pregunta a la app (`GET /agente/config`, con el mismo
+token) si este servidor está marcado como que aloja FullGlass, y si lo está instala también el
+worker. Es el MISMO comando de siempre:
 
 ```bash
 curl -fsSL https://sys.positivemedia.com.ar/api/agente/instalar-agente.sh | \
-  API_URL=https://sys.positivemedia.com.ar/api AGENT_TOKEN=<token> FULLGLASS=1 bash
+  API_URL=https://sys.positivemedia.com.ar/api AGENT_TOKEN=<token> bash
 ```
+
+El flag existía al principio y fue un error de diseño: la app ya sabe si el servidor tiene
+FullGlass, y pedir que además alguien se acuerde de una variable deja el caso silencioso de un
+servidor marcado en la app pero sin worker instalado — ahí la pantalla dice «el agente no
+reportó sus sitios» y nadie sabe por qué. `FULLGLASS=1` sigue andando como override, para
+instalar el worker ANTES de marcar el servidor.
+
+⚠️ **Si marcás un servidor como FullGlass DESPUÉS de haber instalado el agente**, hay que
+volver a correr el instalador en ese servidor (es idempotente). Si no, no tiene worker.
 
 ⚠️ **Su unidad de systemd tiene menos blindaje que la del agente de métricas, a propósito.** El
 agente corre con `ProtectHome=true` y el filesystem en solo lectura y tiene que seguir así: es

@@ -570,9 +570,13 @@ que sigue es por qué está hecho así.
 - **Unidad de systemd APARTE, con menos blindaje que el agente de métricas.** El agente corre
   con `ProtectHome=true` y el filesystem en solo lectura, y tiene que seguir así: es lo que
   corre cada minuto en TODOS los servidores. El worker necesita lo contrario (leer `/home`,
-  escribir para el deploy), así que esos permisos se le dan solo a él. Se instala con
-  `FULLGLASS=1` en el instalador. Timer cada **10 s**: lanzar algo se tiene que sentir
-  inmediato, y sin trabajo es una sola petición que termina al instante.
+  escribir para el deploy), así que esos permisos se le dan solo a él. **El instalador lo
+  detecta solo**: le pregunta a la app (`GET /agente/config`) si el servidor está marcado como
+  que aloja FullGlass — el `FULLGLASS=1` que hubo al principio fue un error de diseño, porque
+  pedía acordarse de una variable para algo que la app ya sabe, y dejaba servidores marcados
+  sin worker sin que nadie se enterara. ⚠️ Marcar un servidor DESPUÉS de instalar el agente
+  obliga a volver a correr el instalador ahí. Timer cada **10 s**: lanzar algo se tiene que
+  sentir inmediato, y sin trabajo es una sola petición que termina al instante.
 - **Canario obligatorio en el SQL.** Corre primero en UNA base por servidor y **no sigue**
   hasta que una persona aprueba. Un `ALTER TABLE` no se puede deshacer (MySQL hace commit
   implícito en DDL), así que la única red real es romper una base en vez de doscientas. Una

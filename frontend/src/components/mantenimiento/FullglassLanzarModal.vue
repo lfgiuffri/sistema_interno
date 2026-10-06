@@ -232,8 +232,9 @@ async function lanzar(): Promise<void> {
                     ({{ fmtFechaHora(s.sitiosReportadosAt) }}). Revisá la ruta en «Configurar».
                   </template>
                   <template v-else>
-                    El agente nunca reportó sus sitios: puede que el worker de FullGlass no esté
-                    instalado en este servidor (se instala con <code>FULLGLASS=1</code>).
+                    El agente nunca reportó sus sitios. Lo más probable es que al servidor le
+                    falte el worker de FullGlass: volvé a correr el instalador del agente ahí
+                    (lo detecta solo porque el servidor está marcado como que lo aloja).
                   </template>
                 </p>
                 <label
