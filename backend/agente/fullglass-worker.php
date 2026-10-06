@@ -243,7 +243,8 @@ if (!$res['data']) {
     // dos lados, cambiarla en la ficha dejaría al agente recorriendo la vieja en silencio.
     $conf = api('GET', 'agente/config');
     if (($conf['data']['tieneFullglass'] ?? false) !== true) exit(0);
-    $sitios = descubrirSitios($conf['data']['rutaSitios'] ?? '/home');
+    $ruta = isset($conf['data']['rutaSitios']) ? $conf['data']['rutaSitios'] : '/home';
+    $sitios = descubrirSitios($ruta);
     api('POST', 'agente/sitios', ['sitios' => array_map(
         function ($s) {
             return ['ruta' => $s['ruta'], 'base' => isset($s['base']) ? $s['base'] : null,
@@ -251,6 +252,12 @@ if (!$res['data']) {
         },
         $sitios
     )]);
+    // Una línea por corrida: sin esto una corrida exitosa no deja rastro y el journal solo
+    // muestra «Starting / Succeeded», que no dice si encontró algo. Es el dato que hace falta
+    // cuando la app dice que no hay bases.
+    $conProblema = count(array_filter($sitios, function ($s) { return isset($s['problema']); }));
+    echo 'sin trabajos; inventario de ' . $ruta . ': ' . count($sitios) . ' sitio(s)'
+        . ($conProblema ? ", $conProblema sin config legible" : '') . "\n";
     exit(0);
 }
 

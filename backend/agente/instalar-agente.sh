@@ -167,14 +167,18 @@ fi
 # nadie sepa que hay que mirar acá.
 if [ "${FULLGLASS:-0}" = "1" ]; then
     echo "── Probando el worker de FullGlass…"
+    # ⚠️ `--since` y no `-n 10`: el timer corre cada 10 s, así que el final del journal trae
+    # corridas ANTERIORES a esta instalación. Mostrarlas hace creer que la prueba falló cuando
+    # en realidad lo que se ve es el archivo viejo muriendo justo antes de ser reemplazado.
+    DESDE=$(date '+%Y-%m-%d %H:%M:%S')
     if systemctl start sistema-interno-fullglass.service; then
-        journalctl -u sistema-interno-fullglass -n 10 --no-pager || true
+        journalctl -u sistema-interno-fullglass --since "$DESDE" --no-pager || true
         echo "✅ Worker de FullGlass instalado (consulta cada 10 s)."
         echo "   Si la app sigue diciendo que no reportó sitios, mirá:"
         echo "   journalctl -u sistema-interno-fullglass -n 30"
     else
         echo "❌ El worker de FullGlass falló al arrancar:"
-        journalctl -u sistema-interno-fullglass -n 20 --no-pager || true
+        journalctl -u sistema-interno-fullglass --since "$DESDE" --no-pager || true
     fi
 else
     echo "ℹ️  Sin worker de FullGlass: este servidor no está marcado como que lo aloja."

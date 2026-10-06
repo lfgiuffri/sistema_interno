@@ -463,3 +463,11 @@ ahí adentro, y eso no tiene por qué ser el mismo que aprieta el botón.
   en el journal y la app queda diciendo «el agente no reportó sus sitios». Antes de usar algo
   nuevo ahí, probalo de verdad contra la versión más vieja:
   `docker run --rm -v "$PWD:/app" php:7.0-cli php /app/fullglass-worker.php`.
+- **Leer el journal del worker, con cuidado**: el timer corre cada 10 s, así que
+  `journalctl -u sistema-interno-fullglass -n 20` muestra corridas ANTERIORES a lo que acabás
+  de hacer. Al reinstalar, el archivo viejo puede haber fallado segundos antes de ser
+  reemplazado y esas líneas aparecen igual: parece que la instalación falló cuando en realidad
+  salió bien. Mirá la MARCA DE TIEMPO, o filtrá con `--since` (es lo que hace el instalador).
+  Cada corrida sin trabajos deja una línea del tipo
+  `sin trabajos; inventario de /home: 14 sitio(s), 1 sin config legible` — si esa línea está,
+  el worker anda.
