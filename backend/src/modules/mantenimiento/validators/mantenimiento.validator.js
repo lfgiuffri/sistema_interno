@@ -89,10 +89,17 @@ export const validateCrearTrabajos = [
     body('servidorIds.*').isInt({ min: 1 }).toInt(),
     body('sql').if(body('tipo').equals('sql')).isString().notEmpty().withMessage('Escribí el SQL').isLength({ max: 200000 }),
     body('entorno').if(body('tipo').equals('deploy')).isIn(['produccion', 'desarrollo']).withMessage('Entorno inválido'),
+    // Detección: no mueve nada, averigua en qué rama está el cliente y la deja declarada en
+    // su config_site.php. Por eso es lo único que exime de mandar la rama destino.
+    body('detectar').optional().isBoolean().toBoolean(),
     // La rama destino va EXPLÍCITA y no se alterna: si la app y el servidor están desfasados
     // un momento, alternar mandaría al cliente a la rama contraria a la que se quiso.
-    body('rama').if(body('tipo').equals('rama')).isString().trim().notEmpty().isLength({ max: 60 })
+    body('rama').if(body('tipo').equals('rama')).if(body('detectar').not().equals('true'))
+        .isString().trim().notEmpty().isLength({ max: 60 })
         .withMessage('Elegí la rama destino'),
+    // Detectar es SIEMPRE sobre un cliente: es el que no declara su rama.
+    body('sitios').if(body('detectar').equals('true')).isArray({ min: 1, max: 1 })
+        .withMessage('Detectar la rama es de a un cliente'),
     // Sitios elegidos en la vista previa. Vacío/ausente = todos los que encuentre el agente.
     body('sitios').optional({ nullable: true }).isArray({ max: 500 }),
     body('sitios.*').isString().isLength({ max: 255 }),

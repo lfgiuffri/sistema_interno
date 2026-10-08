@@ -599,7 +599,18 @@ que sigue es por qué está hecho así.
   (`scriptRamaRuta`, constante `RUTA_SCRIPT_RAMA`), que es la misma con la que compone el
   comando por defecto: si cada lado tuviera la suya, el comando apuntaría a la nada. Por eso
   `comandoCambiarRama` pasó a ser un **override opcional** y ya no un requisito (antes el
-  lanzamiento daba 400 sin él). ⚠️ Sus dos
+  lanzamiento daba 400 sin él).
+- **Detectar la rama de un cliente viejo** (2026-10-08): los clientes de antes no tienen la key
+  `branch`, así que el agente no la puede leer y la columna queda vacía. En el listado ese «sin
+  dato» es un BOTÓN que lanza el mismo script con `--detectar`: deduce la rama de a qué carpeta
+  de FullGlass apuntan los tres archivos y deja la key declarada **como primera del arreglo**.
+  **No mueve de rama** — por eso se puede ofrecer ahí. Si los tres archivos NO coinciden no
+  escribe nada (un cliente a mitad de camino no tiene «una» rama); no exige que exista
+  `FullGlassDev` (no mueve nada, y exigirla dejaría afuera justo a los clientes de servidores
+  con solo la estable); y se niega si el servidor tiene `comandoCambiarRama` propio, que no
+  entiende el flag. En el trabajo la columna `rama` queda NULL y el `comando` con `--detectar`
+  dice qué se hizo. ⚠️ El listado expone **`rutaInventariada`** (¿el agente vio esa carpeta?):
+  sin ese dato `rama: null` tiene dos causas y la pantalla adivinaba la que casi nunca pasa. ⚠️ Sus dos
   trampas: `backCustomTemplatesDir` también dice `FullGlass/adminFiles/templates/` y NO se
   cambia, y los dos PHP tienen un segundo `set_include_path` a `/../FullGlass` que tampoco —
   por eso cada reemplazo va anclado a la clave / a los tres `../` + `POSITIVEMEDIA`, nunca al

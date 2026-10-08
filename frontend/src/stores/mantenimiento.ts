@@ -170,6 +170,9 @@ export interface SitioWeb {
   rutaFullglass: string | null
   /** Rama LEÍDA del servidor por el agente (no guardada acá). null si no se pudo cruzar. */
   rama: string | null
+  /** ¿El agente VIO esta carpeta? Separa «falta configurar algo» de «el cliente no declara
+   *  su rama», que es lo que se arregla desde la pantalla sin entrar al servidor. */
+  rutaInventariada: boolean
   servicio: { id: number; nombre: string } | null
   servidor: { id: number; nombre: string } | null
   dominioEstado: EstadoVence

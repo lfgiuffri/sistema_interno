@@ -131,6 +131,15 @@ export const RUTA_SCRIPT_RAMA = '/usr/local/bin/fullglass-cambiar-rama.sh';
 const COMANDO_RAMA_POR_DEFECTO = `${RUTA_SCRIPT_RAMA} {sitio} {rama}`;
 
 /**
+ * Plantilla de DETECCIÓN: no mueve al cliente de rama, averigua en cuál está leyendo sus
+ * archivos y deja declarada la key `branch` en su `config_site.php`.
+ *
+ * Es para los clientes viejos, que no tienen esa key: sin ella el sistema no puede mostrar en
+ * qué rama están y la única salida era entrar al servidor a editar tres archivos a mano.
+ */
+const COMANDO_RAMA_DETECTAR = `${RUTA_SCRIPT_RAMA} {sitio} --detectar`;
+
+/**
  * Reemplaza `{sitio}` y `{rama}` en el comando configurado.
  *
  * Los valores se ESCAPAN para el shell antes de entrar: el comando corre como root, y aunque
@@ -191,14 +200,25 @@ export const crearLote = async (models, user, datos) => {
         if (datos.tipo === 'rama') {
             const sitio = (datos.sitios || [])[0];
             if (!sitio) throw bizError(400, 'Elegí el cliente al que cambiarle la rama');
-            // `comandoCambiarRama` es un OVERRIDE, no un requisito: el caso normal usa el script
-            // que la app distribuye y mantiene al día en cada servidor. Se deja la puerta abierta
-            // porque puede haber un servidor con un layout propio, pero nadie tiene que
-            // configurar nada para que esto funcione.
-            const plantilla = servidor.comandoCambiarRama?.trim() || COMANDO_RAMA_POR_DEFECTO;
-            // Los marcadores se reemplazan ACÁ y el comando resultante se guarda tal cual se va
-            // a ejecutar: el historial tiene que poder mostrar la línea exacta, no una plantilla.
-            comando = resolverComandoRama(plantilla, sitio, datos.rama);
+
+            if (datos.detectar) {
+                // La detección la hace el script que distribuye la app, con su opción
+                // `--detectar`. Un comando propio no tiene por qué entenderla, y mandársela
+                // igual sería invocar como root un script con un argumento que no espera.
+                if (servidor.comandoCambiarRama?.trim()) {
+                    throw bizError(400, `«${servidor.nombre}» tiene un comando de cambio de rama propio, que no sabe detectar. Hay que declarar la rama a mano en ese cliente, o vaciar el comando para usar el script del sistema.`);
+                }
+                comando = resolverComandoRama(COMANDO_RAMA_DETECTAR, sitio, '');
+            } else {
+                // `comandoCambiarRama` es un OVERRIDE, no un requisito: el caso normal usa el
+                // script que la app distribuye y mantiene al día en cada servidor. Se deja la
+                // puerta abierta porque puede haber un servidor con un layout propio, pero
+                // nadie tiene que configurar nada para que esto funcione.
+                const plantilla = servidor.comandoCambiarRama?.trim() || COMANDO_RAMA_POR_DEFECTO;
+                // Los marcadores se reemplazan ACÁ y el comando resultante se guarda tal cual se
+                // va a ejecutar: el historial muestra la línea exacta, no una plantilla.
+                comando = resolverComandoRama(plantilla, sitio, datos.rama);
+            }
         }
 
         // Sin contacto = error en el momento, no cola.
@@ -215,7 +235,10 @@ export const crearLote = async (models, user, datos) => {
             comando,
             entorno: datos.tipo === 'deploy' ? datos.entorno : null,
             sitios: datos.sitios?.length ? JSON.stringify(datos.sitios) : null,
-            rama: datos.tipo === 'rama' ? datos.rama : null,
+            // En una detección la rama todavía NO se sabe —eso es lo que va a averiguar—, así
+            // que la columna queda en null y el `comando` (con su `--detectar`) es lo que dice
+            // qué se hizo. No hace falta una columna nueva para distinguirlos.
+            rama: datos.tipo === 'rama' && !datos.detectar ? datos.rama : null,
             userId: user?.id ?? null,
         }));
     }

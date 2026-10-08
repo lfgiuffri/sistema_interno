@@ -213,11 +213,26 @@ const ramaDestino = ref(RAMA_ESTABLE)
 const cambiandoRama = ref(false)
 const errorRama = ref('')
 
-/** Por qué un sitio de FullGlass puede no tener rama: son dos causas distintas. */
+/**
+ * Por qué un sitio de FullGlass puede no tener rama. Son TRES causas y se arreglan distinto:
+ * las dos primeras faltan cargar acá, la tercera se resuelve sola desde esta misma pantalla.
+ */
 function sinRama(s: SitioWeb): string {
   if (!s.servidorId) return 'Falta asociarle un servidor al sitio'
   if (!s.rutaFullglass) return 'Falta la carpeta del cliente en el servidor'
-  return 'El agente de ese servidor todavía no reportó esta carpeta'
+  if (!s.rutaInventariada) return 'El agente de ese servidor todavía no reportó esta carpeta'
+  return 'El config_site.php de este cliente no declara la rama. Se puede averiguar y dejar declarada desde acá.'
+}
+
+/**
+ * ¿Se le puede pedir al servidor que averigüe la rama?
+ *
+ * Hace falta el servidor y la carpeta —sin eso no hay a quién ni dónde mirar—, pero NO que el
+ * agente ya la haya reportado: si la carpeta está mal cargada, lanzar la detección es
+ * justamente lo que lo dice, con el error del script en el historial.
+ */
+function sePuedeDetectar(s: SitioWeb): boolean {
+  return !!(s.usaFullglass && !s.rama && s.servidorId && s.rutaFullglass && puedeCambiarRama.value)
 }
 
 function abrirRama(s: SitioWeb): void {
@@ -226,6 +241,39 @@ function abrirRama(s: SitioWeb): void {
   // el backend nunca alterna por su cuenta.
   ramaDestino.value = s.rama === RAMA_ESTABLE ? RAMA_PRUEBAS : RAMA_ESTABLE
   errorRama.value = ''
+}
+
+/* ── Detectar la rama de un cliente viejo ────────────────────────────────────────────
+ *
+ * Los clientes de antes no tienen la key `branch` en su `config_site.php`, así que el agente
+ * no tiene de dónde leerla y la columna queda vacía. Esto lanza el mismo script, con
+ * `--detectar`: mira a qué carpeta de FullGlass apuntan los archivos del cliente, deduce la
+ * rama y la deja declarada. NO lo mueve de rama — por eso es seguro ofrecerlo acá.
+ */
+const sitioDetectar = ref<SitioWeb | null>(null)
+const detectando = ref(false)
+const errorDetectar = ref('')
+
+function abrirDetectar(s: SitioWeb): void {
+  sitioDetectar.value = s
+  errorDetectar.value = ''
+}
+
+async function confirmarDetectar(): Promise<void> {
+  const s = sitioDetectar.value
+  if (!s || !s.servidorId || !s.rutaFullglass) return
+  detectando.value = true
+  errorDetectar.value = ''
+  const r = await store.lanzarTrabajos({
+    tipo: 'rama',
+    detectar: true,
+    servidorIds: [s.servidorId],
+    sitios: [s.rutaFullglass],
+  })
+  detectando.value = false
+  if (!r.ok) { errorDetectar.value = r.message; return }
+  toast.success('Detección lanzada: el agente la corre en unos segundos y la rama aparece sola')
+  sitioDetectar.value = null
 }
 
 async function confirmarRama(): Promise<void> {
@@ -498,6 +546,16 @@ onIonViewWillEnter(() => { if (loadedOnce) void store.fetchSitios() })
                     :title="puedeCambiarRama ? 'Cambiar de rama' : 'Sin permiso para cambiar la rama'"
                     @click="abrirRama(s)"
                   >{{ s.rama }}</button>
+                  <!-- Cuando se puede resolver, «sin dato» es un BOTÓN. Antes era un texto
+                       muerto cuya única explicación vivía en un title que había que ir a
+                       buscar con el mouse, sitio por sitio. -->
+                  <button
+                    v-else-if="s.usaFullglass && sePuedeDetectar(s)"
+                    type="button"
+                    class="text-2xs text-accent hover:underline text-left"
+                    :title="sinRama(s)"
+                    @click="abrirDetectar(s)"
+                  >sin dato · detectar</button>
                   <span v-else-if="s.usaFullglass" class="text-2xs text-ink-faint" :title="sinRama(s)">
                     sin dato
                   </span>
@@ -807,6 +865,38 @@ onIonViewWillEnter(() => { if (loadedOnce) void store.fetchSitios() })
                 :disabled="cambiandoRama || ramaDestino === sitioRama.rama"
                 @click="confirmarRama"
               >{{ cambiandoRama ? 'Lanzando…' : `Pasar a ${ramaDestino}` }}</button>
+            </footer>
+          </div>
+        </div>
+      </Teleport>
+
+      <!-- Detectar la rama de un cliente que no la declara. El fondo NO cierra (regla de la
+           casa): se sale por Cancelar o con Escape. -->
+      <Teleport to="body">
+        <div v-if="sitioDetectar" class="ds-modal-backdrop" @keydown.esc="sitioDetectar = null">
+          <div class="ds-modal max-w-md" role="dialog" aria-modal="true" aria-label="Detectar la rama">
+            <h2 class="text-base font-semibold text-ink mb-1">Detectar la rama</h2>
+            <p class="ds-hint mb-3">
+              <strong class="text-ink">{{ sitioDetectar.nombre }}</strong> no declara su rama en
+              <code>config_site.php</code>, por eso no se puede mostrar.
+            </p>
+            <p class="ds-hint mb-3">
+              Esto <strong class="text-ink">no lo cambia de rama</strong>: mira a qué carpeta de
+              FullGlass apuntan sus archivos, deduce en cuál está y deja la clave
+              <code>branch</code> declarada. Si los archivos no coinciden entre sí, no escribe
+              nada y lo dice en Ejecuciones.
+            </p>
+            <p class="ds-hint mb-3">
+              Carpeta: <code class="break-all">{{ sitioDetectar.rutaFullglass }}</code>
+            </p>
+
+            <p v-if="errorDetectar" class="ds-error" role="alert">{{ errorDetectar }}</p>
+
+            <footer class="flex justify-end gap-2 pt-1">
+              <button type="button" class="ds-btn-secondary" @click="sitioDetectar = null">Cancelar</button>
+              <button type="button" class="ds-btn-primary" :disabled="detectando" @click="confirmarDetectar">
+                {{ detectando ? 'Lanzando…' : 'Detectar y declarar' }}
+              </button>
             </footer>
           </div>
         </div>

@@ -537,6 +537,42 @@ resolver el comando (corre como root: una ruta con un espacio o una comilla no p
 en dos) y el comando resultante se guarda tal cual se ejecutó, para que el historial muestre la
 línea exacta.
 
+#### Los clientes que no declaran su rama
+
+Los clientes de antes no tienen la key `branch` en su `config_site.php`. El agente no tiene de
+dónde leerla, así que la columna queda vacía y el sistema no puede decir en qué rama están.
+
+En el listado, ese «sin dato» es un **botón** (`sin dato · detectar`) que lanza el mismo script
+con `--detectar`: mira a qué carpeta de FullGlass apuntan los tres archivos del cliente, deduce
+la rama y **deja la key declarada como PRIMERA del arreglo** — arriba de todo, que es donde uno
+la va a buscar al abrir el archivo. **No mueve al cliente de rama**, y por eso es seguro
+ofrecerlo desde la pantalla: escribe una sola clave en un solo archivo.
+
+Tres cosas que hacen que sea confiable:
+
+- **Si los tres archivos no coinciden, no escribe nada.** Un cliente a mitad de un cambio
+  anterior no tiene «una» rama, y estampar cualquiera de las dos sería convertir en dato algo
+  que no es cierto. El error dice qué dice cada archivo y pide resolverlo con un cambio
+  explícito.
+- **No exige que exista `FullGlassDev`**, a diferencia del cambio de rama: no se mueve nada, y
+  pedirla dejaría sin declarar su rama justo a los clientes de un servidor que solo tiene la
+  estable — que son los que más la necesitan.
+- **Se niega si el servidor tiene un `comandoCambiarRama` propio**: ese script no tiene por qué
+  entender `--detectar`, y mandárselo sería invocar como root un comando con un argumento que
+  no espera.
+
+Si la key existe pero **contradice** a los archivos, la corrige **donde está** (no la mueve
+arriba): es el archivo de un cliente en producción y un diff más grande no compra nada.
+
+En el trabajo, la columna `rama` queda en **null** —todavía no se sabe cuál es, eso es lo que
+va a averiguar— y el `comando` con su `--detectar` es lo que dice qué se hizo. No hizo falta
+una columna nueva para distinguirlos.
+
+⚠️ Para que el botón aparezca, el listado necesita saber si el agente **vio** esa carpeta:
+`rutaInventariada` en la respuesta de sitios. Sin ese dato, `rama: null` tiene dos causas
+—carpeta mal cargada, o cliente que no la declara— y la pantalla adivinaba la primera, que es
+la que casi nunca pasa.
+
 ⚠️ **La rama destino va explícita, nunca se alterna.** Un «cambiar a la otra» parece cómodo,
 pero si la app y el servidor están desfasados un instante manda al cliente a la rama contraria
 a la que se quiso.

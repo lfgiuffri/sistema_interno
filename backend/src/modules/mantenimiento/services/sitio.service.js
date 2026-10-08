@@ -60,7 +60,7 @@ export const listSitios = async (models) => {
     if (!sitios.length) return [];
 
     const ids = sitios.map(s => s.id);
-    const [abiertos, resumenVistas, ramas] = await Promise.all([
+    const [abiertos, resumenVistas, fullglass] = await Promise.all([
         SitioIncidente.findAll({ where: { sitioId: { [Op.in]: ids }, resueltoAt: null }, raw: true }),
         resumenVistasPorSitio(models, ids),
         ramasPorRuta(models, sitios),
@@ -87,7 +87,12 @@ export const listSitios = async (models) => {
             // La rama NO está guardada en el sitio: sale del inventario que reporta el agente,
             // cruzando por la carpeta. Así lo que se ve es lo que hay en el servidor y no una
             // copia que se desincroniza la primera vez que alguien la cambia a mano.
-            rama: json.usaFullglass ? (ramas[`${json.servidorId}|${json.rutaFullglass}`] ?? null) : null,
+            rama: json.usaFullglass ? (fullglass.ramas[`${json.servidorId}|${json.rutaFullglass}`] ?? null) : null,
+            // ¿El agente VIO esta carpeta? Es lo que separa «falta configurar algo» de «está
+            // todo bien pero el cliente no declara la rama», que es el caso que se resuelve
+            // solo, desde la pantalla, sin entrar al servidor.
+            rutaInventariada: json.usaFullglass
+                && fullglass.inventariadas.has(`${json.servidorId}|${json.rutaFullglass}`),
         };
     });
 };
@@ -105,7 +110,9 @@ export const listSitios = async (models) => {
 const ramasPorRuta = async (models, sitios) => {
     const { ServidorSitio } = models;
     const vinculados = sitios.filter(s => s.usaFullglass && s.rutaFullglass && s.servidorId);
-    if (!ServidorSitio || !vinculados.length) return {};
+    // Misma FORMA que el retorno de abajo aunque esté vacío: si acá volviera `{}`, el
+    // `.ramas` del que llama sería undefined y el listado entero se caería.
+    if (!ServidorSitio || !vinculados.length) return { ramas: {}, inventariadas: new Set() };
 
     const filas = await ServidorSitio.findAll({
         where: {
@@ -115,7 +122,14 @@ const ramasPorRuta = async (models, sitios) => {
         attributes: ['servidorId', 'ruta', 'rama'],
         raw: true,
     });
-    return Object.fromEntries(filas.map(f => [`${f.servidorId}|${f.ruta}`, f.rama]));
+    // Dos mapas y no uno: `rama: null` tiene DOS causas que se arreglan distinto —el agente
+    // nunca vio esa carpeta (ruta mal cargada, servidor equivocado) o la vio y el
+    // `config_site.php` del cliente no declara la rama. La pantalla no puede decir cuál es
+    // sin este dato, y hasta ahora adivinaba la primera, que es la que casi nunca pasa.
+    return {
+        ramas: Object.fromEntries(filas.map(f => [`${f.servidorId}|${f.ruta}`, f.rama])),
+        inventariadas: new Set(filas.map(f => `${f.servidorId}|${f.ruta}`)),
+    };
 };
 
 /**

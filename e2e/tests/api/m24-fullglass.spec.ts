@@ -341,6 +341,36 @@ test.describe('M24: FullGlass — SQL masivo y deploy', () => {
     await adminApi.put(`${APP_ENDPOINTS.servidores}/${servidorId}/config-deploy`, { data: { comandoCambiarRama: null } });
   });
 
+  test('M24.17 - DETECTAR: sin rama destino, y se niega si el servidor tiene script propio', async ({ adminApi }) => {
+    // El caso de los clientes viejos: el agente ve la carpeta pero su config_site.php no
+    // declara la rama. Sin esto había que entrar al servidor a editar tres archivos.
+    await expectSuccess(await agente.post('agente/sitios', {
+      data: { sitios: [{ ruta: '/home/sinRama', base: 'vieja_db' }] },
+    }), 200);
+    const inv = await expectSuccess(await adminApi.get(`${APP_ENDPOINTS.servidores}/${servidorId}/sitios`), 200);
+    expect(inv.data.find((s: { ruta: string }) => s.ruta === '/home/sinRama').rama).toBeNull();
+
+    const lote = await expectSuccess(await adminApi.post('mantenimiento/trabajos', {
+      data: { tipo: 'rama', detectar: true, servidorIds: [servidorId], sitios: ['/home/sinRama'] },
+    }), 201);
+    const trabajo = await expectSuccess(
+      await adminApi.get(`mantenimiento/trabajos/${lote.data.trabajos[0].id}`), 200);
+    expect(trabajo.data.comando).toBe("/usr/local/bin/fullglass-cambiar-rama.sh '/home/sinRama' --detectar");
+    // La rama queda NULL: todavía no se sabe cuál es, eso es lo que va a averiguar.
+    expect(trabajo.data.rama).toBeNull();
+    await expectSuccess(await adminApi.post(`mantenimiento/trabajos/${trabajo.data.id}/cancelar`), 200);
+
+    // Un comando propio no tiene por qué entender `--detectar`: mandárselo sería invocar como
+    // root un script con un argumento que no espera.
+    await expectSuccess(await adminApi.put(`${APP_ENDPOINTS.servidores}/${servidorId}/config-deploy`, {
+      data: { comandoCambiarRama: '/home/scripts/propio.sh {sitio} {rama}' },
+    }), 200);
+    await expectError(await adminApi.post('mantenimiento/trabajos', {
+      data: { tipo: 'rama', detectar: true, servidorIds: [servidorId], sitios: ['/home/sinRama'] },
+    }), 400);
+    await adminApi.put(`${APP_ENDPOINTS.servidores}/${servidorId}/config-deploy`, { data: { comandoCambiarRama: null } });
+  });
+
   test('M24.15 - la rama destino es OBLIGATORIA: nunca se alterna sola', async ({ adminApi }) => {
     // Alternar parece cómodo, pero si la app y el servidor están desfasados un instante manda
     // al cliente a la rama contraria a la que se quiso. Por eso va explícita y se valida.

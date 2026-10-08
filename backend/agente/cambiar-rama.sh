@@ -63,18 +63,24 @@ morir() { echo "ERROR: $*" >&2; exit 1; }
 uso() {
     cat >&2 <<AYUDA
 Uso: $PROGRAMA <carpeta-del-cliente> <$RAMA_ESTABLE|$RAMA_PRUEBAS> [--dry-run]
+     $PROGRAMA <carpeta-del-cliente> --detectar [--dry-run]
 
   <carpeta-del-cliente>  Carpeta que contiene configs/ y sitio/  (ej: /home/totalpack)
+  --detectar             NO cambia de rama: averigua en cuál está mirando los archivos y
+                         deja declarada la key 'branch' en config_site.php. Es para los
+                         clientes viejos, que no la tienen y por eso el sistema no puede
+                         mostrar en qué rama están.
   --dry-run, -n          Muestra lo que haría, sin tocar ningún archivo.
 AYUDA
     exit 2
 }
 
 # ── Argumentos ───────────────────────────────────────────────────────────────────────
-SITIO=''; RAMA=''; SECO=0
+SITIO=''; RAMA=''; SECO=0; DETECTAR=0
 for arg in "$@"; do
     case "$arg" in
         --dry-run|-n) SECO=1 ;;
+        --detectar)   DETECTAR=1 ;;
         -h|--help)    uso ;;
         -*)           morir "Opción desconocida: $arg" ;;
         *)            if   [ -z "$SITIO" ]; then SITIO="$arg"
@@ -82,15 +88,23 @@ for arg in "$@"; do
                       else morir "Sobra el argumento «$arg»"; fi ;;
     esac
 done
-[ -n "$SITIO" ] && [ -n "$RAMA" ] || uso
+[ -n "$SITIO" ] || uso
+# Se rechaza en vez de elegir uno de los dos: pedir «pasalo a main» y «averiguá en cuál está»
+# a la vez no quiere decir nada, y adivinar cuál gana es la clase de cosa que después nadie
+# puede explicar mirando el historial.
+[ "$DETECTAR" = 1 ] && [ -n "$RAMA" ] && morir "--detectar no se combina con una rama destino: o se averigua, o se cambia."
+[ "$DETECTAR" = 1 ] || [ -n "$RAMA" ] || uso
 
-case "$RAMA" in
-    "$RAMA_ESTABLE") DIR_FG="$DIR_ESTABLE" ;;
-    "$RAMA_PRUEBAS") DIR_FG="$DIR_PRUEBAS" ;;
-    # Se rechaza en vez de adivinar: «dev» era el nombre viejo y mandarlo a una carpeta que
-    # no existe deja el sitio caído.
-    *) morir "Rama «$RAMA» inválida. Las únicas válidas son «$RAMA_ESTABLE» y «$RAMA_PRUEBAS»." ;;
-esac
+DIR_FG=''
+if [ "$DETECTAR" = 0 ]; then
+    case "$RAMA" in
+        "$RAMA_ESTABLE") DIR_FG="$DIR_ESTABLE" ;;
+        "$RAMA_PRUEBAS") DIR_FG="$DIR_PRUEBAS" ;;
+        # Se rechaza en vez de adivinar: «dev» era el nombre viejo y mandarlo a una carpeta que
+        # no existe deja el sitio caído.
+        *) morir "Rama «$RAMA» inválida. Las únicas válidas son «$RAMA_ESTABLE» y «$RAMA_PRUEBAS»." ;;
+    esac
+fi
 
 SITIO="${SITIO%/}"
 [ -d "$SITIO" ] || morir "No existe la carpeta del cliente: $SITIO"
@@ -101,7 +115,11 @@ PLUGIN="$SITIO/sitio/getPlugin.php"
 ARCHIVOS=("$CONFIG" "$INDEX" "$PLUGIN")
 
 echo "Cliente: $SITIO"
-echo "Rama destino: $RAMA (carpeta $DIR_FG)"
+if [ "$DETECTAR" = 1 ]; then
+    echo "Modo: DETECTAR (no se cambia de rama, solo se declara la que ya tiene)"
+else
+    echo "Rama destino: $RAMA (carpeta $DIR_FG)"
+fi
 [ "$SECO" = 1 ] && echo "MODO PRUEBA: no se va a escribir nada."
 echo
 
@@ -116,6 +134,10 @@ for a in "${ARCHIVOS[@]}"; do
     [ -w "$(dirname "$a")" ] || morir "No se puede escribir en $(dirname "$a") (ahí va el respaldo)"
 done
 
+# La carpeta destino tiene que EXISTIR. En modo detectar no se mira: no se mueve nada, así
+# que exigir FullGlassDev dejaría sin poder declarar su rama a los clientes de un servidor
+# que solo tiene la estable — que son justamente los que más les falta la key.
+if [ "$DETECTAR" = 0 ]; then
 # La carpeta destino tiene que EXISTIR. Es la comprobación que más sirve de todas: pasar un
 # cliente a `development` en un servidor que nunca tuvo FullGlassDev lo deja caído al instante,
 # y el error aparecería como un 500 en el navegador del cliente, no acá.
@@ -125,6 +147,7 @@ if [ -d "$DESTINO_FG/POSITIVEMEDIA" ]; then
 else
     RESUELTA=$(cd "$SITIO/sitio/../../.." 2>/dev/null && pwd)
     morir "No existe $DIR_FG/POSITIVEMEDIA bajo ${RESUELTA:-$SITIO/sitio/../../..} — este servidor no tiene esa rama instalada. No se tocó nada."
+fi
 fi
 
 # ── 2. Estado actual, archivo por archivo ────────────────────────────────────────────
@@ -152,18 +175,42 @@ echo "  sitio/index.php      include_path = ${IDX_ACTUAL:-«no se reconoció»}"
 echo "  sitio/getPlugin.php  include_path = ${PLG_ACTUAL:-«no se reconoció»}"
 echo
 
+# Inserta `'branch' => '<rama>'` como PRIMERA clave del $arrayConfig.
+#
+# Primera y no «al lado de backTemplatesDir» porque es el dato que uno va a buscar cuando abre
+# el archivo: tenerlo arriba de todo evita el scroll y evita la duda de si está o no. Se mete
+# justo después de la línea que abre el arreglo —antes incluso del comentario que encabeza el
+# primer grupo— y hereda la indentación de la primera clave que encuentre, para no desalinear
+# un archivo que está todo con tabs.
+#
+# Si no se reconoce la apertura del arreglo NO inventa: devuelve 1 y el que llama decide.
+# @param $1 archivo de entrada  $2 archivo de salida  $3 rama a declarar
+insertar_branch_primera() {
+    awk -v rama="$3" '
+        BEGIN { sangria = "\t\t" }
+        # Sangría de referencia: la primera clave del arreglo.
+        sangria_vista != 1 && /^[[:space:]]*'"'"'[A-Za-z_]+'"'"'[[:space:]]*=>/ {
+            match($0, /^[[:space:]]*/)
+            sangria = substr($0, 1, RLENGTH)
+            sangria_vista = 1
+        }
+        { lineas[NR] = $0 }
+        !apertura && /\$arrayConfig[[:space:]]*=[[:space:]]*(array[[:space:]]*\(|\[)/ { apertura = NR }
+        END {
+            if (!apertura) exit 1
+            for (i = 1; i <= NR; i++) {
+                print lineas[i]
+                if (i == apertura) printf "%s'"'"'branch'"'"' => '"'"'%s'"'"',\n", sangria, rama
+            }
+        }
+    ' "$1" > "$2"
+}
+
 [ -n "$TPL_ACTUAL" ] || morir "En $CONFIG no se encontró 'backTemplatesDir' con la forma ../../../<carpeta>/adminFiles/... — no se tocó nada."
 [ -n "$IDX_ACTUAL" ] || morir "En $INDEX no se encontró el set_include_path a ../../../<carpeta>/POSITIVEMEDIA — no se tocó nada."
 [ -n "$PLG_ACTUAL" ] || morir "En $PLUGIN no se encontró el set_include_path a ../../../<carpeta>/POSITIVEMEDIA — no se tocó nada."
 
-# Idempotencia: la app puede reintentar un trabajo, y volver a aplicar lo mismo no es un error.
-if [ "$BRANCH_ACTUAL" = "$RAMA" ] && [ "$TPL_ACTUAL" = "$DIR_FG" ] \
-   && [ "$IDX_ACTUAL" = "$DIR_FG" ] && [ "$PLG_ACTUAL" = "$DIR_FG" ]; then
-    echo "Ya estaba en «$RAMA» y los tres archivos coinciden. No hay nada que hacer."
-    exit 0
-fi
-
-# ── 3. Preparar las versiones nuevas en temporales ───────────────────────────────────
+# ── 3. Herramientas de escritura, compartidas por los dos modos ──────────────────────
 TMPDIR_T=$(mktemp -d) || morir "No se pudo crear la carpeta temporal"
 # El trap corre pase lo que pase: un temporal con el config de un cliente no se deja tirado.
 trap 'rm -rf "$TMPDIR_T"' EXIT
@@ -174,8 +221,8 @@ NUEVO_PLUGIN="$TMPDIR_T/getPlugin.php"
 
 # Estos archivos terminan en `?>` SIN salto de línea final, y sed le agrega uno. PHP se come
 # un salto después de `?>`, así que no cambia el comportamiento — pero deja una línea de más
-# en el diff de los tres archivos, y acá lo que importa es poder mirar un diff y entenderlo
-# de un vistazo. Se le saca el byte que sobra, uno solo y solo si el original no lo tenía.
+# en el diff, y acá lo que importa es poder mirar un diff y entenderlo de un vistazo. Se le
+# saca el byte que sobra, uno solo y solo si el original no lo tenía.
 igualar_salto_final() {
     local original="$1" nuevo="$2"
     [ -s "$original" ] || return 0
@@ -184,27 +231,151 @@ igualar_salto_final() {
     truncate -s -1 "$nuevo"
 }
 
+SELLO=$(date +%Y%m%d-%H%M%S)
+ESCRITOS=()
+
+deshacer() {
+    echo "Deshaciendo lo ya escrito…" >&2
+    for a in "${ESCRITOS[@]}"; do
+        cat "$a.bak-$SELLO" > "$a" 2>/dev/null \
+            && echo "  restaurado: $a" >&2 \
+            || echo "  ¡NO SE PUDO RESTAURAR $a! El respaldo está en $a.bak-$SELLO" >&2
+    done
+}
+
+# Aplica los pares `destino:nuevo` que se le pasen: normaliza el final de archivo, valida el
+# PHP, y escribe con respaldo. Ante cualquier falla deshace lo ya escrito.
+#
+# Es UNA función y no dos copias porque los dos modos tocan los mismos archivos del mismo
+# cliente: si la red de seguridad estuviera duplicada, el día que se arregle algo acá el otro
+# camino se quedaría sin el arreglo.
+aplicar_cambios() {
+    local par destino fuente
+
+    for par in "$@"; do igualar_salto_final "${par%%:*}" "${par##*:}"; done
+
+    # Sintaxis de PHP. Si el servidor no tiene el binario, se sigue igual pero se dice.
+    if command -v php >/dev/null 2>&1; then
+        for par in "$@"; do
+            php -l "${par##*:}" >/dev/null 2>&1 \
+                || morir "El resultado de $(basename "${par%%:*}") no compila como PHP. No se escribió nada."
+        done
+        echo "Sintaxis PHP verificada."
+    else
+        echo "Aviso: no hay binario «php» en el PATH, no se pudo verificar la sintaxis."
+    fi
+
+    if [ "$SECO" = 1 ]; then
+        echo
+        echo "Cambios que se aplicarían:"
+        for par in "$@"; do
+            echo "--- ${par%%:*}"
+            diff -u "${par%%:*}" "${par##*:}" | tail -n +3
+        done
+        echo
+        echo "MODO PRUEBA: no se escribió nada."
+        exit 0
+    fi
+
+    for par in "$@"; do
+        destino="${par%%:*}"; fuente="${par##*:}"
+        cp -p "$destino" "$destino.bak-$SELLO" || { deshacer; morir "No se pudo respaldar $destino"; }
+        # `cat >` y no `mv`: conserva dueño, grupo y permisos del archivo original.
+        if ! cat "$fuente" > "$destino"; then
+            ESCRITOS+=("$destino")
+            deshacer
+            morir "No se pudo escribir $destino"
+        fi
+        ESCRITOS+=("$destino")
+    done
+}
+
+# ── 4. Modo DETECTAR: averiguar la rama y dejarla declarada ──────────────────────────
+#
+# Para los clientes viejos, que no tienen la key `branch`. Sin ella el sistema no puede decir
+# en qué rama están, y hasta hoy la única salida era entrar al servidor a mano.
+#
+# NO toca index.php ni getPlugin.php: no se está moviendo nada, se está escribiendo el dato
+# que faltaba. Un solo archivo y una sola clave es mucho menos superficie de error.
+if [ "$DETECTAR" = 1 ]; then
+    # Los TRES tienen que coincidir. Si no coinciden el cliente quedó a mitad de camino de un
+    # cambio anterior, y declarar cualquiera de las dos sería estampar como verdad algo que no
+    # lo es — justo el tipo de dato que después se usa para decidir.
+    if [ "$TPL_ACTUAL" != "$IDX_ACTUAL" ] || [ "$IDX_ACTUAL" != "$PLG_ACTUAL" ]; then
+        echo "backTemplatesDir=$TPL_ACTUAL  index.php=$IDX_ACTUAL  getPlugin.php=$PLG_ACTUAL" >&2
+        morir "Los tres archivos no apuntan a la misma carpeta: este cliente quedó a mitad de un cambio de rama. Resolvelo con un cambio explícito (a main o a development); no se declara nada."
+    fi
+
+    case "$TPL_ACTUAL" in
+        "$DIR_ESTABLE") DETECTADA="$RAMA_ESTABLE" ;;
+        "$DIR_PRUEBAS") DETECTADA="$RAMA_PRUEBAS" ;;
+        *) morir "Los archivos apuntan a «$TPL_ACTUAL», que no es ni $DIR_ESTABLE ni $DIR_PRUEBAS. No se declara nada." ;;
+    esac
+    echo "Rama detectada: $DETECTADA (los tres archivos apuntan a $TPL_ACTUAL)"
+
+    if [ "$BRANCH_ACTUAL" = "$DETECTADA" ]; then
+        echo "La key 'branch' ya dice «$DETECTADA». No hay nada que hacer."
+        exit 0
+    fi
+
+    if [ -z "$BRANCH_ACTUAL" ]; then
+        insertar_branch_primera "$CONFIG" "$NUEVO_CONFIG" "$DETECTADA" \
+            || morir "No se reconoció la apertura de \$arrayConfig en $CONFIG: habría que agregar la key a mano. No se tocó nada."
+        echo "Se agrega la key 'branch' como PRIMERA del arreglo."
+    else
+        # Existía con otro valor: se corrige DONDE ESTÁ. Moverla arriba sería un diff más
+        # grande para ningún beneficio, y acá el archivo es de un cliente en producción.
+        sed -E "/'branch'/ s@('branch'[[:space:]]*=>[[:space:]]*)'[^']*'@\1'$DETECTADA'@" \
+            "$CONFIG" > "$NUEVO_CONFIG" || morir "Falló la edición de config_site.php"
+        echo "La key 'branch' decía «$BRANCH_ACTUAL» y los archivos dicen «$DETECTADA»: se corrige."
+    fi
+
+    # Verificar el resultado antes de escribir: se relee, no se confía en el reemplazo.
+    BRANCH_NUEVO=$(sed -nE "s/.*'branch'[[:space:]]*=>[[:space:]]*'([^']*)'.*/\1/p" "$NUEVO_CONFIG" | head -1)
+    [ "$BRANCH_NUEVO" = "$DETECTADA" ] || morir "branch quedó en «${BRANCH_NUEVO:-nada}» en vez de «$DETECTADA». No se escribió nada."
+    # Y que no se haya tocado nada más que esa línea. Se normaliza ANTES de contar el salto
+    # final que agrega awk: si no, ese byte aparece como una línea cambiada de más y el guard
+    # saltaría siempre. `aplicar_cambios` la vuelve a llamar y no pasa nada: es idempotente.
+    igualar_salto_final "$CONFIG" "$NUEVO_CONFIG"
+    if [ "$(diff "$CONFIG" "$NUEVO_CONFIG" | grep -c "^[<>]")" -gt 2 ]; then
+        morir "El cambio afectó más de una línea de $CONFIG. No se escribió nada."
+    fi
+
+    aplicar_cambios "$CONFIG:$NUEVO_CONFIG"
+
+    FINAL=$(rama_de_config)
+    [ "$FINAL" = "$DETECTADA" ] || { deshacer; morir "La comprobación final dio «$FINAL». Se volvió atrás."; }
+    echo
+    echo "Listo: $SITIO queda declarado en «$FINAL». No se cambió de rama, solo se registró la que ya tenía."
+    echo "Respaldo: $CONFIG.bak-$SELLO"
+    exit 0
+fi
+
+# Idempotencia: la app puede reintentar un trabajo, y volver a aplicar lo mismo no es un error.
+if [ "$BRANCH_ACTUAL" = "$RAMA" ] && [ "$TPL_ACTUAL" = "$DIR_FG" ] \
+   && [ "$IDX_ACTUAL" = "$DIR_FG" ] && [ "$PLG_ACTUAL" = "$DIR_FG" ]; then
+    echo "Ya estaba en «$RAMA» y los tres archivos coinciden. No hay nada que hacer."
+    exit 0
+fi
+
+# ── 5. Modo CAMBIAR: mover al cliente de rama ────────────────────────────────────────
 # config_site.php — dos cambios, los dos anclados al NOMBRE de la clave.
 sed -E \
     -e "/'branch'/ s@('branch'[[:space:]]*=>[[:space:]]*)'[^']*'@\1'$RAMA'@" \
     -e "/'backTemplatesDir'/ s@(\.\./\.\./\.\./)[A-Za-z]+(/adminFiles)@\1$DIR_FG\2@" \
     "$CONFIG" > "$NUEVO_CONFIG" || morir "Falló la edición de config_site.php"
 
-# Si la clave `branch` no existía, se agrega. Sin ella el sitio funciona igual, pero el
-# Sistema Interno no puede mostrar en qué rama está —que es la mitad del sentido de esto—,
-# así que se crea y se avisa. Va pegada a 'backTemplatesDir' para heredar su indentación y
-# quedar dentro del array sí o sí.
+# Si la clave `branch` no existía, se agrega como PRIMERA del arreglo: es el dato que uno va a
+# buscar cuando abre el archivo. Sin ella el sitio funciona igual, pero el Sistema Interno no
+# puede mostrar en qué rama está, que es la mitad del sentido de esto.
 AGREGO_BRANCH=0
 if [ -z "$BRANCH_ACTUAL" ]; then
-    awk -v rama="$RAMA" '
-        !puesta && /'\''backTemplatesDir'\''/ {
-            match($0, /^[[:space:]]*/)
-            printf "%s'\''branch'\'' => '\''%s'\'',\n", substr($0, 1, RLENGTH), rama
-            puesta = 1
-        }
-        { print }
-    ' "$NUEVO_CONFIG" > "$NUEVO_CONFIG.b" && mv "$NUEVO_CONFIG.b" "$NUEVO_CONFIG" \
-        || morir "No se pudo agregar la clave 'branch' a config_site.php"
+    insertar_branch_primera "$CONFIG" "$NUEVO_CONFIG.b" "$RAMA" \
+        || morir "No se reconoció la apertura de \$arrayConfig en $CONFIG. No se tocó nada."
+    # El reemplazo de backTemplatesDir se vuelve a aplicar sobre el archivo ya con la key.
+    sed -E "/'backTemplatesDir'/ s@(\.\./\.\./\.\./)[A-Za-z]+(/adminFiles)@\1$DIR_FG\2@" \
+        "$NUEVO_CONFIG.b" > "$NUEVO_CONFIG" || morir "Falló la edición de config_site.php"
+    rm -f "$NUEVO_CONFIG.b"
     AGREGO_BRANCH=1
 fi
 
@@ -215,11 +386,7 @@ for par in "$INDEX:$NUEVO_INDEX" "$PLUGIN:$NUEVO_PLUGIN"; do
         "${par%%:*}" > "${par##*:}" || morir "Falló la edición de ${par%%:*}"
 done
 
-igualar_salto_final "$CONFIG" "$NUEVO_CONFIG"
-igualar_salto_final "$INDEX" "$NUEVO_INDEX"
-igualar_salto_final "$PLUGIN" "$NUEVO_PLUGIN"
-
-# ── 4. Verificar los temporales antes de pisar nada ──────────────────────────────────
+# ── 6. Verificar los temporales antes de pisar nada ──────────────────────────────────
 # No se confía en que sed hizo lo que se le pidió: se lee el resultado.
 verificar() {
     local archivo="$1" etiqueta="$2" obtenido
@@ -242,54 +409,9 @@ if [ "$original_custom" != "$nuevo_custom" ] \
     morir "Se modificó 'backCustomTemplatesDir', que no se debía tocar. No se escribió nada."
 fi
 
-# Sintaxis de PHP. Si el servidor no tiene el binario, se sigue igual pero se dice.
-if command -v php >/dev/null 2>&1; then
-    for t in "$NUEVO_CONFIG" "$NUEVO_INDEX" "$NUEVO_PLUGIN"; do
-        php -l "$t" >/dev/null 2>&1 || morir "El resultado de $(basename "$t") no compila como PHP. No se escribió nada."
-    done
-    echo "Sintaxis PHP verificada en los tres archivos."
-else
-    echo "Aviso: no hay binario «php» en el PATH, no se pudo verificar la sintaxis."
-fi
+# ── 7. Escribir y confirmar ──────────────────────────────────────────────────────────
+aplicar_cambios "$CONFIG:$NUEVO_CONFIG" "$INDEX:$NUEVO_INDEX" "$PLUGIN:$NUEVO_PLUGIN"
 
-if [ "$SECO" = 1 ]; then
-    echo
-    echo "Cambios que se aplicarían:"
-    for par in "$CONFIG:$NUEVO_CONFIG" "$INDEX:$NUEVO_INDEX" "$PLUGIN:$NUEVO_PLUGIN"; do
-        echo "--- ${par%%:*}"
-        diff -u "${par%%:*}" "${par##*:}" | tail -n +3
-    done
-    echo
-    echo "MODO PRUEBA: no se escribió nada."
-    exit 0
-fi
-
-# ── 5. Escribir, con respaldo y con vuelta atrás ─────────────────────────────────────
-SELLO=$(date +%Y%m%d-%H%M%S)
-ESCRITOS=()
-
-deshacer() {
-    echo "Deshaciendo lo ya escrito…" >&2
-    for a in "${ESCRITOS[@]}"; do
-        cat "$a.bak-$SELLO" > "$a" 2>/dev/null \
-            && echo "  restaurado: $a" >&2 \
-            || echo "  ¡NO SE PUDO RESTAURAR $a! El respaldo está en $a.bak-$SELLO" >&2
-    done
-}
-
-for par in "$CONFIG:$NUEVO_CONFIG" "$INDEX:$NUEVO_INDEX" "$PLUGIN:$NUEVO_PLUGIN"; do
-    destino="${par%%:*}"; fuente="${par##*:}"
-    cp -p "$destino" "$destino.bak-$SELLO" || { deshacer; morir "No se pudo respaldar $destino"; }
-    # `cat >` y no `mv`: conserva dueño, grupo y permisos del archivo original.
-    if ! cat "$fuente" > "$destino"; then
-        ESCRITOS+=("$destino")
-        deshacer
-        morir "No se pudo escribir $destino"
-    fi
-    ESCRITOS+=("$destino")
-done
-
-# ── 6. Releer y confirmar ────────────────────────────────────────────────────────────
 FINAL_BRANCH=$(rama_de_config)
 FINAL_TPL=$(dir_de_templates)
 FINAL_IDX=$(dir_de_include "$INDEX")
@@ -302,7 +424,7 @@ if [ "$FINAL_BRANCH" != "$RAMA" ] || [ "$FINAL_TPL" != "$DIR_FG" ] \
 fi
 
 echo
-[ "$AGREGO_BRANCH" = 1 ] && echo "Se AGREGÓ la clave 'branch' a config_site.php (no estaba)."
+[ "$AGREGO_BRANCH" = 1 ] && echo "Se AGREGÓ la clave 'branch' a config_site.php (no estaba), como primera del arreglo."
 echo "Listo: $SITIO pasó de «${BRANCH_ACTUAL:-sin rama}» a «$RAMA»."
 echo "  config_site.php      branch=$FINAL_BRANCH  backTemplatesDir=../../../$FINAL_TPL/adminFiles/templates/"
 echo "  sitio/index.php      ../../../$FINAL_IDX/POSITIVEMEDIA"
