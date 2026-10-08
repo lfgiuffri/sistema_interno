@@ -119,6 +119,18 @@ const exigirServidorFullglass = async (models, id) => {
 };
 
 /**
+ * Dónde queda el script de cambio de rama en cada servidor.
+ *
+ * La ruta la decide la APP y no el servidor, igual que `rutaSitios` y `claveRama`: el worker la
+ * recibe en `GET /agente/config`, deja ahí el script y lo mantiene al día solo. Así un servidor
+ * nuevo no necesita que nadie suba nada a mano, y cambiar el script es desplegar el backend.
+ */
+export const RUTA_SCRIPT_RAMA = '/usr/local/bin/fullglass-cambiar-rama.sh';
+
+/** Plantilla por defecto: el script que la propia app distribuye. */
+const COMANDO_RAMA_POR_DEFECTO = `${RUTA_SCRIPT_RAMA} {sitio} {rama}`;
+
+/**
  * Reemplaza `{sitio}` y `{rama}` en el comando configurado.
  *
  * Los valores se ESCAPAN para el shell antes de entrar: el comando corre como root, y aunque
@@ -146,7 +158,7 @@ const resolverComandoRama = (plantilla, sitio, rama) => {
  * @param {object} user - Quién lanza.
  * @param {object} datos - `{ tipo, servidorIds, sql?, entorno?, sitios?, confirmacion? }`.
  * @returns {Promise<{loteId: string, trabajos: object[]}>} Los trabajos creados.
- * @throws {Error} 400 si falta confirmación para sentencias peligrosas o falta el comando.
+ * @throws {Error} 400 si falta confirmación para sentencias peligrosas o falta el comando de deploy.
  */
 export const crearLote = async (models, user, datos) => {
     const { ServidorTrabajo } = models;
@@ -177,14 +189,16 @@ export const crearLote = async (models, user, datos) => {
             }
         }
         if (datos.tipo === 'rama') {
-            if (!servidor.comandoCambiarRama || !servidor.comandoCambiarRama.trim()) {
-                throw bizError(400, `«${servidor.nombre}» no tiene configurado el comando para cambiar de rama`);
-            }
             const sitio = (datos.sitios || [])[0];
             if (!sitio) throw bizError(400, 'Elegí el cliente al que cambiarle la rama');
+            // `comandoCambiarRama` es un OVERRIDE, no un requisito: el caso normal usa el script
+            // que la app distribuye y mantiene al día en cada servidor. Se deja la puerta abierta
+            // porque puede haber un servidor con un layout propio, pero nadie tiene que
+            // configurar nada para que esto funcione.
+            const plantilla = servidor.comandoCambiarRama?.trim() || COMANDO_RAMA_POR_DEFECTO;
             // Los marcadores se reemplazan ACÁ y el comando resultante se guarda tal cual se va
             // a ejecutar: el historial tiene que poder mostrar la línea exacta, no una plantilla.
-            comando = resolverComandoRama(servidor.comandoCambiarRama, sitio, datos.rama);
+            comando = resolverComandoRama(plantilla, sitio, datos.rama);
         }
 
         // Sin contacto = error en el momento, no cola.

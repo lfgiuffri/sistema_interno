@@ -310,11 +310,18 @@ test.describe('M24: FullGlass — SQL masivo y deploy', () => {
     const inv = await expectSuccess(await adminApi.get(`${APP_ENDPOINTS.servidores}/${servidorId}/sitios`), 200);
     expect(inv.data.find((s: { ruta: string }) => s.ruta === '/home/enDev').rama).toBe('development');
 
-    // Sin comando configurado no se puede lanzar.
-    await expectError(await adminApi.post('mantenimiento/trabajos', {
+    // SIN configurar nada se puede lanzar igual: el script lo distribuye la app y el agente lo
+    // deja en el servidor. Configurar un comando era el paso manual que esto vino a sacar.
+    const porDefecto = await expectSuccess(await adminApi.post('mantenimiento/trabajos', {
       data: { tipo: 'rama', servidorIds: [servidorId], rama: 'main', sitios: ['/home/enDev'] },
-    }), 400);
+    }), 201);
+    const conDefecto = await expectSuccess(
+      await adminApi.get(`mantenimiento/trabajos/${porDefecto.data.trabajos[0].id}`), 200);
+    expect(conDefecto.data.comando).toBe("/usr/local/bin/fullglass-cambiar-rama.sh '/home/enDev' 'main'");
+    await expectSuccess(await adminApi.post(`mantenimiento/trabajos/${conDefecto.data.id}/cancelar`), 200);
 
+    // Y el comando configurado sigue siendo un OVERRIDE válido, para un servidor con un
+    // layout propio.
     await expectSuccess(await adminApi.put(`${APP_ENDPOINTS.servidores}/${servidorId}/config-deploy`, {
       data: { comandoCambiarRama: '/home/scripts/rama.sh {sitio} {rama}' },
     }), 200);
@@ -348,6 +355,9 @@ test.describe('M24: FullGlass — SQL masivo y deploy', () => {
     const { data } = await expectSuccess(await agente.get('agente/config'), 200);
     expect(data.workerHash).toMatch(/^[0-9a-f]{64}$/);
     expect(data.claveRama).toBe('branch');
+    // El script de rama viaja por el mismo canal: hash para comparar y ruta donde dejarlo.
+    expect(data.scriptRamaHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(data.scriptRamaRuta).toBe('/usr/local/bin/fullglass-cambiar-rama.sh');
   });
 
   test('M24.10 - las cuatro capabilities: el fixture no puede ni configurar ni ejecutar', async ({ authedApi }) => {

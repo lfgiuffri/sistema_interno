@@ -299,6 +299,76 @@ function autoactualizar($hashRemoto)
     return true;
 }
 
+/**
+ * Deja en el servidor el script que cambia de rama, y lo refresca si quedó viejo.
+ *
+ * Es el mismo mecanismo que `autoactualizar()` pero sobre OTRO archivo, con dos diferencias:
+ * no corta la corrida (no se está reemplazando a sí mismo) y la ruta la manda la app, porque
+ * es la app la que después compone el comando que lo invoca — si cada lado tuviera su propia
+ * idea de dónde está el archivo, el día que alguno cambie el comando apuntaría a la nada.
+ *
+ * Que la app distribuya el script es lo que hace que un servidor nuevo no necesite que nadie
+ * suba nada a mano. No agrega confianza: la app ya puede hacer que este worker corra comandos
+ * como root. Las defensas son las mismas: tiene que coincidir con el hash anunciado y pasar
+ * `bash -n` antes de quedar en su lugar, y ante cualquier duda se deja lo que había.
+ *
+ * @param string $ruta Dónde dejarlo (lo dice la app).
+ * @param string|null $hashRemoto sha256 que la app publica.
+ * @return void
+ */
+function sincronizarScriptRama($ruta, $hashRemoto)
+{
+    global $apiUrl, $token;
+    if (!$hashRemoto || !$ruta) return;
+    // La ruta viene de la app y se escribe como root: un mínimo de cordura igual, porque un
+    // error de tipeo del otro lado no tiene por qué terminar en un archivo suelto en /etc.
+    if (substr($ruta, 0, 1) !== '/' || substr($ruta, -3) !== '.sh') {
+        fwrite(STDERR, "ruta de script inválida: $ruta\n");
+        return;
+    }
+    if (is_file($ruta) && @hash_file('sha256', $ruta) === $hashRemoto) return;
+
+    $ch = curl_init("$apiUrl/agente/cambiar-rama.sh");
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => TIMEOUT_HTTP,
+        CURLOPT_HTTPHEADER => ["x-agent-token: $token"],
+    ]);
+    $nuevo = curl_exec($ch);
+    $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($code !== 200 || !$nuevo || strpos($nuevo, '#!') !== 0) return;
+    if (hash('sha256', $nuevo) !== $hashRemoto) {
+        fwrite(STDERR, "script de rama: lo descargado no coincide con el hash anunciado\n");
+        return;
+    }
+
+    $dir = dirname($ruta);
+    if (!is_dir($dir) && !@mkdir($dir, 0755, true)) {
+        fwrite(STDERR, "script de rama: no existe $dir y no se pudo crear\n");
+        return;
+    }
+    $tmp = $ruta . '.nuevo';
+    if (@file_put_contents($tmp, $nuevo) === false) {
+        fwrite(STDERR, "script de rama: no se pudo escribir en $dir\n");
+        return;
+    }
+
+    $salida = [];
+    $codigo = 0;
+    exec('bash -n ' . escapeshellarg($tmp) . ' 2>&1', $salida, $codigo);
+    if ($codigo !== 0) {
+        @unlink($tmp);
+        fwrite(STDERR, "script de rama rechazado, no compila: " . implode(' ', $salida) . "\n");
+        return;
+    }
+
+    @chmod($tmp, 0755);
+    if (!@rename($tmp, $ruta)) { @unlink($tmp); return; }
+    echo "script de rama actualizado en $ruta (" . substr($hashRemoto, 0, 12) . ")\n";
+}
+
 // ── Principal ────────────────────────────────────────────────────────────────────────────
 //
 // La configuración se pide UNA vez y se usa para todo: la ruta a recorrer y la clave donde
@@ -312,6 +382,14 @@ if (($conf['data']['tieneFullglass'] ?? false) !== true) exit(0);
 if (autoactualizar(isset($conf['data']['workerHash']) ? $conf['data']['workerHash'] : null)) exit(0);
 $rutaSitios = isset($conf['data']['rutaSitios']) ? $conf['data']['rutaSitios'] : '/home';
 $claveRama = isset($conf['data']['claveRama']) ? $conf['data']['claveRama'] : 'branch';
+
+// Va DESPUÉS de la autoactualización —primero que este worker sea el correcto— y ANTES de
+// pedir trabajos, para que un trabajo de rama encuentre el script ya en su lugar aunque sea
+// la primera corrida de este servidor.
+sincronizarScriptRama(
+    isset($conf['data']['scriptRamaRuta']) ? $conf['data']['scriptRamaRuta'] : null,
+    isset($conf['data']['scriptRamaHash']) ? $conf['data']['scriptRamaHash'] : null
+);
 
 $res = api('GET', 'agente/trabajos');
 if ($res['code'] !== 200 || !is_array($res['data'])) {

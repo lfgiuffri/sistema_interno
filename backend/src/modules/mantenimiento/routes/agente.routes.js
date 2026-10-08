@@ -55,7 +55,7 @@ router.post('/sitios', limiteTrabajos, controller.agenteSitios);
  * VPS que todavía no tiene credenciales, y los scripts NO contienen secretos (el token se
  * pasa por variable de entorno al instalar y queda en /etc con permisos 600).
  */
-for (const archivo of ['instalar-agente.sh', 'agente-sistema-interno.sh', 'fullglass-worker.php']) {
+for (const archivo of ['instalar-agente.sh', 'agente-sistema-interno.sh', 'fullglass-worker.php', 'cambiar-rama.sh']) {
     router.get(`/${archivo}`, (req, res) => {
         res.type('text/plain; charset=utf-8');
         res.setHeader('Cache-Control', 'no-store');

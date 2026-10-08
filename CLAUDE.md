@@ -592,7 +592,19 @@ que sigue es por qué está hecho así.
   `branch`) — guardarla haría que la pantalla mienta en cuanto alguien la cambie a mano. El
   script que toca los archivos lo deja el equipo en cada servidor y la app solo lo invoca:
   `comandoCambiarRama` con los marcadores `{sitio}` y `{rama}`, que se **entrecomillan** al
-  resolver (corre como root). ⚠️ La rama destino va EXPLÍCITA, nunca se alterna: con la app y
+  resolver (corre como root). **El script lo DISTRIBUYE la app** (2026-10-08): vive en
+  `backend/agente/cambiar-rama.sh`, se publica en `GET /agente/cambiar-rama.sh` y el worker lo
+  deja en `/usr/local/bin/fullglass-cambiar-rama.sh` y lo refresca por hash, igual que su
+  propia autoactualización — no hay que subir nada a ningún servidor. La RUTA la manda la app
+  (`scriptRamaRuta`, constante `RUTA_SCRIPT_RAMA`), que es la misma con la que compone el
+  comando por defecto: si cada lado tuviera la suya, el comando apuntaría a la nada. Por eso
+  `comandoCambiarRama` pasó a ser un **override opcional** y ya no un requisito (antes el
+  lanzamiento daba 400 sin él). ⚠️ Sus dos
+  trampas: `backCustomTemplatesDir` también dice `FullGlass/adminFiles/templates/` y NO se
+  cambia, y los dos PHP tienen un segundo `set_include_path` a `/../FullGlass` que tampoco —
+  por eso cada reemplazo va anclado a la clave / a los tres `../` + `POSITIVEMEDIA`, nunca al
+  texto «FullGlass». Son tres archivos: verifica todo (incluido que la carpeta destino exista)
+  y escribe con respaldo y vuelta atrás, porque quedar a mitad de camino es el peor resultado. ⚠️ La rama destino va EXPLÍCITA, nunca se alterna: con la app y
   el servidor desfasados un instante, alternar manda al cliente a la rama contraria. Es un
   tercer tipo de trabajo (`rama`) y reusa `servidores:deploy-ejecutar`. En Sitios web,
   `usaFullglass` separa los que lo corren de los viejos que no, y `rutaFullglass` es el puente

@@ -348,7 +348,7 @@ export const buildOpenApiSpec = () => ({
         '/mantenimiento/trabajos/{id}/aprobar': { post: op('Aplicar el SQL al resto de las bases después de un canario OK. Sin esto el trabajo NO sigue', 'Mantenimiento', auth) },
         '/mantenimiento/trabajos/{id}/cancelar': { post: op('Cancela lo que el agente no tomó; pasados 45 min sin reportar, DESTRABA un trabajo huérfano', 'Mantenimiento', auth) },
         // Lado del AGENTE (token propio, sin sesión).
-        '/agente/config': { get: op('Config que el agente necesita de SU servidor (ruta a recorrer)', 'Mantenimiento', {}) },
+        '/agente/config': { get: op('Config que el agente necesita de SU servidor (ruta a recorrer, clave de rama, hashes del worker y del script de rama)', 'Mantenimiento', {}) },
         '/agente/trabajos': { get: op('Trabajos pendientes de ESTE servidor, con la fase (canario / resto / unico)', 'Mantenimiento', {}) },
         '/agente/trabajos/{id}/tomar': { post: op('El agente avisa que empezó', 'Mantenimiento', {}) },
         '/agente/trabajos/{id}/resultado': { post: op('Cómo terminó, con el resultado por base', 'Mantenimiento', {}) },

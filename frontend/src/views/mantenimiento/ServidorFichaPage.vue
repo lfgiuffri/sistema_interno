@@ -271,7 +271,9 @@ function lanzar(tipo: 'sql' | 'deploy'): void {
             <p v-if="puedeConfigDeploy || puedeDeploy">
               <span class="text-ink-faint">Cambio de rama:</span>
               <code v-if="servidor.comandoCambiarRama" class="ml-1 text-ink break-all">{{ servidor.comandoCambiarRama }}</code>
-              <span v-else class="ml-1 text-ink-faint">sin configurar</span>
+              <!-- Vacío es el caso NORMAL, no un pendiente: el script lo distribuye el sistema.
+                   Decir «sin configurar» mandaría a configurar algo que no hace falta. -->
+              <span v-else class="ml-1 text-ink-faint">script del sistema</span>
             </p>
           </div>
 
@@ -288,7 +290,7 @@ function lanzar(tipo: 'sql' | 'deploy'): void {
               <input id="fg-clave" v-model="form.claveRama" class="ds-input font-mono w-48" placeholder="branch" />
               <p class="ds-hint">
                 Dentro del <code>$arrayConfig</code> de cada cliente. De ahí lee el agente si
-                está en main o en dev.
+                está en main o en development.
               </p>
             </div>
             <template v-if="puedeConfigDeploy">
@@ -306,14 +308,19 @@ function lanzar(tipo: 'sql' | 'deploy'): void {
                 </p>
               </div>
               <div>
-                <label class="ds-label" for="fg-rama">Comando para cambiar de rama</label>
+                <label class="ds-label" for="fg-rama">
+                  Comando para cambiar de rama <span class="text-ink-faint font-normal">(opcional)</span>
+                </label>
                 <textarea id="fg-rama" v-model="form.comandoCambiarRama" rows="2"
                           class="ds-input !h-auto py-2 font-mono text-xs"
-                          placeholder="/home/scripts/cambiar-rama.sh {sitio} {rama}"></textarea>
+                          placeholder="dejalo vacío para usar el script del sistema"></textarea>
                 <p class="ds-hint">
-                  El script lo dejás vos en el servidor. <code>{sitio}</code> se reemplaza por la
-                  carpeta del cliente y <code>{rama}</code> por <code>main</code> o
-                  <code>dev</code>; los dos van entrecomillados al ejecutar.
+                  <strong class="text-ink">Vacío es lo normal:</strong> el agente baja el script
+                  del sistema y lo mantiene al día solo, no hay que subir nada al servidor.
+                  Completalo solo si este servidor necesita un script propio.
+                  <code>{sitio}</code> se reemplaza por la carpeta del cliente y
+                  <code>{rama}</code> por <code>main</code> o <code>development</code>; los dos
+                  van entrecomillados al ejecutar.
                 </p>
               </div>
             </template>

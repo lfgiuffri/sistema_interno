@@ -489,8 +489,44 @@ cliente (la clave se configura por servidor, `claveRama`, default `branch`) junt
 del inventario. Si la guardáramos nosotros, el día que alguien la cambie a mano en el servidor
 la pantalla mentiría — que es justo el problema que esto viene a resolver.
 
-**El script lo deja el equipo en cada servidor**; la app solo sabe invocarlo. El comando se
-configura en la ficha del servidor con dos marcadores:
+**El script lo distribuye la app**: vive en el repo en `backend/agente/cambiar-rama.sh`, se
+publica en `GET /agente/cambiar-rama.sh` y el worker lo baja, lo deja en
+`/usr/local/bin/fullglass-cambiar-rama.sh` y lo refresca cuando el hash que anuncia
+`GET /agente/config` (`scriptRamaHash`) deja de coincidir con la copia local. **No hay que
+subir nada a ningún servidor**: desplegar el backend alcanza. Es el mismo mecanismo que la
+autoactualización del worker, con las mismas defensas (hash anunciado, `bash -n`, escritura
+atómica) y una diferencia: no corta la corrida, porque no es el archivo que se está ejecutando.
+
+⚠️ **La ruta la decide la app**, no el servidor: viaja en `scriptRamaRuta` y sale de la
+constante `RUTA_SCRIPT_RAMA` de `trabajo.service.js`, la misma que se usa para componer el
+comando por defecto. Si cada lado tuviera su propia idea de dónde está el archivo, el día que
+uno cambie el comando apuntaría a la nada. El worker igual la valida (absoluta y terminada en
+`.sh`) antes de escribir como root.
+
+Por eso **`comandoCambiarRama` es un override opcional, no un requisito**: sin configurar nada
+el trabajo sale con `/usr/local/bin/fullglass-cambiar-rama.sh {sitio} {rama}`. El campo queda
+para un servidor con un layout propio.
+
+Qué hace, por cliente: en `configs/config_site.php` mueve `branch` y `backTemplatesDir`, y en
+`sitio/index.php` y `sitio/getPlugin.php` el `set_include_path` que apunta a
+`../../../FullGlass{,Dev}/POSITIVEMEDIA`. Las dos trampas del layout, que es por lo que los
+reemplazos van anclados a la CLAVE y no al texto de la ruta:
+
+- `backCustomTemplatesDir` también contiene `FullGlass/adminFiles/templates/` y **no** cambia.
+- `index.php` y `getPlugin.php` tienen un **segundo** `set_include_path`, a `/../FullGlass`,
+  que tampoco cambia. El patrón exige los tres `../` y el `/POSITIVEMEDIA` final.
+
+Son tres archivos, así que lo peor posible es quedar a mitad de camino (el config diciendo una
+rama y el include apuntando a la otra). Por eso: comprueba todo —incluido que la carpeta
+`FullGlassDev` EXISTA, que es el chequeo que evita dejar al cliente caído en un servidor que
+nunca tuvo esa rama—, arma las tres versiones nuevas en temporales, verifica el resultado
+(relee, no confía en `sed`) y las valida con `php -l`, y recién ahí escribe con respaldo; si
+algo falla, deshace. Escribe con `cat > archivo` y no con `mv`, para no dejar los archivos del
+cliente con dueño root. Es idempotente (volver a aplicar lo mismo sale por «ya estaba») y tiene
+`--dry-run`, que muestra el diff sin tocar nada — conviene para el primer cliente de cada
+servidor. Si falta la clave `branch`, la agrega y lo avisa.
+
+El comando se configura en la ficha del servidor con dos marcadores:
 
 ```
 /home/scripts/cambiar-rama.sh {sitio} {rama}

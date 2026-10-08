@@ -588,6 +588,11 @@ export const agenteConfig = async (req, res) => {
         claveRama: servidor.claveRama,
         // Con esto el agente compara contra su propia copia y se actualiza solo si quedó vieja.
         workerHash: hashScriptAgente('fullglass-worker.php'),
+        // El script que cambia de rama también lo distribuye la app: el worker lo deja en esta
+        // ruta y lo refresca cuando el hash no coincide. Sin esto habría que subirlo a mano a
+        // cada servidor, que es justamente lo que este módulo viene a sacar del medio.
+        scriptRamaRuta: trabajos.RUTA_SCRIPT_RAMA,
+        scriptRamaHash: hashScriptAgente('cambiar-rama.sh'),
     }, req, res, false);
 };
 
