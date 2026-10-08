@@ -514,7 +514,14 @@ reemplazos van anclados a la CLAVE y no al texto de la ruta:
 
 - `backCustomTemplatesDir` también contiene `FullGlass/adminFiles/templates/` y **no** cambia.
 - `index.php` y `getPlugin.php` tienen un **segundo** `set_include_path`, a `/../FullGlass`,
-  que tampoco cambia. El patrón exige los tres `../` y el `/POSITIVEMEDIA` final.
+  que tampoco cambia. Lo que separa a uno del otro es el **`/POSITIVEMEDIA` final**.
+
+⚠️ **La cantidad de `../` NO está fija en el script y no debe estarlo.** Varía entre
+servidores (en los nuestros es `../../`), así que los patrones aceptan cualquier profundidad y
+**conservan la que tenga el archivo**. Anclarla a un número —como estuvo al principio— hacía
+que el script no encontrara nada y fallara en todos los clientes. Por el mismo motivo, la
+comprobación de que existe la carpeta destino **lee la ruta del propio `index.php`** en vez de
+componerla, y por eso corre DESPUÉS de leer los archivos y no antes.
 
 Son tres archivos, así que lo peor posible es quedar a mitad de camino (el config diciendo una
 rama y el include apuntando a la otra). Por eso: comprueba todo —incluido que la carpeta

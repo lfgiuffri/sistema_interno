@@ -22,17 +22,20 @@
 #
 #   <cliente>/configs/config_site.php
 #       'branch'           => 'main' | 'development'
-#       'backTemplatesDir' => '../../../FullGlass/adminFiles/templates/'
-#                           | '../../../FullGlassDev/adminFiles/templates/'
+#       'backTemplatesDir' => '../../FullGlass/adminFiles/templates/'
+#                           | '../../FullGlassDev/adminFiles/templates/'
+#          (la cantidad de `../` NO importa: se conserva la que tenga el archivo)
 #       ⚠️ NO toca 'backCustomTemplatesDir', que también dice FullGlass/adminFiles/templates/
 #          pero cuelga de otro lado. Por eso cada reemplazo va anclado al NOMBRE DE LA CLAVE
 #          y no al texto de la ruta.
 #
 #   <cliente>/sitio/index.php  y  <cliente>/sitio/getPlugin.php
-#       set_include_path(... .'/../../../FullGlass/POSITIVEMEDIA');
-#                            | '/../../../FullGlassDev/POSITIVEMEDIA');
+#       set_include_path(... .'/../../FullGlass/POSITIVEMEDIA');
+#                            | '/../../FullGlassDev/POSITIVEMEDIA');
 #       ⚠️ Los dos archivos tienen ADEMÁS un set_include_path a '/../FullGlass' que NO se
-#          cambia. Por eso el patrón exige los tres `../` y el `/POSITIVEMEDIA` final.
+#          cambia. Lo que separa a uno del otro es el `/POSITIVEMEDIA` FINAL, no la cantidad
+#          de `../`: la profundidad varía entre servidores y anclarla a un número fijo hacía
+#          que el script no encontrara nada y no pudiera trabajar.
 #
 # CÓMO SE PROTEGE (son tres archivos: quedar a mitad de camino es el peor resultado posible —
 # el config diría una rama y el include seguiría apuntando a la otra):
@@ -134,22 +137,6 @@ for a in "${ARCHIVOS[@]}"; do
     [ -w "$(dirname "$a")" ] || morir "No se puede escribir en $(dirname "$a") (ahí va el respaldo)"
 done
 
-# La carpeta destino tiene que EXISTIR. En modo detectar no se mira: no se mueve nada, así
-# que exigir FullGlassDev dejaría sin poder declarar su rama a los clientes de un servidor
-# que solo tiene la estable — que son justamente los que más les falta la key.
-if [ "$DETECTAR" = 0 ]; then
-# La carpeta destino tiene que EXISTIR. Es la comprobación que más sirve de todas: pasar un
-# cliente a `development` en un servidor que nunca tuvo FullGlassDev lo deja caído al instante,
-# y el error aparecería como un 500 en el navegador del cliente, no acá.
-DESTINO_FG="$SITIO/sitio/../../../$DIR_FG"
-if [ -d "$DESTINO_FG/POSITIVEMEDIA" ]; then
-    echo "Carpeta destino OK: $(cd "$DESTINO_FG" && pwd)"
-else
-    RESUELTA=$(cd "$SITIO/sitio/../../.." 2>/dev/null && pwd)
-    morir "No existe $DIR_FG/POSITIVEMEDIA bajo ${RESUELTA:-$SITIO/sitio/../../..} — este servidor no tiene esa rama instalada. No se tocó nada."
-fi
-fi
-
 # ── 2. Estado actual, archivo por archivo ────────────────────────────────────────────
 # Se mira cada uno por separado y no solo el config: si un intento anterior quedó a mitad,
 # esto es lo único que lo muestra.
@@ -157,10 +144,17 @@ rama_de_config() {
     sed -nE "s/.*'branch'[[:space:]]*=>[[:space:]]*'([^']*)'.*/\1/p" "$CONFIG" | head -1
 }
 dir_de_templates() {
-    sed -nE "/'backTemplatesDir'/ s@.*\.\./\.\./\.\./([A-Za-z]+)/adminFiles.*@\1@p" "$CONFIG" | head -1
+    sed -nE "/'backTemplatesDir'/ s@.*(\.\./)+([A-Za-z]+)/adminFiles.*@\2@p" "$CONFIG" | head -1
 }
+# La cadena de `../` TAL CUAL la tiene el archivo (ej. `/../../`). Se lee en vez de asumirla
+# porque la profundidad cambia de servidor en servidor, y es lo que después se usa para
+# comprobar que la carpeta destino existe de verdad.
+prefijo_de_include() {
+    sed -nE "s@.*'((/\.\.)+/)[A-Za-z]+/POSITIVEMEDIA.*@\1@p" "$1" | head -1
+}
+
 dir_de_include() {
-    sed -nE "s@.*/\.\./\.\./\.\./([A-Za-z]+)/POSITIVEMEDIA.*@\1@p" "$1" | head -1
+    sed -nE "s@.*/(\.\./)+([A-Za-z]+)/POSITIVEMEDIA.*@\2@p" "$1" | head -1
 }
 
 BRANCH_ACTUAL=$(rama_de_config)
@@ -174,6 +168,29 @@ echo "  config_site.php  backTemplatesDir = ${TPL_ACTUAL:-«no se reconoció»}"
 echo "  sitio/index.php      include_path = ${IDX_ACTUAL:-«no se reconoció»}"
 echo "  sitio/getPlugin.php  include_path = ${PLG_ACTUAL:-«no se reconoció»}"
 echo
+
+# La carpeta destino tiene que EXISTIR. Es la comprobación que más sirve de todas: pasar un
+# cliente a `development` en un servidor que nunca tuvo FullGlassDev lo deja caído al instante,
+# y el error aparecería como un 500 en el navegador del cliente, no acá.
+#
+# Va DESPUÉS de leer los archivos y no antes, porque la ruta sale del propio `index.php`: la
+# cantidad de `../` cambia según cómo esté armado el servidor, y asumir una profundidad fija
+# era mirar una carpeta que no es.
+#
+# En modo detectar no se mira: no se mueve nada, así que exigir FullGlassDev dejaría sin poder
+# declarar su rama a los clientes de un servidor que solo tiene la estable — que son
+# justamente los que más les falta la key.
+if [ "$DETECTAR" = 0 ]; then
+    PREFIJO=$(prefijo_de_include "$INDEX")
+    [ -n "$PREFIJO" ] || morir "No se pudo leer la ruta a FullGlass desde $INDEX. No se tocó nada."
+    DESTINO_FG="$SITIO/sitio$PREFIJO$DIR_FG"
+    if [ -d "$DESTINO_FG/POSITIVEMEDIA" ]; then
+        echo "Carpeta destino OK: $(cd "$DESTINO_FG" && pwd)"
+    else
+        RESUELTA=$(cd "$SITIO/sitio$PREFIJO" 2>/dev/null && pwd)
+        morir "No existe $DIR_FG/POSITIVEMEDIA bajo ${RESUELTA:-$SITIO/sitio$PREFIJO} — este servidor no tiene esa rama instalada. No se tocó nada."
+    fi
+fi
 
 # Inserta `'branch' => '<rama>'` como PRIMERA clave del $arrayConfig.
 #
@@ -206,9 +223,9 @@ insertar_branch_primera() {
     ' "$1" > "$2"
 }
 
-[ -n "$TPL_ACTUAL" ] || morir "En $CONFIG no se encontró 'backTemplatesDir' con la forma ../../../<carpeta>/adminFiles/... — no se tocó nada."
-[ -n "$IDX_ACTUAL" ] || morir "En $INDEX no se encontró el set_include_path a ../../../<carpeta>/POSITIVEMEDIA — no se tocó nada."
-[ -n "$PLG_ACTUAL" ] || morir "En $PLUGIN no se encontró el set_include_path a ../../../<carpeta>/POSITIVEMEDIA — no se tocó nada."
+[ -n "$TPL_ACTUAL" ] || morir "En $CONFIG no se encontró 'backTemplatesDir' con la forma ../<carpeta>/adminFiles/... — no se tocó nada."
+[ -n "$IDX_ACTUAL" ] || morir "En $INDEX no se encontró el set_include_path a ../<carpeta>/POSITIVEMEDIA — no se tocó nada."
+[ -n "$PLG_ACTUAL" ] || morir "En $PLUGIN no se encontró el set_include_path a ../<carpeta>/POSITIVEMEDIA — no se tocó nada."
 
 # ── 3. Herramientas de escritura, compartidas por los dos modos ──────────────────────
 TMPDIR_T=$(mktemp -d) || morir "No se pudo crear la carpeta temporal"
@@ -362,7 +379,7 @@ fi
 # config_site.php — dos cambios, los dos anclados al NOMBRE de la clave.
 sed -E \
     -e "/'branch'/ s@('branch'[[:space:]]*=>[[:space:]]*)'[^']*'@\1'$RAMA'@" \
-    -e "/'backTemplatesDir'/ s@(\.\./\.\./\.\./)[A-Za-z]+(/adminFiles)@\1$DIR_FG\2@" \
+    -e "/'backTemplatesDir'/ s@((\.\./)+)[A-Za-z]+(/adminFiles)@\1$DIR_FG\3@" \
     "$CONFIG" > "$NUEVO_CONFIG" || morir "Falló la edición de config_site.php"
 
 # Si la clave `branch` no existía, se agrega como PRIMERA del arreglo: es el dato que uno va a
@@ -373,7 +390,7 @@ if [ -z "$BRANCH_ACTUAL" ]; then
     insertar_branch_primera "$CONFIG" "$NUEVO_CONFIG.b" "$RAMA" \
         || morir "No se reconoció la apertura de \$arrayConfig en $CONFIG. No se tocó nada."
     # El reemplazo de backTemplatesDir se vuelve a aplicar sobre el archivo ya con la key.
-    sed -E "/'backTemplatesDir'/ s@(\.\./\.\./\.\./)[A-Za-z]+(/adminFiles)@\1$DIR_FG\2@" \
+    sed -E "/'backTemplatesDir'/ s@((\.\./)+)[A-Za-z]+(/adminFiles)@\1$DIR_FG\3@" \
         "$NUEVO_CONFIG.b" > "$NUEVO_CONFIG" || morir "Falló la edición de config_site.php"
     rm -f "$NUEVO_CONFIG.b"
     AGREGO_BRANCH=1
@@ -382,7 +399,7 @@ fi
 # index.php y getPlugin.php — el patrón exige los TRES `../` y el `/POSITIVEMEDIA` final,
 # que es lo que distingue la línea a cambiar de la otra, la de '/../FullGlass'.
 for par in "$INDEX:$NUEVO_INDEX" "$PLUGIN:$NUEVO_PLUGIN"; do
-    sed -E "s@(/\.\./\.\./\.\./)[A-Za-z]+(/POSITIVEMEDIA)@\1$DIR_FG\2@g" \
+    sed -E "s@(/(\.\./)+)[A-Za-z]+(/POSITIVEMEDIA)@\1$DIR_FG\3@g" \
         "${par%%:*}" > "${par##*:}" || morir "Falló la edición de ${par%%:*}"
 done
 
@@ -396,7 +413,7 @@ verificar() {
 verificar "$NUEVO_INDEX" "index.php"
 verificar "$NUEVO_PLUGIN" "getPlugin.php"
 
-TPL_NUEVO=$(sed -nE "/'backTemplatesDir'/ s@.*\.\./\.\./\.\./([A-Za-z]+)/adminFiles.*@\1@p" "$NUEVO_CONFIG" | head -1)
+TPL_NUEVO=$(sed -nE "/'backTemplatesDir'/ s@.*(\.\./)+([A-Za-z]+)/adminFiles.*@\2@p" "$NUEVO_CONFIG" | head -1)
 [ "$TPL_NUEVO" = "$DIR_FG" ] || morir "backTemplatesDir quedó en «${TPL_NUEVO:-nada}» en vez de «$DIR_FG». No se escribió nada."
 BRANCH_NUEVO=$(sed -nE "s/.*'branch'[[:space:]]*=>[[:space:]]*'([^']*)'.*/\1/p" "$NUEVO_CONFIG" | head -1)
 [ "$BRANCH_NUEVO" = "$RAMA" ] || morir "branch quedó en «${BRANCH_NUEVO:-nada}» en vez de «$RAMA». No se escribió nada."
@@ -426,7 +443,7 @@ fi
 echo
 [ "$AGREGO_BRANCH" = 1 ] && echo "Se AGREGÓ la clave 'branch' a config_site.php (no estaba), como primera del arreglo."
 echo "Listo: $SITIO pasó de «${BRANCH_ACTUAL:-sin rama}» a «$RAMA»."
-echo "  config_site.php      branch=$FINAL_BRANCH  backTemplatesDir=../../../$FINAL_TPL/adminFiles/templates/"
-echo "  sitio/index.php      ../../../$FINAL_IDX/POSITIVEMEDIA"
-echo "  sitio/getPlugin.php  ../../../$FINAL_PLG/POSITIVEMEDIA"
+echo "  config_site.php      branch=$FINAL_BRANCH  backTemplatesDir=$(sed -nE "/'backTemplatesDir'/ s@.*=>[[:space:]]*'([^']*)'.*@\1@p" "$CONFIG" | head -1)"
+echo "  sitio/index.php      $(prefijo_de_include "$INDEX")$FINAL_IDX/POSITIVEMEDIA"
+echo "  sitio/getPlugin.php  $(prefijo_de_include "$PLUGIN")$FINAL_PLG/POSITIVEMEDIA"
 echo "Respaldos: *.bak-$SELLO (en la carpeta de cada archivo)."

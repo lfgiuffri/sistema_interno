@@ -613,8 +613,11 @@ que sigue es por qué está hecho así.
   sin ese dato `rama: null` tiene dos causas y la pantalla adivinaba la que casi nunca pasa. ⚠️ Sus dos
   trampas: `backCustomTemplatesDir` también dice `FullGlass/adminFiles/templates/` y NO se
   cambia, y los dos PHP tienen un segundo `set_include_path` a `/../FullGlass` que tampoco —
-  por eso cada reemplazo va anclado a la clave / a los tres `../` + `POSITIVEMEDIA`, nunca al
-  texto «FullGlass». Son tres archivos: verifica todo (incluido que la carpeta destino exista)
+  por eso cada reemplazo va anclado a la CLAVE / al `/POSITIVEMEDIA` final, nunca al texto
+  «FullGlass». ⚠️ **La cantidad de `../` NO se ancla**: varía entre servidores (en los nuestros
+  es `../../`) y el script acepta cualquier profundidad y conserva la del archivo — fijarla en
+  tres hacía que no encontrara nada y fallara en todos los clientes. Por eso también el chequeo
+  de que exista la carpeta destino LEE la ruta del `index.php` en vez de componerla. Son tres archivos: verifica todo (incluido que la carpeta destino exista)
   y escribe con respaldo y vuelta atrás, porque quedar a mitad de camino es el peor resultado. ⚠️ La rama destino va EXPLÍCITA, nunca se alterna: con la app y
   el servidor desfasados un instante, alternar manda al cliente a la rama contraria. Es un
   tercer tipo de trabajo (`rama`) y reusa `servidores:deploy-ejecutar`. En Sitios web,
