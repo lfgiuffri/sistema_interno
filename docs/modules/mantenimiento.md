@@ -571,6 +571,16 @@ Tres cosas que hacen que sea confiable:
 Si la key existe pero **contradice** a los archivos, la corrige **donde está** (no la mueve
 arriba): es el archivo de un cliente en producción y un diff más grande no compra nada.
 
+En **Ejecuciones**, cada fila dice qué fue: «Actualización de bases», «Deploy de producción»,
+«Cambio de rama a development» o «Detectar rama», y los dos últimos muestran además la
+**carpeta del cliente**, que es lo que identifica la ejecución (el servidor solo no alcanza:
+puede haber veinte cambios de rama seguidos en el mismo). El filtro por tipo también incluye
+«Cambios de rama».
+
+⚠️ `listTrabajos` y `getTrabajo` devuelven **`sitios` como array**, no como el texto JSON que
+guarda la columna: parsearlo en el navegador obligaría a repetirlo en cada pantalla, y basta
+que una se olvide para que se vea el string crudo.
+
 En el trabajo, la columna `rama` queda en **null** —todavía no se sabe cuál es, eso es lo que
 va a averiguar— y el `comando` con su `--detectar` es lo que dice qué se hizo. No hizo falta
 una columna nueva para distinguirlos.

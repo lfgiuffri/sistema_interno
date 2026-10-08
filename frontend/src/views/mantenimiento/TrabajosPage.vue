@@ -118,6 +118,27 @@ const resultadosReales = (t: Trabajo) =>
 const omitidos = (t: Trabajo) =>
   (detalles.value[t.id]?.resultados ?? []).filter(r => r.estado === 'omitido').length
 
+/**
+ * Qué dice el encabezado de cada ejecución.
+ *
+ * Era un ternario de dos ramas y el tipo `rama` caía en el `else`, así que un cambio de rama
+ * se anunciaba como «Deploy de null». Acá los tres tipos están nombrados, y el `entorno` lleva
+ * su propio resguardo: un deploy sin entorno tampoco puede volver a decir «null».
+ */
+function titulo(t: Trabajo): string {
+  if (t.tipo === 'sql') return 'Actualización de bases'
+  if (t.tipo === 'rama') return t.rama ? `Cambio de rama a ${t.rama}` : 'Detectar rama'
+  return t.entorno ? `Deploy de ${t.entorno}` : 'Deploy'
+}
+
+/**
+ * El cliente sobre el que corrió. Solo para los trabajos de rama, que son de a UNO: ahí la
+ * carpeta es el dato que identifica la ejecución, más que el servidor.
+ */
+function sitioDe(t: Trabajo): string | null {
+  return t.tipo === 'rama' ? (t.sitios?.[0] ?? null) : null
+}
+
 const puedeAprobar = (t: Trabajo) =>
   t.tipo === 'sql' ? meStore.can('servidores:bd-ejecutar') : meStore.can('servidores:deploy-ejecutar')
 </script>
@@ -142,6 +163,7 @@ const puedeAprobar = (t: Trabajo) =>
               <option value="">Todo</option>
               <option value="sql">Bases de datos</option>
               <option value="deploy">Deploys</option>
+              <option value="rama">Cambios de rama</option>
             </select>
             <button class="ds-btn-secondary" :disabled="cargando" @click="load">
               <IonIcon :icon="refreshOutline" class="text-[15px]" /> Actualizar
@@ -163,8 +185,15 @@ const puedeAprobar = (t: Trabajo) =>
               <div class="flex flex-wrap items-start justify-between gap-2">
                 <button class="min-w-0 flex-1 text-left" @click="abrir(t)">
                   <p class="font-medium text-ink">
-                    {{ t.tipo === 'sql' ? 'Actualización de bases' : `Deploy de ${t.entorno}` }}
-                    <span class="text-ink-faint">· {{ t.servidore?.nombre ?? `servidor #${t.servidorId}` }}</span>
+                    {{ titulo(t) }}
+                    <!-- El nombre del servidor va como TEXTO dentro del span y no como un span
+                         hermano: Vue borra el espacio en blanco entre dos elementos cuando hay
+                         un salto de línea (whitespace: condense), y la carpeta terminaba pegada
+                         al «·» de al lado. -->
+                    <span class="text-ink-faint">
+                      <span v-if="sitioDe(t)" class="font-mono text-xs text-ink-soft">· {{ sitioDe(t) }}</span>
+                      · {{ t.servidore?.nombre ?? `servidor #${t.servidorId}` }}
+                    </span>
                   </p>
                   <p class="mt-0.5 text-2xs text-ink-faint">
                     {{ fmtFechaHora(t.createdAt) }}

@@ -313,6 +313,23 @@ export const cancelarTrabajo = async (models, id) => {
  * @param {object} [query] - `{ servidorId, tipo, estado, limit }`.
  * @returns {Promise<object[]>} Trabajos, el más nuevo primero.
  */
+/**
+ * Deja `sitios` como ARRAY en la respuesta y no como el texto JSON que guarda la columna.
+ *
+ * Parsear del lado del navegador significaría repetirlo en cada pantalla que lo muestre, y
+ * basta con que una se olvide para que aparezca el string crudo. Se parsea defensivo: una fila
+ * vieja con algo que no sea JSON no puede tumbar el listado entero.
+ * @param {object} json - Trabajo ya serializado.
+ * @returns {object} El mismo trabajo con `sitios` como array (o null).
+ */
+const conSitios = (json) => {
+    if (!json.sitios) return { ...json, sitios: null };
+    try {
+        const v = JSON.parse(json.sitios);
+        return { ...json, sitios: Array.isArray(v) ? v : null };
+    } catch { return { ...json, sitios: null }; }
+};
+
 export const listTrabajos = async (models, query = {}) => {
     const { ServidorTrabajo, Servidor, User } = models;
     const where = {};
@@ -329,7 +346,7 @@ export const listTrabajos = async (models, query = {}) => {
         order: [['createdAt', 'DESC'], ['id', 'DESC']],
         limit: Math.min(Number(query.limit) || 100, 500),
     });
-    return filas.map(f => f.toJSON());
+    return filas.map(f => conSitios(f.toJSON()));
 };
 
 /**
@@ -351,7 +368,7 @@ export const getTrabajo = async (models, id) => {
     });
     // Con `raw: true` Sequelize no castea: MySQL devuelve el BOOLEAN como 1/0 y la API
     // terminaría publicando un número donde el contrato dice booleano.
-    return { ...trabajo.toJSON(), resultados: resultados.map(r => ({ ...r, esCanario: !!r.esCanario })) };
+    return { ...conSitios(trabajo.toJSON()), resultados: resultados.map(r => ({ ...r, esCanario: !!r.esCanario })) };
 };
 
 // ─────────────────────────── Lado del AGENTE ───────────────────────────

@@ -102,11 +102,15 @@ export interface Trabajo {
   id: number
   loteId: string
   servidorId: number
-  tipo: 'sql' | 'deploy'
+  tipo: 'sql' | 'deploy' | 'rama'
   estado: 'pendiente' | 'canario' | 'espera_ok' | 'aprobado' | 'corriendo' | 'ok' | 'error' | 'cancelado'
   sql: string | null
   comando: string | null
   entorno: 'produccion' | 'desarrollo' | null
+  /** Rama destino. En una DETECCIÓN va null: es lo que el trabajo va a averiguar. */
+  rama: string | null
+  /** Carpetas elegidas. En un cambio de rama es una sola: el cliente que se mueve. */
+  sitios: string[] | null
   salida: string | null
   error: string | null
   createdAt: string
