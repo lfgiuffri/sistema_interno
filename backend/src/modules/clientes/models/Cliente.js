@@ -13,6 +13,9 @@ export const AVISOS_INCIDENCIA = [
     { evento: 'creada', campo: 'avisaCreada', label: 'Cuando se carga la incidencia', porDefecto: true },
     { evento: 'nueva', campo: 'avisaNueva', label: 'Cuando vuelve a «nueva»', porDefecto: false },
     { evento: 'en_progreso', campo: 'avisaEnProgreso', label: 'Cuando pasa a «en progreso»', porDefecto: false },
+    // Default TRUE a diferencia de los otros pasos intermedios: este es el aviso que le pide
+    // algo al cliente. Si no sale, el trabajo queda esperando un OK que nadie sabe que debe dar.
+    { evento: 'en_revision', campo: 'avisaEnRevision', label: 'Cuando queda lista para que la revise', porDefecto: true },
     { evento: 'resuelta', campo: 'avisaResuelta', label: 'Cuando queda resuelta', porDefecto: true }
 ];
 

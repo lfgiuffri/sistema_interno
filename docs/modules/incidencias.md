@@ -57,8 +57,8 @@ alcanza con pasarle `{ LoginAttempt: models.PortalLoginAttempt }` — el kernel 
 
 ## Estados
 
-`nueva | en_progreso | resuelta`. Son **menos** que los de una tarea a propósito: el kanban
-interno es asunto nuestro.
+`nueva | en_progreso | en_revision | resuelta`. Son **menos** que los de una tarea a propósito:
+el kanban interno es asunto nuestro.
 
 Hubo un cuarto, `cerrada`, que se sacó (2026-09-17, migración `0012`): se pisaba con `resuelta`.
 En el portal las dos iban al fondo y decían lo mismo, así que la única diferencia real era que
@@ -69,8 +69,39 @@ estado que solo agrega trabajo no es un estado. Las filas que estaban en `cerrad
 | tarea | incidencia |
 |---|---|
 | `abierta` | `nueva` |
-| `en_progreso` · `pausada` · `en_revision` | `en_progreso` |
+| `en_progreso` · `pausada` | `en_progreso` |
+| `en_revision` | `en_revision` |
 | `completada` | `resuelta` |
+
+### Por qué `en_revision` SÍ se le muestra (2026-10-08, migración `0019`)
+
+Es la única excepción a «el kanban interno no se muestra», y la excepción tiene un motivo que
+las otras no: **`en_revision` no es un paso nuestro, es el momento en que la pelota pasa al
+cliente**. Mostrárselo como «en progreso» dejaba esa espera invisible para las dos partes —
+nosotros creyendo que falta su OK, él creyendo que todavía lo estamos haciendo. El ciclo que
+cierra es: lo dejamos listo → el cliente mira → nos confirma → recién ahí se completa.
+
+No es terminal: si el cliente dice que no estaba bien, la tarea vuelve y el reclamo también
+(incluido el borrado de `resueltaAt`, que si no quedaría afirmando una fecha de resolución que
+ya no es cierta).
+
+Tres detalles que lo hacen funcionar de verdad:
+
+- **El aviso por mail nace ENCENDIDO** (`avisaEnRevision`, default `true`), a diferencia de los
+  otros pasos intermedios. Es el único aviso que le PIDE algo al cliente: si no sale, el trabajo
+  queda esperando un OK que nadie sabe que hay que dar.
+- **El mail lleva su propia frase**, no el «pasó a X» genérico: «pasó a en revisión» se lee como
+  que la estamos revisando NOSOTROS, que es exactamente lo contrario. Dice «ya está lista para
+  que la revises y nos confirmes», y el asunto, «Tu incidencia #N está lista para que la revises».
+- **En el portal la pastilla dice «Para tu revisión»**, no «En revisión», por el mismo motivo.
+  Adentro se llama «En revisión», igual que en tareas. Es el mismo estado dicho desde cada lado.
+
+⚠️ La migración solo AGREGA valores a los dos ENUM (`incidencias.estado` e
+`incidencia_cambios.evento`), así que no aplica el cuidado de la `0012` —aquella QUITABA un
+valor y había que mover los datos primero—. Lo que sí aplica es el bug del conector MariaDB:
+los `ALTER` van a mano, y **un `SELECT` suelto con `sequelize.query` también lo dispara**
+(«Cannot delete property 'meta' of [object Array]»). Se lee el schema con `describeTable`, que
+para una ENUM devuelve el tipo declarado completo y alcanza para la idempotencia.
 
 `abierta → nueva` y no `en_progreso`: que exista una tarea significa que la anotamos, no que
 alguien la empezó. Decir «estamos trabajando en esto» cuando nadie la tocó es la clase de mentira

@@ -180,11 +180,12 @@ test.describe('M22: Incidencias', () => {
     const estado = async (): Promise<string> =>
       (await expectSuccess(await adminApi.get(`${APP_ENDPOINTS.incidencias}/${incId}`), 200)).data.estado;
 
-    // Ruta 1: PATCH de estado suelto. El mapeo es 5→3: el kanban interno no se le muestra
-    // al cliente, así que «pausada» y «en revisión» le llegan como «en progreso».
+    // Ruta 1: PATCH de estado suelto. El mapeo es 5→4: el kanban interno no se le muestra al
+    // cliente («pausada» le llega como «en progreso»), con UNA excepción deliberada —
+    // `en_revision`, que no es un paso nuestro sino el momento en que la pelota pasa a él.
     for (const [estadoTarea, esperado] of [
       ['en_progreso', 'en_progreso'], ['pausada', 'en_progreso'],
-      ['en_revision', 'en_progreso'], ['completada', 'resuelta'],
+      ['en_revision', 'en_revision'], ['completada', 'resuelta'],
     ]) {
       await expectSuccess(await adminApi.patch(`${APP_ENDPOINTS.tareas}/${tareaId}/estado`, { data: { estado: estadoTarea } }), 200);
       expect(await estado()).toBe(esperado);
@@ -201,6 +202,40 @@ test.describe('M22: Incidencias', () => {
       data: { ids: [tareaId], estado: 'completada' },
     }), 200);
     expect(await estado()).toBe('resuelta');
+  });
+
+  test('M22.12 - «en revisión» llega al cliente y vuelve atrás si la tarea retrocede', async ({ adminApi }) => {
+    const inc = await expectSuccess(await adminApi.post(APP_ENDPOINTS.incidencias, {
+      data: { clienteId, titulo: 'Lista para revisar' },
+    }), 201);
+    const incId = inc.data.id;
+    const vinc = await expectSuccess(await adminApi.post(`${APP_ENDPOINTS.incidencias}/${incId}/tarea`, {
+      data: { listaId, nombre: 'Revisión' },
+    }), 201);
+    const tareaId = vinc.data.tareaId;
+    const detalle = async () =>
+      (await expectSuccess(await adminApi.get(`${APP_ENDPOINTS.incidencias}/${incId}`), 200)).data;
+
+    // El ciclo que pidió el negocio: la dejamos lista → el cliente la mira → nos da el OK y
+    // recién ahí se completa.
+    await expectSuccess(await adminApi.patch(`${APP_ENDPOINTS.tareas}/${tareaId}/estado`, { data: { estado: 'en_revision' } }), 200);
+    expect((await detalle()).estado).toBe('en_revision');
+    // No es terminal: `resueltaAt` sigue vacío porque todavía no está resuelta.
+    expect((await detalle()).resueltaAt).toBeNull();
+
+    await expectSuccess(await adminApi.patch(`${APP_ENDPOINTS.tareas}/${tareaId}/estado`, { data: { estado: 'completada' } }), 200);
+    const resuelta = await detalle();
+    expect(resuelta.estado).toBe('resuelta');
+    expect(resuelta.resueltaAt).not.toBeNull();
+
+    // Si el cliente dice que no estaba bien, la tarea vuelve a revisión y el reclamo también
+    // — incluido el borrado de `resueltaAt`, que si no quedaría afirmando una fecha falsa.
+    await expectSuccess(await adminApi.patch(`${APP_ENDPOINTS.tareas}/${tareaId}/estado`, { data: { estado: 'en_revision' } }), 200);
+    const vuelta = await detalle();
+    expect(vuelta.estado).toBe('en_revision');
+    expect(vuelta.resueltaAt).toBeNull();
+
+    await adminApi.delete(`${APP_ENDPOINTS.incidencias}/${incId}`);
   });
 
   test('M22.6 - NINGÚN estado es terminal: reabrir la tarea reabre el reclamo', async ({ adminApi }) => {

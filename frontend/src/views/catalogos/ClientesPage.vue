@@ -35,8 +35,8 @@ const columnas: ColumnaDef[] = [
   { key: 'portal', label: 'Portal' },
 ]
 
-/** Los cinco campos de aviso. Si están todos apagados, el cliente no recibe nada. */
-const CAMPOS_AVISO = ['avisaCreada', 'avisaNueva', 'avisaEnProgreso', 'avisaResuelta']
+/** Los campos de aviso. Si están todos apagados, el cliente no recibe nada. */
+const CAMPOS_AVISO = ['avisaCreada', 'avisaNueva', 'avisaEnProgreso', 'avisaEnRevision', 'avisaResuelta']
 const mudo = (row: Record<string, unknown>): boolean => CAMPOS_AVISO.every(c => row[c] === false)
 const sinMails = (row: Record<string, unknown>): boolean => !String(row.emailsNotificacion || '').trim()
 

@@ -10,6 +10,9 @@ import api, { apiErrorMessage } from '@/services/api'
 export const ESTADOS_INCIDENCIA: Record<string, { label: string; color: string }> = {
   nueva: { label: 'Nueva', color: '#64748b' },
   en_progreso: { label: 'En progreso', color: '#2563eb' },
+  // Ámbar y no azul: es la única que está esperando a ALGUIEN DE AFUERA. Mirando el listado
+  // hay que poder separar de un vistazo lo que depende de nosotros de lo que no.
+  en_revision: { label: 'En revisión', color: '#b45309' },
   resuelta: { label: 'Resuelta', color: '#12855f' },
 }
 /** Estados terminados: van al fondo del listado, acá y en el portal. */

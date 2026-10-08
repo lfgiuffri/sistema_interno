@@ -11,6 +11,10 @@ import portalApi, { apiErrorMessage } from '@/services/portalApi'
 export const ESTADOS_INCIDENCIA: Record<string, { label: string; color: string }> = {
   nueva: { label: 'Nueva', color: '#64748b' },
   en_progreso: { label: 'En progreso', color: '#2563eb' },
+  // Mismo estado que adentro se llama «En revisión», pero acá se dice al revés: para el
+  // cliente, «en revisión» se lee como que la estamos revisando nosotros, que es lo contrario
+  // de lo que el estado significa. El punto es que sepa que la pelota la tiene él.
+  en_revision: { label: 'Para tu revisión', color: '#b45309' },
   resuelta: { label: 'Resuelta', color: '#12855f' },
 }
 

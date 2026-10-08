@@ -769,10 +769,20 @@ Proyectos → Incidencias y con un botón los convierte en tareas. Doc completa 
   único que recibe contenido desde internet abierto). Se monta explícito en `routes.js` fuera de
   `verifyAccessToken`, mismo patrón que `/agente`, con rate limit propio y MÁS generoso que el de
   `/auth` porque los clientes salen todos por el NAT de su oficina.
-- **Estados**: `nueva | en_progreso | resuelta`, mapeados 5→3 desde la tarea en
+- **Estados**: `nueva | en_progreso | en_revision | resuelta`, mapeados 5→4 desde la tarea en
   `estadoDesdeTarea()` (fuente única). `abierta → nueva`, no `en_progreso`: que exista una tarea
   no significa que alguien la empezó. **Invariante**: la incidencia es DERIVADA mientras tenga
   `tareaId`.
+  **`en_revision` es la única excepción a «el kanban interno no se muestra»** (2026-10-08,
+  migración `0019`): no es un paso nuestro, es el momento en que la pelota pasa al CLIENTE, y
+  mostrarlo como «en progreso» dejaba esa espera invisible para las dos partes. El ciclo es
+  listo → el cliente mira → nos confirma → se completa. No es terminal (si vuelve, se borra
+  `resueltaAt`). Su aviso nace ENCENDIDO (`avisaEnRevision` default true, distinto de los otros
+  pasos intermedios): es el único mail que le PIDE algo. El mail lleva frase propia —«pasó a en
+  revisión» se lee como que la revisamos nosotros— y en el PORTAL la pastilla dice «Para tu
+  revisión», mientras que adentro dice «En revisión». ⚠️ El frontend duplica la lista de avisos
+  en `ClientePortalModal.vue` y `ClientesPage.vue` (el backend sí la deriva de
+  `AVISOS_INCIDENCIA`): agregar un evento es tocar los dos.
   Hubo un cuarto estado, `cerrada`, que se **sacó** (2026-09-17, migración `0012`): se pisaba con
   `resuelta` — en el portal las dos iban al fondo y decían lo mismo, así que la única diferencia
   real era que alguien se acordara de cerrar, y si no se acordaba todo quedaba en `resuelta` para

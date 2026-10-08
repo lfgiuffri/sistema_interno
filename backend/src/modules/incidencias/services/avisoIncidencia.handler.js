@@ -26,6 +26,7 @@ const TOPE_POR_TICK = 200;
 const ETIQUETA = {
     nueva: 'nueva',
     en_progreso: 'en progreso',
+    en_revision: 'lista para tu revisión',
     resuelta: 'resuelta'
 };
 
@@ -70,13 +71,20 @@ const armarMail = (cliente, eventos) => {
         const inc = e.incidencia;
         const ref = `#${inc.id} «${inc.titulo}»`;
         if (e.evento === 'creada') return `• ${ref}: recibimos tu incidencia.`;
+        // `en_revision` lleva su propia frase y no el «pasó a X» genérico: «pasó a en
+        // revisión» se lee como que la estamos revisando NOSOTROS, que es justo lo contrario.
+        // Este aviso existe para pedirle algo al cliente, así que tiene que pedirlo.
+        if (e.evento === 'en_revision') return `• ${ref}: ya está lista para que la revises y nos confirmes.`;
         return `• ${ref}: pasó a ${ETIQUETA[e.evento] ?? e.evento}.`;
     });
 
+    const asuntoDeUno = (e) => {
+        if (e.evento === 'creada') return `Recibimos tu incidencia #${e.incidencia.id}`;
+        if (e.evento === 'en_revision') return `Tu incidencia #${e.incidencia.id} está lista para que la revises`;
+        return `Tu incidencia #${e.incidencia.id} está ${ETIQUETA[e.evento] ?? e.evento}`;
+    };
     const subject = eventos.length === 1
-        ? (eventos[0].evento === 'creada'
-            ? `Recibimos tu incidencia #${eventos[0].incidencia.id}`
-            : `Tu incidencia #${eventos[0].incidencia.id} está ${ETIQUETA[eventos[0].evento] ?? eventos[0].evento}`)
+        ? asuntoDeUno(eventos[0])
         : `${eventos.length} novedades en tus incidencias`;
 
     const text = [

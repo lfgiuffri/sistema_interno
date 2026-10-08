@@ -4,10 +4,14 @@ import { DataTypes } from 'sequelize';
  * Estados de una incidencia, en el orden en que avanza.
  *
  * Son estados de CARA AL CLIENTE, deliberadamente menos que los de una tarea: el cliente no
- * tiene por qué ver nuestro kanban interno (que una tarea esté «pausada» o «en revisión» es
- * asunto nuestro, para él sigue siendo «la están trabajando»).
+ * tiene por qué ver nuestro kanban interno (que una tarea esté «pausada» es asunto nuestro,
+ * para él sigue siendo «la están trabajando»).
+ *
+ * `en_revision` es la EXCEPCIÓN a esa regla, y por eso existe (2026-10-08): no es un paso
+ * interno sino el momento en que la pelota pasa al cliente. Si eso se le muestra como «en
+ * progreso», el trabajo queda esperando un OK que nadie sabe que hay que dar.
  */
-export const ESTADOS_INCIDENCIA = ['nueva', 'en_progreso', 'resuelta'];
+export const ESTADOS_INCIDENCIA = ['nueva', 'en_progreso', 'en_revision', 'resuelta'];
 
 /**
  * Estados que el cliente considera terminados: van al FONDO de su listado.

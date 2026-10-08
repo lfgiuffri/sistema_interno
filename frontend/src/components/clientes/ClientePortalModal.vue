@@ -29,6 +29,7 @@ const AVISOS = [
   { campo: 'avisaCreada', label: 'Cuando se carga la incidencia', ayuda: 'Le confirma que la recibimos.' },
   { campo: 'avisaNueva', label: 'Cuando vuelve a «nueva»', ayuda: 'Pasa si se reabre.' },
   { campo: 'avisaEnProgreso', label: 'Cuando pasa a «en progreso»', ayuda: 'Movimiento interno; suele ser ruido.' },
+  { campo: 'avisaEnRevision', label: 'Cuando queda lista para que la revise', ayuda: 'Le pide que mire y confirme. Apagarlo deja el trabajo esperando un OK que nadie sabe que hay que dar.' },
   { campo: 'avisaResuelta', label: 'Cuando queda resuelta', ayuda: '' },
 ]
 

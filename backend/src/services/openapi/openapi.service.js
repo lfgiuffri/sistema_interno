@@ -175,7 +175,7 @@ export const buildOpenApiSpec = () => ({
             put: op('Editar título, descripción y servicio (el estado va aparte)', 'Incidencias', auth),
             delete: op('Eliminar (baja lógica; el cliente deja de verla)', 'Incidencias', auth)
         },
-        '/incidencias/{id}/estado': { patch: op('Cambio MANUAL de estado (capability propia: es lo que le dispara el mail al cliente). Estados: nueva | en_progreso | resuelta. Con tarea vinculada el estado es DERIVADO y el próximo movimiento de la tarea lo pisa', 'Incidencias', auth) },
+        '/incidencias/{id}/estado': { patch: op('Cambio MANUAL de estado (capability propia: es lo que le dispara el mail al cliente). Estados: nueva | en_progreso | en_revision | resuelta. Con tarea vinculada el estado es DERIVADO y el próximo movimiento de la tarea lo pisa', 'Incidencias', auth) },
         '/incidencias/{id}/tarea': { post: op('Crear una TAREA a partir de la incidencia y vincularlas (pide tareas:create; 409 si ya tiene; copia los adjuntos de la incidencia). Acepta el alta COMPLETA de tarea —nombre, descripcion, asignadoA, prioridad, estado, fechaInicio, archivoIds—, todo opcional: sin esos campos el service compone la tarea con el título y la descripción del cliente. `fechaVencimiento` es además la fechaEstimada que ve el cliente', 'Incidencias', auth) },
         '/incidencias/servicios/{clienteId}': { get: op('Servicios elegibles del cliente, derivados de sus abonos ACTIVOS + proyectos (puede venir vacío: ahí va «consulta general»)', 'Incidencias', auth) },
         '/incidencias/archivos': { post: op('Subir un adjunto suelto (se liga a la incidencia al guardarla)', 'Incidencias', auth) },

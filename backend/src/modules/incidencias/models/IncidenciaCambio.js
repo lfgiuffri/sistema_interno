@@ -4,7 +4,7 @@ import { DataTypes } from 'sequelize';
  * Eventos que se le pueden avisar al cliente por mail. `creada` es el alta; el resto son los
  * estados a los que puede llegar la incidencia.
  */
-export const EVENTOS_INCIDENCIA = ['creada', 'nueva', 'en_progreso', 'resuelta'];
+export const EVENTOS_INCIDENCIA = ['creada', 'nueva', 'en_progreso', 'en_revision', 'resuelta'];
 
 /**
  * Modelo IncidenciaCambio: bitácora append-only de la incidencia **y outbox del mail**.

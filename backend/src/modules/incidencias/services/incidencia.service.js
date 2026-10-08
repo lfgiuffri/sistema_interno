@@ -37,8 +37,8 @@ const bizError = (statusCode, message) => {
  * Estado de incidencia que corresponde a un estado de tarea — FUENTE ÚNICA del mapeo.
  *
  * Es a propósito un mapeo 5→3 y no 1:1: los estados de la tarea son nuestro kanban interno.
- * Que algo esté «pausado» o «en revisión» no le dice nada al cliente y muestra cómo
- * trabajamos puertas adentro.
+ * Que algo esté «pausado» no le dice nada al cliente y muestra cómo trabajamos puertas
+ * adentro. `en_revision` sí se le muestra, porque ahí el que tiene que hacer algo es él.
  *
  * `abierta → nueva` y no `en_progreso`: que exista una tarea significa que la anotamos, no
  * que alguien la empezó. Decir «estamos trabajando en esto» cuando nadie la tocó es mentirle
@@ -54,8 +54,11 @@ export const estadoDesdeTarea = (estadoTarea) => {
     switch (estadoTarea) {
         case 'abierta': return 'nueva';
         case 'en_progreso':
-        case 'pausada':
-        case 'en_revision': return 'en_progreso';
+        case 'pausada': return 'en_progreso';
+        // El ÚNICO estado interno que se le muestra tal cual: acá el trabajo ya no depende de
+        // nosotros sino de que el cliente lo mire y nos dé el OK. Mostrarle «en progreso»
+        // dejaba esa espera invisible para las dos partes.
+        case 'en_revision': return 'en_revision';
         case 'completada': return 'resuelta';
         default: return null;
     }
