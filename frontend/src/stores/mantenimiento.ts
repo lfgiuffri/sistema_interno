@@ -43,6 +43,9 @@ export interface Servidor {
   rutaSitios: string
   comandoDeployProd: string | null
   comandoDeployDev: string | null
+  /** Clave del config_site.php donde cada cliente declara su rama. */
+  claveRama: string
+  comandoCambiarRama: string | null
   /** Última vez que el agente reportó su inventario. null = nunca habló. */
   sitiosReportadosAt: string | null
   ultima: MetricaActual | null
@@ -161,6 +164,12 @@ export interface SitioWeb {
   dominioConsultadoAt: string | null
   tlsVenceAt: string | null
   observacion: string | null
+  /** Si este sitio corre FullGlass. Los viejos que no lo usan quedan afuera de todo esto. */
+  usaFullglass: boolean
+  /** Carpeta del cliente en su servidor, el puente con lo que ve el agente. */
+  rutaFullglass: string | null
+  /** Rama LEÍDA del servidor por el agente (no guardada acá). null si no se pudo cruzar. */
+  rama: string | null
   servicio: { id: number; nombre: string } | null
   servidor: { id: number; nombre: string } | null
   dominioEstado: EstadoVence
@@ -254,6 +263,8 @@ export interface SitioInput {
   servidorId?: number | null
   activo?: boolean
   verificaMarcador?: boolean
+  usaFullglass?: boolean
+  rutaFullglass?: string | null
   dominioVenceAt?: string | null
   observacion?: string | null
 }
@@ -452,9 +463,9 @@ export const useMantenimientoStore = defineStore('mantenimiento', () => {
   }
 
   /** Guarda la ruta que recorre el agente (`servidores:bd-config`). */
-  async function guardarConfigBd(id: number, rutaSitios: string): Promise<Result> {
+  async function guardarConfigBd(id: number, rutaSitios: string, claveRama?: string): Promise<Result> {
     try {
-      const { data } = await api.put(`/mantenimiento/servidores/${id}/config-bd`, { rutaSitios })
+      const { data } = await api.put(`/mantenimiento/servidores/${id}/config-bd`, { rutaSitios, claveRama })
       return { ok: !!data.success, message: data.message }
     } catch (e) { return toResult(e) }
   }
@@ -462,7 +473,11 @@ export const useMantenimientoStore = defineStore('mantenimiento', () => {
   /** Guarda los comandos de deploy (`servidores:deploy-config`). */
   async function guardarConfigDeploy(
     id: number,
-    comandos: { comandoDeployProd?: string | null; comandoDeployDev?: string | null },
+    comandos: {
+      comandoDeployProd?: string | null
+      comandoDeployDev?: string | null
+      comandoCambiarRama?: string | null
+    },
   ): Promise<Result> {
     try {
       const { data } = await api.put(`/mantenimiento/servidores/${id}/config-deploy`, comandos)

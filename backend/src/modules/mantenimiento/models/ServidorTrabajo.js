@@ -1,7 +1,7 @@
 import { DataTypes } from 'sequelize';
 
 /** Tipos de trabajo que un agente puede ejecutar. */
-export const TIPOS_TRABAJO = ['sql', 'deploy'];
+export const TIPOS_TRABAJO = ['sql', 'deploy', 'rama'];
 
 /**
  * Estados de un trabajo. El camino normal del SQL es:
@@ -58,6 +58,8 @@ export const defineServidorTrabajoModel = (db) => {
         /** Comando ya resuelto (tipo `deploy`): se COPIA del servidor al crear el trabajo. */
         comando: { type: DataTypes.TEXT, allowNull: true },
         entorno: { type: DataTypes.ENUM('produccion', 'desarrollo'), allowNull: true },
+        /** Rama destino (tipo `rama`). Se manda explícita y no se alterna: ver el service. */
+        rama: { type: DataTypes.STRING(60), allowNull: true },
 
         /**
          * Sitios elegidos, como array JSON de rutas. `null` = todos los que encuentre el

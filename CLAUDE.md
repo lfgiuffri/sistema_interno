@@ -542,8 +542,13 @@ Monitoreo de los VPS de la empresa. Doc completa en `docs/modules/mantenimiento.
   orden importa. El promedio ignora los chequeos que no respondieron (un timeout es una caída,
   no latencia), el mes/año ponderan por muestras, y el día de hoy sale del detalle porque
   todavía no está consolidado. `GET /mantenimiento/sitios/:id/velocidad?granularidad=dia|mes|anio`.
-- **Filtros del listado** (7, en el cliente como el buscador): disponibilidad, vencimientos,
-  servicio, servidor, activo/inactivo, propios/terceros, con incidentes abiertos.
+- **Filtros del listado** (8, en el cliente como el buscador): disponibilidad, vencimientos,
+  servicio, servidor, activo/inactivo, propios/terceros, con incidentes abiertos y **rama**.
+  Las opciones de rama salen de los DATOS, no de un `['main','dev']` fijo: la rama la lee el
+  agente de `config_site.php` y un cliente puede estar en una de prueba con cualquier nombre —
+  con la lista fija ese sitio no se podría filtrar justo cuando importa. Suma dos opciones que
+  no son una rama pero son lo que se busca cuando algo no cuadra: «sin rama informada» (usa
+  FullGlass y no se sabe) y «no usa FullGlass».
 - **Punto ciego resuelto**: el monitoreo vive dentro de este proceso, así que hay
   `GET /api/health` **público** (200 solo si la base responde) para un watchdog EXTERNO —
   runbook en `docs/deploy-vps-oracle.md` (§ Watchdog externo). El chequeo no debe apuntar a la
@@ -577,6 +582,36 @@ que sigue es por qué está hecho así.
   sin worker sin que nadie se enterara. ⚠️ Marcar un servidor DESPUÉS de instalar el agente
   obliga a volver a correr el instalador ahí. Timer cada **10 s**: lanzar algo se tiene que
   sentir inmediato, y sin trabajo es una sola petición que termina al instante.
+- **Rama de cada cliente** (2026-10-07, migraciones `0016`/`0017`): ver si está en `main` o
+  `dev` y cambiarlo. **La rama no se guarda: la reporta el agente** leyéndola del
+  `config_site.php` del cliente (clave configurable por servidor, `claveRama`, default
+  `branch`) — guardarla haría que la pantalla mienta en cuanto alguien la cambie a mano. El
+  script que toca los archivos lo deja el equipo en cada servidor y la app solo lo invoca:
+  `comandoCambiarRama` con los marcadores `{sitio}` y `{rama}`, que se **entrecomillan** al
+  resolver (corre como root). ⚠️ La rama destino va EXPLÍCITA, nunca se alterna: con la app y
+  el servidor desfasados un instante, alternar manda al cliente a la rama contraria. Es un
+  tercer tipo de trabajo (`rama`) y reusa `servidores:deploy-ejecutar`. En Sitios web,
+  `usaFullglass` separa los que lo corren de los viejos que no, y `rutaFullglass` es el puente
+  entre la URL monitoreada y la carpeta del disco — sin ese vínculo no hay forma de cruzarlos.
+- **El worker se AUTOACTUALIZA** (2026-10-07): compara su sha256 contra el que publica
+  `GET /agente/config` y si quedó viejo se baja el nuevo y corta la corrida. Con desplegar el
+  backend alcanza; antes cada cambio obligaba a reinstalar en cada servidor. No agrega
+  confianza nueva (la app ya puede hacerle correr comandos como root vía deploy), pero sí un
+  modo de falla, así que: se exige que lo descargado coincida con el hash anunciado, se valida
+  con `php -l` antes de reemplazar, se deja un `.bak` y el reemplazo es un `rename()` atómico.
+  Ante cualquier duda NO reemplaza y sigue trabajando con el que tiene.
+- **El agente de MÉTRICAS también se autoactualiza** (2026-10-07), con las mismas cuatro
+  defensas (hash anunciado, `bash -n` en vez de `php -l`, `.bak`, `mv` atómico) y **sin pedido
+  extra**: el hash viaja como `agenteHash` en la respuesta de `POST /agente/metricas`, que el
+  agente ya hace cada minuto. Se actualiza **después** de reportar, así un cambio fallido nunca
+  cuesta la métrica de esa corrida. ⚠️ Acá sí **cambia el modelo de amenaza**, a diferencia del
+  worker: en un servidor SIN FullGlass la app no podía ejecutar nada (el agente solo lee /proc
+  y hace un POST), y ahora puede reemplazarle su propio script. Por eso la unidad systemd
+  conserva `ProtectSystem=strict` + `ProtectHome=true` y abre **un solo archivo** con
+  `ReadWritePaths=/usr/local/bin/agente-sistema-interno.sh` — sin esa línea el agente no puede
+  escribirse y lo dice en el log («¿falta reinstalar el agente?»), que es la pista de que ese
+  servidor quedó con la unidad vieja. La PRIMERA instalación de los dos scripts sigue siendo
+  el instalador.
 - **Canario obligatorio en el SQL.** Corre primero en UNA base por servidor y **no sigue**
   hasta que una persona aprueba. Un `ALTER TABLE` no se puede deshacer (MySQL hace commit
   implícito en DDL), así que la única red real es romper una base en vez de doscientas. Una

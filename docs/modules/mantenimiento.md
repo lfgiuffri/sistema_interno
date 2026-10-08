@@ -105,12 +105,20 @@ Un canal caído nunca tumba el monitoreo: los envíos van con `catch`.
 
 ## Filtros del listado de sitios
 
-Siete filtros que se combinan entre sí y con el buscador: **disponibilidad**
+Ocho filtros que se combinan entre sí y con el buscador: **disponibilidad**
 (en línea / sin marcador / caído / sin chequear), **vencimientos** (dominio o certificado, por
 vencer o vencido, más un «algo por vencer o vencido» que junta los cuatro casos),
-**servicio**, **servidor**, **activo/inactivo**, **propios o de terceros** y **con incidentes
-abiertos**. Las dos opciones «Sin servicio» / «Sin servidor» existen porque un sitio sin
-asignar es justamente lo que se busca cuando se está ordenando el inventario.
+**servicio**, **servidor**, **activo/inactivo**, **propios o de terceros**, **con incidentes
+abiertos** y **rama**. Las dos opciones «Sin servicio» / «Sin servidor» existen porque un sitio
+sin asignar es justamente lo que se busca cuando se está ordenando el inventario.
+
+El de **rama** responde a la pregunta de todos los días: «¿qué clientes quedaron en dev?».
+Sus opciones salen de los datos y no de un `['main', 'dev']` fijo, porque la rama la lee el
+agente de `config_site.php` y un cliente puede estar en una rama de prueba con cualquier
+nombre; con la lista fija, ese sitio sería el único imposible de filtrar. Suma dos opciones
+que no son una rama, pero que son lo que se busca cuando algo no cuadra: **«sin rama
+informada»** (el sitio usa FullGlass y aun así no se sabe en qué rama está — le falta el
+servidor, la carpeta, o el agente todavía no reportó) y **«no usa FullGlass»**.
 
 Se aplican **en el cliente**, igual que el buscador, y por el mismo motivo: el listado no
 pagina (son decenas de sitios) y los estados de vencimiento son **derivados** — se calculan
@@ -398,6 +406,57 @@ lo que corre cada minuto en todos los servidores. El worker necesita leer `/home
 Timer cada **10 segundos**: lanzar algo desde la app se tiene que sentir inmediato, y cuando no
 hay trabajo es una sola petición que termina al instante.
 
+### El worker se actualiza solo
+
+Cada cambio del worker obligaba a entrar a cada servidor a reinstalarlo. Como ya habla con la
+app cada 10 s, ahora compara su propio sha256 contra el que publica `GET /agente/config` y, si
+quedó viejo, se baja la versión nueva y termina la corrida; el timer vuelve en 10 s con ella.
+**Con un deploy del backend alcanza: los servidores se ponen al día solos.**
+
+No agrega confianza nueva — la app ya puede hacer que este worker ejecute comandos como root,
+que es lo que hace el deploy, así que mandarle además el propio archivo no cambia el modelo de
+amenaza. Lo que sí agrega es un modo de falla (un worker roto se propagaría a todos los
+servidores de una), y contra eso van cuatro defensas:
+
+1. Lo descargado tiene que **coincidir con el hash anunciado**; si no, no se toca nada.
+2. Se valida la **sintaxis con `php -l`** antes de reemplazar. Probado: con una versión rota
+   publicada, el agente la rechaza, deja el archivo viejo y **sigue trabajando normal**.
+3. Se guarda la versión anterior al lado (`.bak`).
+4. El reemplazo es un `rename()` sobre el mismo filesystem, **atómico**: nunca queda un archivo
+   a medio escribir que la próxima corrida intente ejecutar.
+
+La comprobación va ANTES de tomar un trabajo, así nunca se reemplaza el archivo con algo a
+medio ejecutar. Reinstalar sigue sirviendo, y es lo único que instala el worker la PRIMERA vez.
+
+#### El agente de métricas, igual pero con una advertencia
+
+Mismo mecanismo y mismas cuatro defensas (con `bash -n` en lugar de `php -l`), con dos
+diferencias:
+
+- **No hace un pedido extra.** El hash viaja como `agenteHash` dentro de la respuesta de
+  `POST /agente/metricas`, que el agente ya hace una vez por minuto. Y se actualiza **después**
+  de reportar: una actualización que falle nunca cuesta la métrica de esa corrida.
+- **Acá sí cambia el modelo de amenaza.** En un servidor sin FullGlass la app no podía
+  ejecutar nada: el agente lee `/proc` y hace un POST, y se acabó. Darle autoactualización
+  significa que la app puede reemplazarle el script que corre como root. Se acepta porque la
+  alternativa real era entrar a mano a cada servidor cada vez que cambia una métrica —y eso,
+  en la práctica, termina en servidores con agentes de distintas épocas—, pero el permiso se
+  da del tamaño exacto del problema: la unidad conserva `ProtectSystem=strict` y
+  `ProtectHome=true`, y abre **un archivo, no un directorio**:
+
+  ```ini
+  ReadWritePaths=/usr/local/bin/agente-sistema-interno.sh
+  ```
+
+  Sin esa línea el filesystem está en solo lectura y el agente **no puede** escribirse. No
+  falla en silencio: loguea `autoactualización: no se pudo escribir … (¿falta reinstalar el
+  agente?)`, que es justamente la señal de que ese servidor quedó con la unidad vieja y hay
+  que correrle el instalador una vez más.
+
+Probado de punta a punta contra la API: un agente viejo se pone al día en una corrida (y deja
+el `.bak`), uno al día no toca nada, y con una versión **rota** publicada el agente la rechaza,
+sigue reportando métricas y no deja archivos sueltos.
+
 ### El canario: por qué el SQL no se aplica a todo de una
 
 `ALTER TABLE` **no se puede deshacer** — MySQL hace commit implícito en DDL—, así que «lo
@@ -411,6 +470,45 @@ romper una base en vez de doscientas:
 Es **una base por servidor**, no una global: que un servidor tenga el esquema viejo es
 exactamente lo que rompe estas corridas, y con un canario global no se vería hasta estar
 corriendo ahí. Si el canario falla, el trabajo queda en `error` y el resto no se toca.
+
+### Rama de cada cliente: `main` o `dev`
+
+Cuando se desarrolla algo a medida se pasa al cliente a `dev` para que lo pruebe, y después
+vuelve a `main`. Eso se hacía entrando al servidor y tocando varios archivos, sin forma de ver
+de un vistazo quién quedó en dev.
+
+**La rama NO se guarda en la app: la REPORTA el agente.** La lee del `config_site.php` de cada
+cliente (la clave se configura por servidor, `claveRama`, default `branch`) junto con el resto
+del inventario. Si la guardáramos nosotros, el día que alguien la cambie a mano en el servidor
+la pantalla mentiría — que es justo el problema que esto viene a resolver.
+
+**El script lo deja el equipo en cada servidor**; la app solo sabe invocarlo. El comando se
+configura en la ficha del servidor con dos marcadores:
+
+```
+/home/scripts/cambiar-rama.sh {sitio} {rama}
+```
+
+`{sitio}` es la carpeta del cliente y `{rama}` la destino. Los dos se **entrecomillan** al
+resolver el comando (corre como root: una ruta con un espacio o una comilla no puede partirlo
+en dos) y el comando resultante se guarda tal cual se ejecutó, para que el historial muestre la
+línea exacta.
+
+⚠️ **La rama destino va explícita, nunca se alterna.** Un «cambiar a la otra» parece cómodo,
+pero si la app y el servidor están desfasados un instante manda al cliente a la rama contraria
+a la que se quiso.
+
+Cambiar de rama es un tercer tipo de trabajo (`rama`) junto a `sql` y `deploy`, así que hereda
+gratis el historial, los permisos, la ejecución por agente y la captura de errores. Reusa la
+capability `servidores:deploy-ejecutar`: decidir qué código corre un cliente es de la misma
+clase que un deploy, y una quinta capability nacería sin que nadie la tenga.
+
+**En el listado de Sitios web**, `usaFullglass` marca cuáles corren FullGlass —hay sitios viejos
+que no— y `rutaFullglass` vincula el sitio con su carpeta en el servidor. Ese vínculo es lo que
+permite cruzar la URL que se monitorea con lo que el agente ve en el disco; sin él no hay forma
+de saber qué `/home/<cliente>` le corresponde a cada sitio. Un sitio de FullGlass sin rama dice
+«sin dato» y el tooltip explica cuál de las tres causas es: falta el servidor, falta la carpeta,
+o el agente todavía no reportó.
 
 ### Sentencias peligrosas
 

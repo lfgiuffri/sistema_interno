@@ -60,9 +60,10 @@ export const listSitios = async (models) => {
     if (!sitios.length) return [];
 
     const ids = sitios.map(s => s.id);
-    const [abiertos, resumenVistas] = await Promise.all([
+    const [abiertos, resumenVistas, ramas] = await Promise.all([
         SitioIncidente.findAll({ where: { sitioId: { [Op.in]: ids }, resueltoAt: null }, raw: true }),
         resumenVistasPorSitio(models, ids),
+        ramasPorRuta(models, sitios),
     ]);
     const porSitio = {};
     for (const i of abiertos) (porSitio[i.sitioId] ??= []).push(i.tipo);
@@ -83,8 +84,38 @@ export const listSitios = async (models) => {
             vistasTotal: r?.total ?? 0,
             vistasOk: r?.ok ?? 0,
             vistas: r?.vistas ?? [],
+            // La rama NO está guardada en el sitio: sale del inventario que reporta el agente,
+            // cruzando por la carpeta. Así lo que se ve es lo que hay en el servidor y no una
+            // copia que se desincroniza la primera vez que alguien la cambia a mano.
+            rama: json.usaFullglass ? (ramas[`${json.servidorId}|${json.rutaFullglass}`] ?? null) : null,
         };
     });
+};
+
+/**
+ * Rama reportada por el agente, indexada por `servidorId|ruta`.
+ *
+ * Es el puente entre el sitio que se monitorea (una URL) y lo que el agente ve en el disco.
+ * Solo se consulta por los sitios que declaran usar FullGlass y tienen la carpeta vinculada:
+ * para el resto no hay nada que cruzar.
+ * @param {object} models - Modelos de la app.
+ * @param {object[]} sitios - Sitios ya traídos.
+ * @returns {Promise<Record<string, string>>} Mapa `servidorId|ruta` → rama.
+ */
+const ramasPorRuta = async (models, sitios) => {
+    const { ServidorSitio } = models;
+    const vinculados = sitios.filter(s => s.usaFullglass && s.rutaFullglass && s.servidorId);
+    if (!ServidorSitio || !vinculados.length) return {};
+
+    const filas = await ServidorSitio.findAll({
+        where: {
+            servidorId: { [Op.in]: [...new Set(vinculados.map(s => s.servidorId))] },
+            ruta: { [Op.in]: [...new Set(vinculados.map(s => s.rutaFullglass))] },
+        },
+        attributes: ['servidorId', 'ruta', 'rama'],
+        raw: true,
+    });
+    return Object.fromEntries(filas.map(f => [`${f.servidorId}|${f.ruta}`, f.rama]));
 };
 
 /**

@@ -85,7 +85,7 @@ function api($metodo, $ruta, $cuerpo = null)
  * @param string $rutaBase Carpeta a recorrer (una subcarpeta por cliente).
  * @return array<int,array<string,mixed>> Sitios con `ruta`, `cfg` y, si falló, `problema`.
  */
-function descubrirSitios($rutaBase)
+function descubrirSitios($rutaBase, $claveRama = 'branch')
 {
     $sitios = [];
     foreach (glob(rtrim($rutaBase, '/') . '/*', GLOB_ONLYDIR) ?: [] as $dir) {
@@ -104,7 +104,11 @@ function descubrirSitios($rutaBase)
             $sitios[] = ['ruta' => $dir, 'problema' => 'config_site.php no define $arrayConfig'];
             continue;
         }
-        $sitios[] = ['ruta' => $dir, 'base' => $cfg['db_name'], 'cfg' => $cfg];
+        // La rama sale del MISMO archivo que ya se lee para conectar: es un valor que el
+        // cliente declara, así que lo que se muestra en la app es lo que hay en el servidor y
+        // no una copia que se puede desincronizar.
+        $rama = isset($cfg[$claveRama]) ? (string) $cfg[$claveRama] : null;
+        $sitios[] = ['ruta' => $dir, 'base' => $cfg['db_name'], 'rama' => $rama, 'cfg' => $cfg];
     }
     return $sitios;
 }
@@ -167,7 +171,8 @@ function correrSql($sitio, $sql)
  */
 function ejecutarSql($t)
 {
-    $sitios = descubrirSitios($t['rutaSitios'] ?? '/home');
+    global $rutaSitios, $claveRama;
+    $sitios = descubrirSitios($rutaSitios, $claveRama);
     // Los que la app no pudo leer no se tocan, pero se reportan: un sitio que no se actualiza
     // en silencio es el peor resultado posible.
     $validos = array_values(array_filter($sitios, function ($s) { return isset($s['cfg']); }));
@@ -229,7 +234,85 @@ function ejecutarDeploy($t)
     ];
 }
 
+/**
+ * Se baja la versión nueva del worker si la que hay quedó vieja.
+ *
+ * Existe porque cada cambio del worker obligaba a entrar a cada servidor a reinstalarlo, y la
+ * tercera vez que pasa eso ya es un problema de diseño. No agrega confianza nueva: la app ya
+ * puede hacer que este worker ejecute comandos como root (es lo que hace el deploy), así que
+ * que además le mande el propio archivo no cambia en nada el modelo de amenaza.
+ *
+ * Lo que sí agrega es un modo de falla —un worker roto se propagaría a todos los servidores de
+ * una—, y contra eso van las tres defensas:
+ *   1. Se valida la SINTAXIS con `php -l` antes de reemplazar nada.
+ *   2. Se guarda la versión anterior al lado (`.bak`), para poder volver a mano.
+ *   3. El reemplazo es un `rename()` sobre el mismo filesystem, que es atómico: nunca queda
+ *      un archivo a medio escribir que la próxima corrida intente ejecutar.
+ * Ante cualquier duda NO reemplaza y sigue trabajando con el que ya tiene.
+ *
+ * @param string $hashRemoto sha256 que publica la app.
+ * @return bool true si se actualizó (y hay que terminar la corrida).
+ */
+function autoactualizar($hashRemoto)
+{
+    global $apiUrl, $token;
+    $propio = @hash_file('sha256', __FILE__);
+    if (!$hashRemoto || !$propio || $hashRemoto === $propio) return false;
+
+    $ch = curl_init("$apiUrl/agente/fullglass-worker.php");
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => TIMEOUT_HTTP,
+        CURLOPT_HTTPHEADER => ["x-agent-token: $token"],
+    ]);
+    $nuevo = curl_exec($ch);
+    $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    // Que el contenido sea el esperado y que coincida con el hash anunciado: si lo que llegó
+    // no es exactamente lo que la app dijo que iba a mandar, no se toca nada.
+    if ($code !== 200 || !$nuevo || strpos($nuevo, '<?php') !== 0) return false;
+    if (hash('sha256', $nuevo) !== $hashRemoto) {
+        fwrite(STDERR, "autoactualización: lo descargado no coincide con el hash anunciado\n");
+        return false;
+    }
+
+    $tmp = __FILE__ . '.nuevo';
+    if (@file_put_contents($tmp, $nuevo) === false) return false;
+
+    // `php -l` sobre el archivo nuevo: un error de sintaxis acá se detecta antes de que el
+    // worker deje de arrancar en todos los servidores a la vez.
+    $salida = [];
+    $codigo = 0;
+    exec('php -l ' . escapeshellarg($tmp) . ' 2>&1', $salida, $codigo);
+    if ($codigo !== 0) {
+        @unlink($tmp);
+        fwrite(STDERR, "autoactualización rechazada, el archivo nuevo no compila: " . implode(' ', $salida) . "\n");
+        return false;
+    }
+
+    @copy(__FILE__, __FILE__ . '.bak');
+    @chmod($tmp, 0700);
+    if (!@rename($tmp, __FILE__)) { @unlink($tmp); return false; }
+
+    echo "worker actualizado a " . substr($hashRemoto, 0, 12) . "; la próxima corrida usa la versión nueva\n";
+    return true;
+}
+
 // ── Principal ────────────────────────────────────────────────────────────────────────────
+//
+// La configuración se pide UNA vez y se usa para todo: la ruta a recorrer y la clave donde
+// cada cliente declara su rama viven en la app, no en este servidor, para que cambiarlas ahí
+// no deje al agente trabajando con datos viejos.
+$conf = api('GET', 'agente/config');
+if (($conf['data']['tieneFullglass'] ?? false) !== true) exit(0);
+
+// La actualización va ANTES de tomar nada: así nunca se reemplaza el archivo con un trabajo a
+// medio ejecutar. Si se actualizó, esta corrida termina y el timer vuelve en 10 s con el nuevo.
+if (autoactualizar(isset($conf['data']['workerHash']) ? $conf['data']['workerHash'] : null)) exit(0);
+$rutaSitios = isset($conf['data']['rutaSitios']) ? $conf['data']['rutaSitios'] : '/home';
+$claveRama = isset($conf['data']['claveRama']) ? $conf['data']['claveRama'] : 'branch';
+
 $res = api('GET', 'agente/trabajos');
 if ($res['code'] !== 200 || !is_array($res['data'])) {
     fwrite(STDERR, "No se pudo consultar trabajos (HTTP {$res['code']})\n");
@@ -237,17 +320,15 @@ if ($res['code'] !== 200 || !is_array($res['data'])) {
 }
 
 if (!$res['data']) {
-    // Sin trabajo: se aprovecha para refrescar el inventario que alimenta la vista previa.
-    // Va acá y no en cada corrida con trabajo para no recorrer el disco dos veces seguidas.
-    // La ruta se pregunta a la app y NO se guarda en el .env del servidor: si viviera en los
-    // dos lados, cambiarla en la ficha dejaría al agente recorriendo la vieja en silencio.
-    $conf = api('GET', 'agente/config');
-    if (($conf['data']['tieneFullglass'] ?? false) !== true) exit(0);
-    $ruta = isset($conf['data']['rutaSitios']) ? $conf['data']['rutaSitios'] : '/home';
-    $sitios = descubrirSitios($ruta);
+    // Sin trabajo: se aprovecha para refrescar el inventario que alimenta la vista previa y
+    // la columna de rama. Va acá y no en cada corrida con trabajo para no recorrer el disco
+    // dos veces seguidas.
+    $ruta = $rutaSitios;
+    $sitios = descubrirSitios($ruta, $claveRama);
     api('POST', 'agente/sitios', ['sitios' => array_map(
         function ($s) {
             return ['ruta' => $s['ruta'], 'base' => isset($s['base']) ? $s['base'] : null,
+                    'rama' => isset($s['rama']) ? $s['rama'] : null,
                     'problema' => isset($s['problema']) ? $s['problema'] : null];
         },
         $sitios
@@ -301,6 +382,8 @@ foreach ($res['data'] as $t) {
     });
 
     try {
+        // `rama` se ejecuta igual que un deploy: la app ya resolvió el comando con el cliente
+        // y la rama destino adentro, así que acá es correr y capturar.
         $r = $t['tipo'] === 'sql' ? ejecutarSql($t) : ejecutarDeploy($t);
     } catch (Throwable $e) {
         $r = ['ok' => false, 'error' => substr($e->getMessage(), 0, 300), 'resultados' => []];

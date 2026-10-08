@@ -64,6 +64,11 @@ test.describe('M20: Mantenimiento — Servidores', () => {
     });
     const body = await expectSuccess(res, 200);
     expect(body.data.alertas).toEqual([]);   // nada supera los umbrales
+    // El hash del propio script viaja en la MISMA respuesta y no en un pedido aparte: el
+    // agente ya está hablando con la API una vez por minuto, y sin este dato no se entera de
+    // que quedó viejo (cada cambio en las métricas obligaría a reinstalarlo a mano en todos
+    // los servidores).
+    expect(body.data.agenteHash).toMatch(/^[0-9a-f]{64}$/);
     await agente.dispose();
   });
 

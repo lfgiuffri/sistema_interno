@@ -296,6 +296,60 @@ test.describe('M24: FullGlass — SQL masivo y deploy', () => {
     await expectSuccess(await adminApi.post(`mantenimiento/trabajos/${trabajoId}/cancelar`), 200);
   });
 
+  test('M24.14 - rama: el agente la REPORTA y el cambio se lanza con la rama explícita', async ({ adminApi }) => {
+    // La rama no se guarda en la app: llega con el inventario. Si la guardáramos, el día que
+    // alguien la cambie a mano en el servidor la pantalla mentiría.
+    await expectSuccess(await agente.post('agente/sitios', {
+      data: {
+        sitios: [
+          { ruta: '/home/enMain', base: 'main_db', rama: 'main' },
+          { ruta: '/home/enDev', base: 'dev_db', rama: 'dev' },
+        ],
+      },
+    }), 200);
+    const inv = await expectSuccess(await adminApi.get(`${APP_ENDPOINTS.servidores}/${servidorId}/sitios`), 200);
+    expect(inv.data.find((s: { ruta: string }) => s.ruta === '/home/enDev').rama).toBe('dev');
+
+    // Sin comando configurado no se puede lanzar.
+    await expectError(await adminApi.post('mantenimiento/trabajos', {
+      data: { tipo: 'rama', servidorIds: [servidorId], rama: 'main', sitios: ['/home/enDev'] },
+    }), 400);
+
+    await expectSuccess(await adminApi.put(`${APP_ENDPOINTS.servidores}/${servidorId}/config-deploy`, {
+      data: { comandoCambiarRama: '/home/scripts/rama.sh {sitio} {rama}' },
+    }), 200);
+
+    const lote = await expectSuccess(await adminApi.post('mantenimiento/trabajos', {
+      data: { tipo: 'rama', servidorIds: [servidorId], rama: 'main', sitios: ['/home/enDev'] },
+    }), 201);
+    const trabajo = await expectSuccess(
+      await adminApi.get(`mantenimiento/trabajos/${lote.data.trabajos[0].id}`), 200);
+
+    // Los marcadores se resuelven al lanzar y quedan ENTRECOMILLADOS: el comando corre como
+    // root, así que una ruta rara no puede partirlo en dos.
+    expect(trabajo.data.comando).toBe("/home/scripts/rama.sh '/home/enDev' 'main'");
+    expect(trabajo.data.rama).toBe('main');
+
+    await expectSuccess(await adminApi.post(`mantenimiento/trabajos/${trabajo.data.id}/cancelar`), 200);
+    await adminApi.put(`${APP_ENDPOINTS.servidores}/${servidorId}/config-deploy`, { data: { comandoCambiarRama: null } });
+  });
+
+  test('M24.15 - la rama destino es OBLIGATORIA: nunca se alterna sola', async ({ adminApi }) => {
+    // Alternar parece cómodo, pero si la app y el servidor están desfasados un instante manda
+    // al cliente a la rama contraria a la que se quiso. Por eso va explícita y se valida.
+    await expectError(await adminApi.post('mantenimiento/trabajos', {
+      data: { tipo: 'rama', servidorIds: [servidorId], sitios: ['/home/enDev'] },
+    }), 422);
+  });
+
+  test('M24.16 - el agente recibe el hash del worker para poder autoactualizarse', async () => {
+    // Sin este dato el worker no sabe que quedó viejo, y cada cambio obligaría a entrar a
+    // reinstalarlo en todos los servidores a mano.
+    const { data } = await expectSuccess(await agente.get('agente/config'), 200);
+    expect(data.workerHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(data.claveRama).toBe('branch');
+  });
+
   test('M24.10 - las cuatro capabilities: el fixture no puede ni configurar ni ejecutar', async ({ authedApi }) => {
     await expectError(await authedApi.post('mantenimiento/trabajos', {
       data: { tipo: 'sql', servidorIds: [servidorId], sql: 'SELECT 1;' },

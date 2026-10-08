@@ -25,6 +25,12 @@ export const defineServidorSitioModel = (db) => {
         base: { type: DataTypes.STRING(120), allowNull: true },
         /** Por qué no se pudo leer su config, si pasó (sin credenciales en el texto). */
         problema: { type: DataTypes.STRING(255), allowNull: true },
+        /**
+         * Rama en la que está el cliente (`main`, `dev`…), LEÍDA del servidor por el agente.
+         * Texto libre y no ENUM: si mañana aparece una `staging`, se muestra igual en vez de
+         * romper la ingesta del inventario.
+         */
+        rama: { type: DataTypes.STRING(60), allowNull: true },
         ultimoReporteAt: { type: DataTypes.DATE, allowNull: false }
     }, {
         tableName: 'servidor_sitios',

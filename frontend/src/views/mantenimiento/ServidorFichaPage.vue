@@ -113,7 +113,10 @@ const modalLanzar = ref(false)
 const tipoLanzar = ref<'sql' | 'deploy'>('sql')
 const editandoConfig = ref(false)
 const guardandoConfig = ref(false)
-const form = ref({ rutaSitios: '/home', comandoDeployProd: '', comandoDeployDev: '' })
+const form = ref({
+  rutaSitios: '/home', claveRama: 'branch',
+  comandoDeployProd: '', comandoDeployDev: '', comandoCambiarRama: '',
+})
 
 const puedeConfigBd = computed(() => meStore.can('servidores:bd-config'))
 const puedeConfigDeploy = computed(() => meStore.can('servidores:deploy-config'))
@@ -124,8 +127,10 @@ function abrirConfig(): void {
   if (!servidor.value) return
   form.value = {
     rutaSitios: servidor.value.rutaSitios || '/home',
+    claveRama: servidor.value.claveRama || 'branch',
     comandoDeployProd: servidor.value.comandoDeployProd ?? '',
     comandoDeployDev: servidor.value.comandoDeployDev ?? '',
+    comandoCambiarRama: servidor.value.comandoCambiarRama ?? '',
   }
   editandoConfig.value = true
 }
@@ -140,7 +145,7 @@ async function guardarConfig(): Promise<void> {
   const errores: string[] = []
 
   if (puedeConfigBd.value) {
-    const r = await store.guardarConfigBd(servidor.value.id, form.value.rutaSitios)
+    const r = await store.guardarConfigBd(servidor.value.id, form.value.rutaSitios, form.value.claveRama)
     if (!r.ok) errores.push(r.message)
   }
   if (puedeConfigDeploy.value) {
@@ -149,6 +154,7 @@ async function guardarConfig(): Promise<void> {
       // abierta para siempre.
       comandoDeployProd: form.value.comandoDeployProd.trim() || null,
       comandoDeployDev: form.value.comandoDeployDev.trim() || null,
+      comandoCambiarRama: form.value.comandoCambiarRama.trim() || null,
     })
     if (!r.ok) errores.push(r.message)
   }
@@ -262,6 +268,11 @@ function lanzar(tipo: 'sql' | 'deploy'): void {
               <code v-if="servidor.comandoDeployDev" class="ml-1 text-ink break-all">{{ servidor.comandoDeployDev }}</code>
               <span v-else class="ml-1 text-ink-faint">sin configurar</span>
             </p>
+            <p v-if="puedeConfigDeploy || puedeDeploy">
+              <span class="text-ink-faint">Cambio de rama:</span>
+              <code v-if="servidor.comandoCambiarRama" class="ml-1 text-ink break-all">{{ servidor.comandoCambiarRama }}</code>
+              <span v-else class="ml-1 text-ink-faint">sin configurar</span>
+            </p>
           </div>
 
           <form v-else class="space-y-3 border-t border-line-soft pt-3" @submit.prevent="guardarConfig">
@@ -270,6 +281,14 @@ function lanzar(tipo: 'sql' | 'deploy'): void {
               <input id="fg-ruta" v-model="form.rutaSitios" class="ds-input" placeholder="/home" />
               <p class="ds-hint">
                 Una subcarpeta por cliente, cada una con <code>configs/config_site.php</code>.
+              </p>
+            </div>
+            <div v-if="puedeConfigBd">
+              <label class="ds-label" for="fg-clave">Clave que indica la rama</label>
+              <input id="fg-clave" v-model="form.claveRama" class="ds-input font-mono w-48" placeholder="branch" />
+              <p class="ds-hint">
+                Dentro del <code>$arrayConfig</code> de cada cliente. De ahí lee el agente si
+                está en main o en dev.
               </p>
             </div>
             <template v-if="puedeConfigDeploy">
@@ -284,6 +303,17 @@ function lanzar(tipo: 'sql' | 'deploy'): void {
                           class="ds-input !h-auto py-2 font-mono text-xs"></textarea>
                 <p class="ds-hint">
                   Corren como root en este servidor. Dejalos en blanco para desconfigurarlos.
+                </p>
+              </div>
+              <div>
+                <label class="ds-label" for="fg-rama">Comando para cambiar de rama</label>
+                <textarea id="fg-rama" v-model="form.comandoCambiarRama" rows="2"
+                          class="ds-input !h-auto py-2 font-mono text-xs"
+                          placeholder="/home/scripts/cambiar-rama.sh {sitio} {rama}"></textarea>
+                <p class="ds-hint">
+                  El script lo dejás vos en el servidor. <code>{sitio}</code> se reemplaza por la
+                  carpeta del cliente y <code>{rama}</code> por <code>main</code> o
+                  <code>dev</code>; los dos van entrecomillados al ejecutar.
                 </p>
               </div>
             </template>

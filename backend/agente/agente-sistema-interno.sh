@@ -62,6 +62,58 @@ SO=$( (. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME") || uname -sr )
 # El nombre del SO se mete crudo en el JSON: se le sacan comillas y barras por las dudas.
 SO=${SO//\\/}; SO=${SO//\"/}
 
+# ── Autoactualización ────────────────────────────────────────────────────────────────────
+#
+# El hash del script que publica la app viaja en la MISMA respuesta del reporte, así que esto
+# no agrega ni una petición. Si el de acá quedó viejo, se baja el nuevo y termina; el timer
+# vuelve en un minuto con la versión nueva.
+#
+# ⚠️ Esto SÍ cambia el modelo de amenaza, a diferencia del worker de FullGlass. En un servidor
+# sin FullGlass la app hoy no puede ejecutar NADA: el agente solo lee /proc y hace un POST. Con
+# esto, la app pasa a poder reemplazar un script que corre como root. Es una decisión tomada a
+# conciencia —la alternativa es entrar a cada servidor cada vez que cambie una métrica— y por
+# eso el servicio le da permiso de escritura a UN SOLO archivo (`ReadWritePaths` en la unidad),
+# no al sistema.
+#
+# Cuatro defensas, las mismas del worker:
+#   1. Lo descargado tiene que coincidir con el hash anunciado.
+#   2. Se valida la sintaxis con `bash -n` antes de reemplazar.
+#   3. Se guarda la versión anterior al lado (`.bak`).
+#   4. El reemplazo es un `mv` sobre el mismo filesystem: atómico, nunca queda a medio escribir.
+# Ante cualquier duda NO reemplaza y el agente sigue reportando con el que ya tiene.
+autoactualizar() {
+    local cuerpo="$1" remoto propio tmp
+    remoto=$(printf '%s' "$cuerpo" | grep -o '"agenteHash":"[0-9a-f]\{64\}"' | head -1 | cut -d'"' -f4)
+    [ -n "$remoto" ] || return 0
+
+    propio=$(sha256sum "$0" 2>/dev/null | cut -d' ' -f1)
+    [ -n "$propio" ] && [ "$propio" != "$remoto" ] || return 0
+
+    tmp="$0.nuevo"
+    curl -fsS --max-time 30 "${API_URL%/}/agente/agente-sistema-interno.sh" -o "$tmp" 2>/dev/null || return 0
+
+    if [ "$(sha256sum "$tmp" 2>/dev/null | cut -d' ' -f1)" != "$remoto" ]; then
+        rm -f "$tmp"
+        echo "autoactualización: lo descargado no coincide con el hash anunciado" >&2
+        return 0
+    fi
+    if ! bash -n "$tmp" 2>/dev/null; then
+        rm -f "$tmp"
+        echo "autoactualización rechazada: el script nuevo no compila" >&2
+        return 0
+    fi
+
+    cp -p "$0" "$0.bak" 2>/dev/null
+    chmod 755 "$tmp"
+    if mv "$tmp" "$0" 2>/dev/null; then
+        echo "agente actualizado a ${remoto:0:12}; la próxima corrida usa la versión nueva"
+    else
+        rm -f "$tmp"
+        # Lo más probable: el servicio todavía no tiene ReadWritePaths (instalación vieja).
+        echo "autoactualización: no se pudo escribir $0 (¿falta reinstalar el agente?)" >&2
+    fi
+}
+
 # ⚠️ NADA de archivos temporales de acá en adelante.
 #
 # El servicio corre con `ProtectSystem=strict`, así que el filesystem está en solo lectura.
@@ -85,6 +137,7 @@ CUERPO=${SALIDA%$'\n'*}      # todo lo anterior = cuerpo o error de curl
 
 if [ "$CODIGO" = "200" ]; then
     echo "ok cpu=${CPU}% ram=${RAM}% disco=${DISCO}%"
+    autoactualizar "$CUERPO"
 else
     # Código 000 = curl no llegó a hablar con el servidor (DNS, red, TLS): el motivo está
     # en el cuerpo.

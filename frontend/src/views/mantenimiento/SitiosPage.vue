@@ -91,16 +91,31 @@ const fActivo = ref('')      // si | no
 const fVence = ref('')       // dominio_por_vencer | dominio_vencido | tls_* | cualquiera
 const fIncidentes = ref(false)
 const fNuestros = ref('')    // si | no  («es un sitio nuestro» = verifica el marcador)
+// Rama: el valor crudo que reportó el agente (main, dev, o el que sea), más dos casos que no
+// son una rama pero son justo lo que se busca cuando algo no cuadra: 'sin' = usa FullGlass y
+// no se sabe en qué rama está, 'nofg' = ni siquiera usa FullGlass.
+const fRama = ref('')
 
 /** ¿Hay algún filtro puesto (además del buscador)? */
 const hayFiltros = computed(() =>
-  !!(fEstado.value || fServicio.value || fServidor.value || fActivo.value || fVence.value || fNuestros.value) || fIncidentes.value,
+  !!(fEstado.value || fServicio.value || fServidor.value || fActivo.value || fVence.value
+    || fNuestros.value || fRama.value) || fIncidentes.value,
 )
 
 function limpiarFiltros(): void {
   fEstado.value = ''; fServicio.value = ''; fServidor.value = ''
-  fActivo.value = ''; fVence.value = ''; fNuestros.value = ''; fIncidentes.value = false
+  fActivo.value = ''; fVence.value = ''; fNuestros.value = ''; fRama.value = ''
+  fIncidentes.value = false
 }
+
+/**
+ * Las ramas del selector salen de los DATOS y no de una lista fija ['main', 'dev']: la rama la
+ * lee el agente de `config_site.php`, así que un cliente puede estar en una rama de prueba con
+ * cualquier nombre. Con la lista fija ese sitio no se podría filtrar justo cuando interesa.
+ */
+const ramasDisponibles = computed<string[]>(() =>
+  [...new Set(store.sitios.filter(s => s.usaFullglass && s.rama).map(s => s.rama as string))].sort(),
+)
 
 /** ¿El sitio cae en el filtro de vencimientos elegido? */
 function pasaVencimiento(s: SitioWeb): boolean {
@@ -133,6 +148,9 @@ const sitiosFiltrados = computed<SitioWeb[]>(() => {
     // «Nuestro» = le exigimos el marcador del footer. Los de terceros no lo tienen y por eso
     // se chequean solo por 2xx: es la misma bandera vista desde el otro lado.
     if (fNuestros.value && s.verificaMarcador !== (fNuestros.value === 'si')) return false
+    if (fRama.value === 'nofg' && s.usaFullglass) return false
+    if (fRama.value === 'sin' && (!s.usaFullglass || s.rama)) return false
+    if (fRama.value && !['sin', 'nofg'].includes(fRama.value) && s.rama !== fRama.value) return false
     if (fServicio.value === 'sin' && s.servicioId) return false
     if (fServicio.value && fServicio.value !== 'sin' && s.servicioId !== Number(fServicio.value)) return false
     if (fServidor.value === 'sin' && s.servidorId) return false
@@ -174,6 +192,50 @@ function textoVence(fechaISO: string | null, v: EstadoVence): string {
 // Se ordena lo YA filtrado: el buscador acota y el encabezado ordena ese resultado.
 const orden = useOrdenTabla(() => sitiosFiltrados.value)
 
+/* ── Rama de FullGlass ───────────────────────────────────────────────────────────────
+ *
+ * La rama que se muestra la LEE el agente del servidor; acá no se guarda nada. Cambiarla es
+ * lanzar un trabajo con el script que el equipo dejó en ese servidor, así que pasa por la
+ * misma maquinaria que el SQL masivo y el deploy: historial, permisos y captura de errores.
+ */
+const puedeCambiarRama = computed(() => meStore.can('servidores:deploy-ejecutar'))
+const sitioRama = ref<SitioWeb | null>(null)
+const ramaDestino = ref('main')
+const cambiandoRama = ref(false)
+const errorRama = ref('')
+
+/** Por qué un sitio de FullGlass puede no tener rama: son dos causas distintas. */
+function sinRama(s: SitioWeb): string {
+  if (!s.servidorId) return 'Falta asociarle un servidor al sitio'
+  if (!s.rutaFullglass) return 'Falta la carpeta del cliente en el servidor'
+  return 'El agente de ese servidor todavía no reportó esta carpeta'
+}
+
+function abrirRama(s: SitioWeb): void {
+  sitioRama.value = s
+  // Se propone la CONTRARIA, que es lo que casi siempre se quiere, pero se manda explícita:
+  // el backend nunca alterna por su cuenta.
+  ramaDestino.value = s.rama === 'main' ? 'dev' : 'main'
+  errorRama.value = ''
+}
+
+async function confirmarRama(): Promise<void> {
+  const s = sitioRama.value
+  if (!s || !s.servidorId || !s.rutaFullglass) return
+  cambiandoRama.value = true
+  errorRama.value = ''
+  const r = await store.lanzarTrabajos({
+    tipo: 'rama',
+    servidorIds: [s.servidorId],
+    rama: ramaDestino.value,
+    sitios: [s.rutaFullglass],
+  })
+  cambiandoRama.value = false
+  if (!r.ok) { errorRama.value = r.message; return }
+  toast.success(`Cambio a ${ramaDestino.value} lanzado: el agente lo toma en unos segundos`)
+  sitioRama.value = null
+}
+
 const hayIncidentes = computed(() => store.sitios.some(s => s.incidentes.length))
 
 async function cargarOpciones(): Promise<void> {
@@ -191,8 +253,9 @@ function abrirForm(s?: SitioWeb): void {
     ? {
       nombre: s.nombre, url: s.url, servicioId: s.servicioId, servidorId: s.servidorId,
       verificaMarcador: s.verificaMarcador, dominioVenceAt: s.dominioVenceAt, observacion: s.observacion,
+      usaFullglass: s.usaFullglass, rutaFullglass: s.rutaFullglass,
     }
-    : { nombre: '', url: 'https://', verificaMarcador: true }
+    : { nombre: '', url: 'https://', verificaMarcador: true, usaFullglass: false, rutaFullglass: null }
   formError.value = ''
   modalForm.value = true
 }
@@ -296,7 +359,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void store.fetchSitios() })
         </header>
 
         <!--
-          Barra de filtros. `flex-wrap` obligatorio: son siete controles y en celular tienen
+          Barra de filtros. `flex-wrap` obligatorio: son ocho controles y en celular tienen
           que bajar de renglón en vez de comprimirse (ver docs/responsive.md).
         -->
         <div class="ds-card px-3 py-2.5 mb-3 flex flex-wrap items-center gap-2">
@@ -341,6 +404,13 @@ onIonViewWillEnter(() => { if (loadedOnce) void store.fetchSitios() })
             <option value="no">Solo de terceros</option>
           </select>
 
+          <select v-model="fRama" class="ds-input h-8 w-auto text-xs" aria-label="Filtrar por rama">
+            <option value="">Rama: todas</option>
+            <option v-for="r in ramasDisponibles" :key="r" :value="r">{{ r }}</option>
+            <option value="sin">Sin rama informada</option>
+            <option value="nofg">No usa FullGlass</option>
+          </select>
+
           <label class="flex items-center gap-1.5 text-xs text-ink-soft cursor-pointer select-none">
             <input v-model="fIncidentes" type="checkbox" class="accent-accent" />
             Con incidentes abiertos
@@ -363,6 +433,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void store.fetchSitios() })
                 <ThOrdenable columna="estado" :activa="orden.columna.value" :dir="orden.dir.value" class="w-32" @ordenar="orden.ordenarPor">Estado</ThOrdenable>
                 <ThOrdenable columna="dominioVenceAt" :activa="orden.columna.value" :dir="orden.dir.value" class="w-36" @ordenar="orden.ordenarPor">Dominio</ThOrdenable>
                 <ThOrdenable columna="tlsVenceAt" :activa="orden.columna.value" :dir="orden.dir.value" class="w-36" @ordenar="orden.ordenarPor">Certificado</ThOrdenable>
+                <ThOrdenable columna="rama" :activa="orden.columna.value" :dir="orden.dir.value" class="w-28" @ordenar="orden.ordenarPor">Rama</ThOrdenable>
                 <ThOrdenable columna="ultimoChequeoAt" :activa="orden.columna.value" :dir="orden.dir.value" class="w-32" @ordenar="orden.ordenarPor">Último chequeo</ThOrdenable>
                 <th class="w-32"><span class="sr-only">Acciones</span></th>
               </tr>
@@ -410,6 +481,25 @@ onIonViewWillEnter(() => { if (loadedOnce) void store.fetchSitios() })
                 </td>
                 <td class="text-xs tnum" :class="claseVence(s.tlsEstado)">
                   {{ textoVence(s.tlsVenceAt, s.tlsEstado) }}
+                </td>
+                <!-- La rama NO está guardada acá: la reporta el agente leyéndola del servidor.
+                     Por eso un sitio de FullGlass sin dato significa «todavía no se pudo cruzar»
+                     (falta la carpeta, o el agente no reportó), y se dice así. -->
+                <td class="text-xs">
+                  <button
+                    v-if="s.usaFullglass && s.rama"
+                    type="button"
+                    class="ds-pill"
+                    :class="{ 'ds-pill-activa': true }"
+                    :style="{ '--c': s.rama === 'main' ? '#0F7660' : '#b45309' }"
+                    :disabled="!puedeCambiarRama"
+                    :title="puedeCambiarRama ? 'Cambiar de rama' : 'Sin permiso para cambiar la rama'"
+                    @click="abrirRama(s)"
+                  >{{ s.rama }}</button>
+                  <span v-else-if="s.usaFullglass" class="text-2xs text-ink-faint" :title="sinRama(s)">
+                    sin dato
+                  </span>
+                  <span v-else class="text-2xs text-ink-faint">—</span>
                 </td>
                 <td class="text-2xs text-ink-faint tnum">
                   {{ s.ultimoChequeoAt ? fechaHora(s.ultimoChequeoAt) : 'nunca' }}
@@ -516,6 +606,30 @@ onIonViewWillEnter(() => { if (loadedOnce) void store.fetchSitios() })
                     <option v-for="o in servidores" :key="o.value" :value="o.value">{{ o.label }}</option>
                   </select>
                 </div>
+              </div>
+
+              <!-- FullGlass: hay sitios viejos que no lo usan, y la rama solo tiene sentido
+                   para los que sí. La ruta es el puente con lo que el agente ve en el disco. -->
+              <label class="flex items-start gap-2 text-sm text-ink cursor-pointer">
+                <input v-model="form.usaFullglass" type="checkbox" class="accent-[#0F7660] mt-0.5" />
+                <span>
+                  Usa FullGlass
+                  <span class="block text-2xs text-ink-faint">
+                    Habilita ver en qué rama está y cambiarla desde acá.
+                  </span>
+                </span>
+              </label>
+
+              <div v-if="form.usaFullglass">
+                <label class="ds-label" for="st-ruta">Carpeta del cliente en el servidor</label>
+                <input
+                  id="st-ruta" v-model="form.rutaFullglass" class="ds-input font-mono"
+                  placeholder="/home/cliente" maxlength="255"
+                />
+                <p class="ds-hint">
+                  La que contiene <span class="font-mono">configs/config_site.php</span>. Es lo que
+                  permite cruzar este sitio con lo que reporta el agente del servidor.
+                </p>
               </div>
 
               <label class="flex items-start gap-2 text-sm text-ink cursor-pointer">
@@ -648,6 +762,46 @@ onIonViewWillEnter(() => { if (loadedOnce) void store.fetchSitios() })
         :sitio="sitioVelocidad"
         @cerrar="sitioVelocidad = null"
       />
+      <Teleport defer to="ion-app">
+        <div v-if="sitioRama" class="ds-modal-backdrop">
+          <div class="ds-modal max-w-md" role="dialog" aria-modal="true" aria-label="Cambiar de rama">
+            <h2 class="text-base font-semibold text-ink mb-1">Cambiar de rama</h2>
+            <p class="text-xs text-ink-soft mb-4">
+              <strong class="text-ink">{{ sitioRama.nombre }}</strong> está en
+              <strong class="text-ink">{{ sitioRama.rama }}</strong>.
+              El cambio corre el script del servidor sobre
+              <code class="break-all">{{ sitioRama.rutaFullglass }}</code>.
+            </p>
+
+            <div class="mb-3">
+              <span class="ds-label">Pasar a</span>
+              <div class="flex gap-1.5">
+                <button
+                  v-for="r in ['main', 'dev']" :key="r" type="button"
+                  class="ds-pill" :class="{ 'ds-pill-activa': ramaDestino === r }"
+                  :style="{ '--c': r === 'main' ? '#0F7660' : '#b45309' }"
+                  @click="ramaDestino = r"
+                >{{ r }}</button>
+              </div>
+              <p v-if="ramaDestino === 'dev'" class="ds-hint text-warn">
+                En «dev» el cliente ve la versión de pruebas. Acordate de volverlo a «main».
+              </p>
+            </div>
+
+            <p v-if="errorRama" class="ds-error" role="alert">{{ errorRama }}</p>
+
+            <footer class="flex justify-end gap-2 pt-1">
+              <button type="button" class="ds-btn-secondary" @click="sitioRama = null">Cancelar</button>
+              <button
+                type="button" class="ds-btn-primary"
+                :disabled="cambiandoRama || ramaDestino === sitioRama.rama"
+                @click="confirmarRama"
+              >{{ cambiandoRama ? 'Lanzando…' : `Pasar a ${ramaDestino}` }}</button>
+            </footer>
+          </div>
+        </div>
+      </Teleport>
+
     </IonContent>
   </IonPage>
 </template>

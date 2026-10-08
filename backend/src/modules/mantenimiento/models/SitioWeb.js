@@ -40,7 +40,19 @@ export const defineSitioWebModel = (db) => {
         dominioConsultadoAt: { type: DataTypes.DATE, allowNull: true },
         // Certificado TLS (se lee en el handshake del chequeo).
         tlsVenceAt: { type: DataTypes.DATEONLY, allowNull: true },
-        observacion: { type: DataTypes.TEXT, allowNull: true }
+        observacion: { type: DataTypes.TEXT, allowNull: true },
+
+        // ── FullGlass ────────────────────────────────────────────────────────────────────
+        // Hay sitios viejos que no corren FullGlass. Marca explícita y no deducida de que la
+        // ruta esté cargada: un sitio puede ser de FullGlass y todavía no estar vinculado, y
+        // «no usa» no es lo mismo que «usa pero falta el dato».
+        usaFullglass: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+        /**
+         * Carpeta del cliente en su servidor (ej. `/home/clienteX`). Es el puente entre la URL
+         * que se monitorea y lo que el agente ve en el disco: sin esto no hay forma de saber
+         * qué inventario —ni qué rama— le corresponde a este sitio.
+         */
+        rutaFullglass: { type: DataTypes.STRING(255), allowNull: true }
     }, {
         tableName: 'sitios_web',
         timestamps: true,

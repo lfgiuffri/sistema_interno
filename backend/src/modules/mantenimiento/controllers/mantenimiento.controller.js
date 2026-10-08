@@ -5,6 +5,10 @@
  * servidor con su token (por eso su ruta se monta fuera de verifyAccessToken).
  */
 
+import fs from 'fs';
+import path from 'path';
+import crypto from 'crypto';
+import { fileURLToPath } from 'url';
 import { matchedData } from 'express-validator';
 import { responseManager, getRoleCapabilities, roleHasCapability } from '../../../kernel/index.js';
 import * as svc from '../services/servidor.service.js';
@@ -15,6 +19,9 @@ import * as vistasSvc from '../services/vista.service.js';
 import { velocidadDeSitio } from '../services/velocidad.service.js';
 import { vencimientoDominio } from '../services/rdap.service.js';
 import * as trabajos from '../services/trabajo.service.js';
+
+/** Carpeta de este controller, para ubicar los scripts del agente fuera de `src/`. */
+const __dirnameCtrl = path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * Mapea un error de negocio del service al envelope.
@@ -319,7 +326,12 @@ export const ingesta = async (req, res) => {
         const token = req.headers['x-agent-token'];
         if (!token) return await responseManager(401, 'Falta el token del agente', req, res, false);
         const data = await svc.registrarMetrica(req.models, req.io, String(token), matchedData(req));
-        return await responseManager(200, data, req, res, false);
+        // El hash viaja en la MISMA respuesta del reporte: el agente ya hace este ida y vuelta
+        // cada minuto, así que la autoactualización no agrega ni una petición.
+        return await responseManager(200, {
+            ...data,
+            agenteHash: hashScriptAgente('agente-sistema-interno.sh'),
+        }, req, res, false);
     } catch (e) { return bizCatch(e, req, res); }
 };
 
@@ -343,7 +355,13 @@ const puede = async (req, res, cap) => {
 };
 
 /** Capability de ejecución que corresponde a cada tipo de trabajo. */
-const CAP_EJECUTAR = { sql: 'servidores:bd-ejecutar', deploy: 'servidores:deploy-ejecutar' };
+// Cambiar de rama es de la misma clase que un deploy —decide qué código corre el cliente— así
+// que reusa su capability en vez de crear una quinta que nacería sin que nadie la tenga.
+const CAP_EJECUTAR = {
+    sql: 'servidores:bd-ejecutar',
+    deploy: 'servidores:deploy-ejecutar',
+    rama: 'servidores:deploy-ejecutar',
+};
 
 /**
  * Deja pasar si tiene CUALQUIERA de las dos capabilities de ejecución (para leer el historial).
@@ -378,8 +396,8 @@ const puedeDelTrabajo = async (req, res) => {
  */
 export const configBd = async (req, res) => {
     try {
-        const { id, rutaSitios } = matchedData(req);
-        const data = await svc.updateServidor(req.models, id, { rutaSitios });
+        const { id, ...config } = matchedData(req);
+        const data = await svc.updateServidor(req.models, id, config);
         if (!data) return await responseManager(404, 'Servidor no encontrado', req, res, false);
         return await responseManager(200, data, req, res, false);
     } catch (e) { return bizCatch(e, req, res); }
@@ -523,6 +541,34 @@ const servidorDelAgente = async (req, res) => {
 };
 
 /**
+ * Hash de uno de los scripts del agente, para que cada servidor sepa si el suyo quedó viejo.
+ *
+ * Se cachea por mtime: lo piden TODOS los agentes en CADA ronda, y leer y hashear el archivo
+ * en cada request sería trabajo repetido para un dato que solo cambia en los deploys.
+ * @param {string} archivo - Nombre del script en `backend/agente/`.
+ * @returns {string|null} sha256, o null si no se puede leer.
+ */
+const cacheHash = {};
+const hashScriptAgente = (archivo) => {
+    try {
+        const ruta = path.resolve(__dirnameCtrl, '../../../../agente/', archivo);
+        const stat = fs.statSync(ruta);
+        const cache = cacheHash[archivo];
+        if (!cache || stat.mtimeMs !== cache.mtime) {
+            cacheHash[archivo] = {
+                mtime: stat.mtimeMs,
+                hash: crypto.createHash('sha256').update(fs.readFileSync(ruta)).digest('hex'),
+            };
+        }
+        return cacheHash[archivo].hash;
+    } catch {
+        // Sin hash no hay autoactualización, pero el agente sigue trabajando: un problema para
+        // leer el archivo no puede dejar a todos los servidores sin reportar.
+        return null;
+    }
+};
+
+/**
  * GET /agente/config — lo que el agente necesita saber de SU configuración.
  *
  * Existe para que la ruta a recorrer viva en UN solo lugar (la ficha del servidor). Si se
@@ -538,6 +584,10 @@ export const agenteConfig = async (req, res) => {
     return await responseManager(200, {
         tieneFullglass: servidor.tieneFullglass,
         rutaSitios: servidor.rutaSitios,
+        // Dónde leer la rama dentro del config_site.php de cada cliente.
+        claveRama: servidor.claveRama,
+        // Con esto el agente compara contra su propia copia y se actualiza solo si quedó vieja.
+        workerHash: hashScriptAgente('fullglass-worker.php'),
     }, req, res, false);
 };
 

@@ -52,6 +52,11 @@ ExecStart=$BIN
 # El agente solo lee /proc y /etc: sin privilegios extra ni escritura en el sistema.
 ProtectSystem=strict
 ProtectHome=true
+# ÚNICA excepción al filesystem de solo lectura: su propio script, para poder autoactualizarse.
+# Con ProtectSystem=strict no podría reescribirse, y sin esto cada cambio en las métricas
+# obligaría a entrar a todos los servidores. Es un archivo, no un directorio: el resto del
+# sistema le sigue siendo de solo lectura.
+ReadWritePaths=$BIN
 # /tmp propio y descartable. Con ProtectSystem=strict el filesystem queda en SOLO LECTURA,
 # así que sin esto cualquier archivo temporal —incluido el que bash necesita para un
 # here-document— falla con «Read-only file system». El agente no lo usa, pero un /tmp

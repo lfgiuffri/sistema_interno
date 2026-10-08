@@ -70,7 +70,19 @@ export const defineServidorModel = (db) => {
          * habló» (null) de «recorrió y no encontró nada» (con fecha y la tabla vacía), que se
          * ven igual y mandan a buscar el problema a lugares opuestos.
          */
-        sitiosReportadosAt: { type: DataTypes.DATE, allowNull: true }
+        sitiosReportadosAt: { type: DataTypes.DATE, allowNull: true },
+        /**
+         * Clave del `$arrayConfig` de `config_site.php` donde el cliente declara su rama.
+         * Configurable porque es una convención de FullGlass que la app no tiene por qué saber
+         * de memoria, y puede diferir entre servidores viejos y nuevos.
+         */
+        claveRama: { type: DataTypes.STRING(60), allowNull: false, defaultValue: 'branch' },
+        /**
+         * Cómo invocar el script que cambia de rama. El script lo deja el equipo en cada
+         * servidor (sabe qué archivos tocar); la app solo sabe llamarlo. `{sitio}` y `{rama}`
+         * se reemplazan al lanzar el trabajo.
+         */
+        comandoCambiarRama: { type: DataTypes.TEXT, allowNull: true }
     }, {
         tableName: 'servidores',
         timestamps: true,

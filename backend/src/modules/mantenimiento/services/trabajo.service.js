@@ -119,6 +119,25 @@ const exigirServidorFullglass = async (models, id) => {
 };
 
 /**
+ * Reemplaza `{sitio}` y `{rama}` en el comando configurado.
+ *
+ * Los valores se ESCAPAN para el shell antes de entrar: el comando corre como root, y aunque
+ * hoy la ruta venga del inventario que reporta el propio agente, una ruta con un espacio o una
+ * comilla no puede partir el comando en dos. Las comillas simples se cierran y se reabren, que
+ * es la única forma segura de meter una comilla dentro de un literal de shell.
+ * @param {string} plantilla - Comando configurado en el servidor.
+ * @param {string} sitio - Carpeta del cliente.
+ * @param {string} rama - Rama destino.
+ * @returns {string} Comando listo para ejecutar.
+ */
+const resolverComandoRama = (plantilla, sitio, rama) => {
+    const escapar = (v) => `'${String(v).replace(/'/g, `'\\''`)}'`;
+    return String(plantilla)
+        .replace(/\{sitio\}/g, escapar(sitio))
+        .replace(/\{rama\}/g, escapar(rama));
+};
+
+/**
  * Lanza un LOTE: un trabajo por servidor, todos con el mismo `loteId`.
  *
  * Los servidores sin contacto NO se encolan: su trabajo nace en `error`. Queda en el historial
@@ -157,6 +176,16 @@ export const crearLote = async (models, user, datos) => {
                 throw bizError(400, `«${servidor.nombre}» no tiene configurado el comando de deploy de ${datos.entorno}`);
             }
         }
+        if (datos.tipo === 'rama') {
+            if (!servidor.comandoCambiarRama || !servidor.comandoCambiarRama.trim()) {
+                throw bizError(400, `«${servidor.nombre}» no tiene configurado el comando para cambiar de rama`);
+            }
+            const sitio = (datos.sitios || [])[0];
+            if (!sitio) throw bizError(400, 'Elegí el cliente al que cambiarle la rama');
+            // Los marcadores se reemplazan ACÁ y el comando resultante se guarda tal cual se va
+            // a ejecutar: el historial tiene que poder mostrar la línea exacta, no una plantilla.
+            comando = resolverComandoRama(servidor.comandoCambiarRama, sitio, datos.rama);
+        }
 
         // Sin contacto = error en el momento, no cola.
         const sinContacto = servidor.estado !== 'online';
@@ -172,6 +201,7 @@ export const crearLote = async (models, user, datos) => {
             comando,
             entorno: datos.tipo === 'deploy' ? datos.entorno : null,
             sitios: datos.sitios?.length ? JSON.stringify(datos.sitios) : null,
+            rama: datos.tipo === 'rama' ? datos.rama : null,
             userId: user?.id ?? null,
         }));
     }
@@ -312,6 +342,7 @@ export const trabajosPendientes = async (models, servidor) => {
         id: t.id,
         tipo: t.tipo,
         // El canario solo aplica al SQL: un deploy no se puede «probar en uno».
+        // Solo el SQL tiene canario: un deploy o un cambio de rama no se pueden «probar en uno».
         fase: t.tipo === 'sql' ? (t.estado === 'pendiente' ? 'canario' : 'resto') : 'unico',
         sql: t.sql,
         comando: t.comando,
@@ -407,6 +438,7 @@ export const guardarInventario = async (models, servidor, sitios) => {
         servidorId: servidor.id,
         ruta: String(s.ruta || '').slice(0, 255),
         base: s.base ? String(s.base).slice(0, 120) : null,
+        rama: s.rama ? String(s.rama).slice(0, 60) : null,
         problema: s.problema ? String(s.problema).slice(0, 255) : null,
         ultimoReporteAt: ahora,
     })).filter(s => s.ruta);
