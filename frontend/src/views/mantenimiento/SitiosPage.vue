@@ -91,7 +91,7 @@ const fActivo = ref('')      // si | no
 const fVence = ref('')       // dominio_por_vencer | dominio_vencido | tls_* | cualquiera
 const fIncidentes = ref(false)
 const fNuestros = ref('')    // si | no  («es un sitio nuestro» = verifica el marcador)
-// Rama: el valor crudo que reportó el agente (main, dev, o el que sea), más dos casos que no
+// Rama: el valor crudo que reportó el agente (main, development, o el que sea), más dos que no
 // son una rama pero son justo lo que se busca cuando algo no cuadra: 'sin' = usa FullGlass y
 // no se sabe en qué rama está, 'nofg' = ni siquiera usa FullGlass.
 const fRama = ref('')
@@ -109,7 +109,7 @@ function limpiarFiltros(): void {
 }
 
 /**
- * Las ramas del selector salen de los DATOS y no de una lista fija ['main', 'dev']: la rama la
+ * Las ramas del selector salen de los DATOS y no de una lista fija: la rama la
  * lee el agente de `config_site.php`, así que un cliente puede estar en una rama de prueba con
  * cualquier nombre. Con la lista fija ese sitio no se podría filtrar justo cuando interesa.
  */
@@ -198,9 +198,18 @@ const orden = useOrdenTabla(() => sitiosFiltrados.value)
  * lanzar un trabajo con el script que el equipo dejó en ese servidor, así que pasa por la
  * misma maquinaria que el SQL masivo y el deploy: historial, permisos y captura de errores.
  */
+/**
+ * Las dos ramas entre las que se alterna. Van como constantes y no como literales sueltos
+ * porque el nombre se manda TAL CUAL al script que cambia la rama en el servidor: un literal
+ * repetido en cuatro lugares es la forma segura de que uno quede viejo y mande al cliente a
+ * una rama que no existe. En los servidores la de pruebas se llama `development`, no `dev`.
+ */
+const RAMA_ESTABLE = 'main'
+const RAMA_PRUEBAS = 'development'
+
 const puedeCambiarRama = computed(() => meStore.can('servidores:deploy-ejecutar'))
 const sitioRama = ref<SitioWeb | null>(null)
-const ramaDestino = ref('main')
+const ramaDestino = ref(RAMA_ESTABLE)
 const cambiandoRama = ref(false)
 const errorRama = ref('')
 
@@ -215,7 +224,7 @@ function abrirRama(s: SitioWeb): void {
   sitioRama.value = s
   // Se propone la CONTRARIA, que es lo que casi siempre se quiere, pero se manda explícita:
   // el backend nunca alterna por su cuenta.
-  ramaDestino.value = s.rama === 'main' ? 'dev' : 'main'
+  ramaDestino.value = s.rama === RAMA_ESTABLE ? RAMA_PRUEBAS : RAMA_ESTABLE
   errorRama.value = ''
 }
 
@@ -484,7 +493,7 @@ onIonViewWillEnter(() => { if (loadedOnce) void store.fetchSitios() })
                     type="button"
                     class="ds-pill"
                     :class="{ 'ds-pill-activa': true }"
-                    :style="{ '--c': s.rama === 'main' ? '#0F7660' : '#b45309' }"
+                    :style="{ '--c': s.rama === RAMA_ESTABLE ? '#0F7660' : '#b45309' }"
                     :disabled="!puedeCambiarRama"
                     :title="puedeCambiarRama ? 'Cambiar de rama' : 'Sin permiso para cambiar la rama'"
                     @click="abrirRama(s)"
@@ -777,14 +786,15 @@ onIonViewWillEnter(() => { if (loadedOnce) void store.fetchSitios() })
               <span class="ds-label">Pasar a</span>
               <div class="flex gap-1.5">
                 <button
-                  v-for="r in ['main', 'dev']" :key="r" type="button"
+                  v-for="r in [RAMA_ESTABLE, RAMA_PRUEBAS]" :key="r" type="button"
                   class="ds-pill" :class="{ 'ds-pill-activa': ramaDestino === r }"
-                  :style="{ '--c': r === 'main' ? '#0F7660' : '#b45309' }"
+                  :style="{ '--c': r === RAMA_ESTABLE ? '#0F7660' : '#b45309' }"
                   @click="ramaDestino = r"
                 >{{ r }}</button>
               </div>
-              <p v-if="ramaDestino === 'dev'" class="ds-hint text-warn">
-                En «dev» el cliente ve la versión de pruebas. Acordate de volverlo a «main».
+              <p v-if="ramaDestino === RAMA_PRUEBAS" class="ds-hint text-warn">
+                En «{{ RAMA_PRUEBAS }}» el cliente ve la versión de pruebas.
+                Acordate de volverlo a «{{ RAMA_ESTABLE }}».
               </p>
             </div>
 

@@ -544,7 +544,7 @@ Monitoreo de los VPS de la empresa. Doc completa en `docs/modules/mantenimiento.
   todavía no está consolidado. `GET /mantenimiento/sitios/:id/velocidad?granularidad=dia|mes|anio`.
 - **Filtros del listado** (8, en el cliente como el buscador): disponibilidad, vencimientos,
   servicio, servidor, activo/inactivo, propios/terceros, con incidentes abiertos y **rama**.
-  Las opciones de rama salen de los DATOS, no de un `['main','dev']` fijo: la rama la lee el
+  Las opciones de rama salen de los DATOS, no de una lista fija: la rama la lee el
   agente de `config_site.php` y un cliente puede estar en una de prueba con cualquier nombre —
   con la lista fija ese sitio no se podría filtrar justo cuando importa. Suma dos opciones que
   no son una rama pero son lo que se busca cuando algo no cuadra: «sin rama informada» (usa
@@ -583,7 +583,11 @@ que sigue es por qué está hecho así.
   obliga a volver a correr el instalador ahí. Timer cada **10 s**: lanzar algo se tiene que
   sentir inmediato, y sin trabajo es una sola petición que termina al instante.
 - **Rama de cada cliente** (2026-10-07, migraciones `0016`/`0017`): ver si está en `main` o
-  `dev` y cambiarlo. **La rama no se guarda: la reporta el agente** leyéndola del
+  `development` y cambiarlo. ⚠️ La rama de pruebas se llama **`development`**, no `dev` (nombre
+  real en los servidores): vive en `RAMA_ESTABLE`/`RAMA_PRUEBAS` de `SitiosPage.vue`, un solo
+  lugar, porque el nombre se manda TAL CUAL al script y un literal viejo mandaría al cliente a
+  una rama inexistente. La pastilla del listado pinta verde `main` y ámbar cualquier otra cosa:
+  muestra lo reportado, sea lo que sea. **La rama no se guarda: la reporta el agente** leyéndola del
   `config_site.php` del cliente (clave configurable por servidor, `claveRama`, default
   `branch`) — guardarla haría que la pantalla mienta en cuanto alguien la cambie a mano. El
   script que toca los archivos lo deja el equipo en cada servidor y la app solo lo invoca:

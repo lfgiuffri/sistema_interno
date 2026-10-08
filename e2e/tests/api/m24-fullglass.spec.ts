@@ -303,12 +303,12 @@ test.describe('M24: FullGlass — SQL masivo y deploy', () => {
       data: {
         sitios: [
           { ruta: '/home/enMain', base: 'main_db', rama: 'main' },
-          { ruta: '/home/enDev', base: 'dev_db', rama: 'dev' },
+          { ruta: '/home/enDev', base: 'dev_db', rama: 'development' },
         ],
       },
     }), 200);
     const inv = await expectSuccess(await adminApi.get(`${APP_ENDPOINTS.servidores}/${servidorId}/sitios`), 200);
-    expect(inv.data.find((s: { ruta: string }) => s.ruta === '/home/enDev').rama).toBe('dev');
+    expect(inv.data.find((s: { ruta: string }) => s.ruta === '/home/enDev').rama).toBe('development');
 
     // Sin comando configurado no se puede lanzar.
     await expectError(await adminApi.post('mantenimiento/trabajos', {

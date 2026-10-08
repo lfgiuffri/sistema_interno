@@ -112,8 +112,8 @@ vencer o vencido, más un «algo por vencer o vencido» que junta los cuatro cas
 abiertos** y **rama**. Las dos opciones «Sin servicio» / «Sin servidor» existen porque un sitio
 sin asignar es justamente lo que se busca cuando se está ordenando el inventario.
 
-El de **rama** responde a la pregunta de todos los días: «¿qué clientes quedaron en dev?».
-Sus opciones salen de los datos y no de un `['main', 'dev']` fijo, porque la rama la lee el
+El de **rama** responde a la pregunta de todos los días: «¿qué clientes quedaron en
+`development`?». Sus opciones salen de los datos y no de una lista fija, porque la rama la lee el
 agente de `config_site.php` y un cliente puede estar en una rama de prueba con cualquier
 nombre; con la lista fija, ese sitio sería el único imposible de filtrar. Suma dos opciones
 que no son una rama, pero que son lo que se busca cuando algo no cuadra: **«sin rama
@@ -471,11 +471,18 @@ Es **una base por servidor**, no una global: que un servidor tenga el esquema vi
 exactamente lo que rompe estas corridas, y con un canario global no se vería hasta estar
 corriendo ahí. Si el canario falla, el trabajo queda en `error` y el resto no se toca.
 
-### Rama de cada cliente: `main` o `dev`
+### Rama de cada cliente: `main` o `development`
 
-Cuando se desarrolla algo a medida se pasa al cliente a `dev` para que lo pruebe, y después
-vuelve a `main`. Eso se hacía entrando al servidor y tocando varios archivos, sin forma de ver
-de un vistazo quién quedó en dev.
+Cuando se desarrolla algo a medida se pasa al cliente a `development` para que lo pruebe, y
+después vuelve a `main`. Eso se hacía entrando al servidor y tocando varios archivos, sin forma
+de ver de un vistazo quién quedó en pruebas.
+
+⚠️ La rama de pruebas se llama **`development`**, no `dev`: es el nombre real en los servidores
+y el modal lo manda **tal cual** al script que la cambia. Vive en las constantes
+`RAMA_ESTABLE` / `RAMA_PRUEBAS` de `SitiosPage.vue` —un solo lugar— justamente porque un
+literal repetido que queda viejo manda al cliente a una rama que no existe. La pastilla del
+listado, en cambio, pinta de verde `main` y de ámbar **cualquier otra cosa**: muestra lo que el
+agente reportó, sea cual sea.
 
 **La rama NO se guarda en la app: la REPORTA el agente.** La lee del `config_site.php` de cada
 cliente (la clave se configura por servidor, `claveRama`, default `branch`) junto con el resto
