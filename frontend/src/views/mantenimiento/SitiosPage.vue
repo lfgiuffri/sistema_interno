@@ -431,9 +431,9 @@ onIonViewWillEnter(() => { if (loadedOnce) void store.fetchSitios() })
               <tr>
                 <ThOrdenable columna="nombre" :activa="orden.columna.value" :dir="orden.dir.value" @ordenar="orden.ordenarPor">Sitio</ThOrdenable>
                 <ThOrdenable columna="estado" :activa="orden.columna.value" :dir="orden.dir.value" class="w-32" @ordenar="orden.ordenarPor">Estado</ThOrdenable>
+                <ThOrdenable columna="rama" :activa="orden.columna.value" :dir="orden.dir.value" class="w-28" @ordenar="orden.ordenarPor">Rama</ThOrdenable>
                 <ThOrdenable columna="dominioVenceAt" :activa="orden.columna.value" :dir="orden.dir.value" class="w-36" @ordenar="orden.ordenarPor">Dominio</ThOrdenable>
                 <ThOrdenable columna="tlsVenceAt" :activa="orden.columna.value" :dir="orden.dir.value" class="w-36" @ordenar="orden.ordenarPor">Certificado</ThOrdenable>
-                <ThOrdenable columna="rama" :activa="orden.columna.value" :dir="orden.dir.value" class="w-28" @ordenar="orden.ordenarPor">Rama</ThOrdenable>
                 <ThOrdenable columna="ultimoChequeoAt" :activa="orden.columna.value" :dir="orden.dir.value" class="w-32" @ordenar="orden.ordenarPor">Último chequeo</ThOrdenable>
                 <th class="w-32"><span class="sr-only">Acciones</span></th>
               </tr>
@@ -475,13 +475,6 @@ onIonViewWillEnter(() => { if (loadedOnce) void store.fetchSitios() })
                     {{ s.vistasOk }} de {{ s.vistasTotal }} vistas OK
                   </button>
                 </td>
-                <td class="text-xs tnum" :class="claseVence(s.dominioEstado)">
-                  {{ textoVence(s.dominioVenceAt, s.dominioEstado) }}
-                  <p v-if="!s.dominioVenceAt" class="text-2xs text-ink-faint">sin fecha</p>
-                </td>
-                <td class="text-xs tnum" :class="claseVence(s.tlsEstado)">
-                  {{ textoVence(s.tlsVenceAt, s.tlsEstado) }}
-                </td>
                 <!-- La rama NO está guardada acá: la reporta el agente leyéndola del servidor.
                      Por eso un sitio de FullGlass sin dato significa «todavía no se pudo cruzar»
                      (falta la carpeta, o el agente no reportó), y se dice así. -->
@@ -500,6 +493,13 @@ onIonViewWillEnter(() => { if (loadedOnce) void store.fetchSitios() })
                     sin dato
                   </span>
                   <span v-else class="text-2xs text-ink-faint">—</span>
+                </td>
+                <td class="text-xs tnum" :class="claseVence(s.dominioEstado)">
+                  {{ textoVence(s.dominioVenceAt, s.dominioEstado) }}
+                  <p v-if="!s.dominioVenceAt" class="text-2xs text-ink-faint">sin fecha</p>
+                </td>
+                <td class="text-xs tnum" :class="claseVence(s.tlsEstado)">
+                  {{ textoVence(s.tlsVenceAt, s.tlsEstado) }}
                 </td>
                 <td class="text-2xs text-ink-faint tnum">
                   {{ s.ultimoChequeoAt ? fechaHora(s.ultimoChequeoAt) : 'nunca' }}
