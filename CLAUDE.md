@@ -311,7 +311,17 @@ Paginación en `meta` (helper `Paginate`). Validación: express-validator → 42
   se elimina (409), grilla anual proyectos × 12 meses. Frontend: ProyectosPage (default
   abiertos), ProyectoFormPage, CobranzasPage (KPIs + selección múltiple para mover +
   auditoría), GrillaCobranzasPage con **drag & drop** de celdas pendientes, panel con tiles y
-  entregas de proyectos. Dashboard extendido (bloque proyectos + facturación del mes combinada).
+  entregas de proyectos.
+  **Pendiente de cobrar en la grilla** (2026-10-13): debajo de «Total mes» va una fila con lo
+  que falta cobrar (`pendientesMes` + `granPendiente`). Lo calcula el SERVIDOR en el mismo
+  recorrido que arma las celdas y **no se obtiene restando «total menos cobrado» en la
+  pantalla**: los montos de una cuota cobrada están CONGELADOS (el peso real del día) y los de
+  una pendiente se convierten al dólar de hoy, así que esa resta daría un número que no es
+  plata de ningún día. Cada cuota se suma con su propia regla (`cobranzaEnPesos`), que es la
+  misma del total — por eso `pendiente ≤ total` siempre (lo verifica M12.9). ⚠️ La celda
+  distingue TRES casos y no dos: monto pendiente, **«cobrado»** (hay cuotas y están todas
+  cobradas) y «—» (no hay cuotas). Con un guion para los dos últimos, la fila que se lee
+  justamente para saber qué falta quedaba ambigua. Dashboard extendido (bloque proyectos + facturación del mes combinada).
 - ✅ **Fase 4** — tareas + espacios: módulo `espacios` (ABM protegido + reactivación,
   matriz de accesos de DOBLE EJE — espacio↔usuario, cada eje reemplaza solo lo suyo, los
   admins entran por rol y nunca se tocan, el creador queda con acceso total) y módulo

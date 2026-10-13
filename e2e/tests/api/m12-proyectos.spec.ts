@@ -164,6 +164,18 @@ test.describe('M12: Proyectos y cobranzas', () => {
     expect(body.data.totalesMes[1]).toHaveProperty('usd');
     expect(body.data.granTotal).toHaveProperty('pesos');
     expect(body.data.granTotal).toHaveProperty('usd');
+
+    // Pendiente de pago: misma forma que los totales, y nunca mayor que ellos. Se calcula en
+    // el servidor y no restando «total menos cobrado» en la pantalla, porque los montos de una
+    // cuota cobrada están CONGELADOS y los de una pendiente se convierten al dólar de hoy.
+    expect(body.data.pendientesMes[1]).toHaveProperty('pesos');
+    expect(body.data.granPendiente).toHaveProperty('usd');
+    for (let mes = 1; mes <= 12; mes += 1) {
+      expect(body.data.pendientesMes[mes].pesos).toBeLessThanOrEqual(body.data.totalesMes[mes].pesos + 0.01);
+    }
+    const sumaMeses = Object.values(body.data.pendientesMes as Record<string, { pesos: number }>)
+      .reduce((acc, m) => acc + m.pesos, 0);
+    expect(sumaMeses).toBeCloseTo(body.data.granPendiente.pesos, 2);
   });
 
   test('M12.10 - capability gating: el fixture no ve proyectos → 403', async ({ authedApi }) => {

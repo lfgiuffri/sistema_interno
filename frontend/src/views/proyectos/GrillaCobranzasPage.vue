@@ -17,7 +17,11 @@ import { useMeStore } from '@/stores/me'
 import { useToast } from '@/composables/useToast'
 import { moneda as fmtMoneda, MESES } from '@/composables/useFormato'
 
-interface Celda { pesos: number; usd: number; cobradas: number; cantidad: number; ids: number[] }
+interface Celda {
+  pesos: number; usd: number; cobradas: number; cantidad: number; ids: number[]
+  /** Lo que falta cobrar de esa celda. Lo calcula el servidor en el mismo recorrido. */
+  pendientePesos: number; pendienteUsd: number
+}
 interface Fila {
   id: number
   nombre: string
@@ -36,6 +40,8 @@ interface Grilla {
   filas: Fila[]
   totalesMes: Record<number, { pesos: number; usd: number }>
   granTotal: { pesos: number; usd: number }
+  pendientesMes: Record<number, { pesos: number; usd: number }>
+  granPendiente: { pesos: number; usd: number }
 }
 
 const store = useProyectosStore()
@@ -233,6 +239,32 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
                     <span class="tnum text-2xs text-ink-faint block leading-tight">{{ fmtUsd(grilla.granTotal.usd) }}</span>
                   </td>
                 </tr>
+                <!--
+                  Lo que falta cobrar. Va en una fila propia y no restando «total menos
+                  cobrado» en la pantalla: los montos de una cuota cobrada están CONGELADOS
+                  (el peso real del día) y los de una pendiente se convierten al dólar de hoy,
+                  así que esa resta daría un número que no es plata de ningún día. El servidor
+                  suma cada cuota con su propia regla.
+                -->
+                <tr class="fila-pendiente">
+                  <td class="col-proyecto text-2xs font-medium uppercase tracking-wide text-warn">Pendiente</td>
+                  <td class="col-presupuesto"></td>
+                  <td v-for="mes in 12" :key="mes" class="celda text-xs">
+                    <template v-if="grilla.pendientesMes[mes]?.pesos">
+                      <span class="tnum font-medium text-warn block leading-tight">{{ fmtMoneda(grilla.pendientesMes[mes].pesos) }}</span>
+                      <span class="tnum text-2xs text-ink-faint block leading-tight">{{ fmtUsd(grilla.pendientesMes[mes].usd) }}</span>
+                    </template>
+                    <!-- TRES casos, no dos. Un mes con todas las cuotas cobradas y un mes sin
+                         cuotas son cosas distintas, y con un guion para los dos esta fila —que
+                         se lee justamente para saber qué falta cobrar— quedaba ambigua. -->
+                    <span v-else-if="grilla.totalesMes[mes]?.pesos" class="text-2xs text-ok">cobrado</span>
+                    <span v-else class="text-ink-faint">—</span>
+                  </td>
+                  <td class="col-total">
+                    <span class="tnum font-semibold text-warn block leading-tight">{{ fmtMoneda(grilla.granPendiente.pesos) }}</span>
+                    <span class="tnum text-2xs text-ink-faint block leading-tight">{{ fmtUsd(grilla.granPendiente.usd) }}</span>
+                  </td>
+                </tr>
               </tfoot>
             </table>
           </div>
@@ -278,6 +310,9 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
 }
 .grilla-table tbody tr:hover td { background: rgb(var(--s-surface-2) / 0.4); }
 .grilla-table tfoot td { border-bottom: none; border-top: 1px solid rgb(var(--s-line)); height: 40px; }
+/* La línea entre «Total mes» y «Pendiente» va más suave: son dos renglones del MISMO bloque
+   de totales, no dos bloques distintos. La línea fuerte queda separando el cuerpo del pie. */
+.grilla-table tfoot .fila-pendiente td { border-top-color: rgb(var(--s-line-soft)); }
 .col-proyecto { width: 13%; text-align: left !important; padding-left: 12px !important; }
 /* 9% y no 7%: con 7% el encabezado «PRESUPUESTO» en mayúsculas no entra y se corta. */
 .col-presupuesto { width: 9%; }

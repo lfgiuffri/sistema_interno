@@ -506,9 +506,19 @@ export const getGrillaAnual = async (models, anio) => {
             const pesos = delMes.reduce((acc, c) => acc + cobranzaEnPesos(c, cotizacion), 0);
             const usd = delMes.reduce((acc, c) => acc + Number(c.montoUsd), 0);
             const cobradas = delMes.filter(c => c.cobrado).length;
+            // Lo que falta cobrar, calculado en el MISMO recorrido que el total y con la misma
+            // función de conversión. Si se sumara aparte, dos consultas distintas podrían dar
+            // un pendiente mayor que el total y nadie sabría cuál creer.
+            const sinCobrar = delMes.filter(c => !c.cobrado);
+            const pendientePesos = sinCobrar.reduce((acc, c) => acc + cobranzaEnPesos(c, cotizacion), 0);
+            const pendienteUsd = sinCobrar.reduce((acc, c) => acc + Number(c.montoUsd), 0);
             totalPesos += pesos;
             totalUsd += usd;
-            celdas[mes] = { pesos, usd, cobradas, cantidad: delMes.length, ids: delMes.map(c => c.id) };
+            celdas[mes] = {
+                pesos, usd, cobradas, cantidad: delMes.length,
+                pendientePesos, pendienteUsd,
+                ids: delMes.map(c => c.id),
+            };
         }
         return {
             id: proyecto.id,
@@ -524,17 +534,32 @@ export const getGrillaAnual = async (models, anio) => {
     });
 
     // Totales con las DOS monedas: la grilla muestra el peso completo y abajo el dólar.
+    //
+    // `pendientesMes` es lo MISMO pero contando solo las cuotas sin cobrar. Va aparte y no como
+    // un «total menos cobrado» calculado en el frontend porque los montos de una cuota cobrada
+    // están CONGELADOS (se guardó el peso real del día) y los de una pendiente se convierten al
+    // dólar de hoy: restar dos cosas medidas con distinta vara daría un número que no es plata
+    // de ningún día. Acá cada cuota se suma en su propia moneda y con su propia regla.
     const totalesMes = {};
+    const pendientesMes = {};
     for (let mes = 1; mes <= 12; mes++) {
         totalesMes[mes] = {
             pesos: filas.reduce((acc, f) => acc + (f.celdas[mes]?.pesos || 0), 0),
             usd: filas.reduce((acc, f) => acc + (f.celdas[mes]?.usd || 0), 0),
+        };
+        pendientesMes[mes] = {
+            pesos: filas.reduce((acc, f) => acc + (f.celdas[mes]?.pendientePesos || 0), 0),
+            usd: filas.reduce((acc, f) => acc + (f.celdas[mes]?.pendienteUsd || 0), 0),
         };
     }
     const granTotal = {
         pesos: filas.reduce((acc, f) => acc + f.totalPesos, 0),
         usd: filas.reduce((acc, f) => acc + f.totalUsd, 0),
     };
+    const granPendiente = {
+        pesos: Object.values(pendientesMes).reduce((acc, m) => acc + m.pesos, 0),
+        usd: Object.values(pendientesMes).reduce((acc, m) => acc + m.usd, 0),
+    };
 
-    return { anio: Number(anio), anios, cotizacion, filas, totalesMes, granTotal };
+    return { anio: Number(anio), anios, cotizacion, filas, totalesMes, granTotal, pendientesMes, granPendiente };
 };

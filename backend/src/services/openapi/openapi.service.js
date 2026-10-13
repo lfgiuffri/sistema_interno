@@ -128,7 +128,7 @@ export const buildOpenApiSpec = () => ({
             get: op('Listar proyectos (filtro estado CSV, cerrados al final, días para entrega en SQL)', 'Proyectos', auth),
             post: op('Crear proyecto (5 fechas de ciclo de vida opcionales)', 'Proyectos', auth)
         },
-        '/proyectos/grilla': { get: op('Grilla anual: proyectos × 12 meses, totales por mes y gran total', 'Proyectos', auth) },
+        '/proyectos/grilla': { get: op('Grilla anual: proyectos × 12 meses, totales por mes y gran total, más lo PENDIENTE de cobrar (pendientesMes / granPendiente)', 'Proyectos', auth) },
         '/proyectos/{id}': {
             get: op('Un proyecto con cliente/servicio y días para entrega', 'Proyectos', auth),
             put: op('Editar proyecto', 'Proyectos', auth),
