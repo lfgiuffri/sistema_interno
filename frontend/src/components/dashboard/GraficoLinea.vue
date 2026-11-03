@@ -15,7 +15,8 @@ import { MESES } from '@/composables/useFormato'
 
 Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip, Legend)
 
-export interface Serie { label: string; slot?: string | null; data: number[] }
+/** `null` en `data` = ese mes no corresponde dibujarlo (deja un hueco, no un cero). */
+export interface Serie { label: string; slot?: string | null; data: (number | null)[] }
 
 const props = defineProps<{
   series: Serie[]
@@ -28,10 +29,25 @@ const props = defineProps<{
    * del eje Y y el tooltip; nada más.
    */
   formato?: 'moneda' | 'porcentaje' | 'ms' | 'numero'
+  /**
+   * Relleno bajo la línea. Por defecto SÍ (degradado con 1-2 series, tinte al 8% con más),
+   * que es como se ven los gráficos de facturación desde siempre.
+   *
+   * Se apaga cuando las series son muchas y de magnitudes muy distintas —el caso de los
+   * sueldos, con ocho personas— porque ahí los tintes se apilan y las líneas de abajo quedan
+   * lavadas detrás de las áreas de las de arriba, justo las que cuesta más distinguir.
+   */
+  relleno?: boolean
 }>()
 
-const PALETA_CLARO = ['#0F7660', '#2563eb', '#ea7317', '#7c3aed', '#e34948', '#b45309', '#0891b2', '#db2777']
-const PALETA_OSCURO = ['#34d399', '#60a5fa', '#fb923c', '#a78bfa', '#f87171', '#fbbf24', '#22d3ee', '#f472b6']
+// Doce colores y no ocho: los gráficos de facturación nunca pasan de 8 series (top 7 +
+// «Otros»), pero el de sueldos dibuja UNA LÍNEA POR EMPLEADO y con ocho colores dos personas
+// compartían color — justo en el gráfico cuyo sentido es comparar personas. Los primeros
+// ocho quedan intactos, así que ningún gráfico existente cambia de aspecto.
+const PALETA_CLARO = ['#0F7660', '#2563eb', '#ea7317', '#7c3aed', '#e34948', '#b45309', '#0891b2', '#db2777',
+  '#4d7c0f', '#9333ea', '#0369a1', '#be123c']
+const PALETA_OSCURO = ['#34d399', '#60a5fa', '#fb923c', '#a78bfa', '#f87171', '#fbbf24', '#22d3ee', '#f472b6',
+  '#a3e635', '#c084fc', '#38bdf8', '#fda4af']
 const GRIS_OTROS = '#898781'
 
 const canvas = ref<HTMLCanvasElement | null>(null)
@@ -50,7 +66,8 @@ function construir(): void {
   const ctx = canvas.value.getContext('2d')
   if (!ctx) return
 
-  const conRelleno = props.series.length <= 2
+  const pintaRelleno = props.relleno !== false
+  const conRelleno = pintaRelleno && props.series.length <= 2
   const ink = isDark.value ? 'rgba(228,228,231,0.75)' : 'rgba(63,63,70,0.85)'
   const linea = isDark.value ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)'
 
@@ -61,7 +78,9 @@ function construir(): void {
       datasets: props.series.map((s, i) => {
         const c = color(i, s.slot)
         let fondo: string | CanvasGradient = 'transparent'
-        if (conRelleno) {
+        if (!pintaRelleno) {
+          fondo = 'transparent'
+        } else if (conRelleno) {
           const grad = ctx.createLinearGradient(0, 0, 0, props.alto ?? 220)
           grad.addColorStop(0, `${c}3d`) // 0.24
           grad.addColorStop(1, `${c}00`)
@@ -76,7 +95,7 @@ function construir(): void {
           backgroundColor: fondo,
           borderWidth: 2.5,
           cubicInterpolationMode: 'monotone' as const,
-          fill: true,
+          fill: pintaRelleno,
           pointRadius: 0,
           pointHoverRadius: 4,
           pointBackgroundColor: c,

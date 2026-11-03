@@ -325,7 +325,7 @@ export const buildOpenApiSpec = () => ({
             put: op('Actualizar una clave de configuración (validada)', 'Settings', auth)
         },
         '/dashboard': { get: op('Bloques del panel según capabilities: cotización, abonos, facturación del mes, proyectos y tareas del equipo', 'Panel', auth) },
-        '/dashboard/estadisticas': { get: op('Estadísticas anuales de facturación (?anio): mensual abonos vs proyectos, por servicio top-7+Otros, por área. Requiere estadisticas:read', 'Panel', auth) },
+        '/dashboard/estadisticas': { get: op('Estadísticas anuales de facturación (?anio): mensual abonos vs proyectos, por servicio top-7+Otros, por área, y progreso de sueldos por empleado activo (una serie por persona; null = mes fuera de su período). Requiere estadisticas:read', 'Panel', auth) },
         '/mantenimiento/servidores': {
             get: op('Inventario de servidores con su última métrica e incidentes abiertos', 'Mantenimiento', auth),
             post: op('Alta de servidor (devuelve el token del agente UNA sola vez)', 'Mantenimiento', auth)

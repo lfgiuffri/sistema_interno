@@ -879,9 +879,30 @@ El módulo `dashboard` expone DOS superficies, cada una con su pantalla:
 - `GET /dashboard/estadisticas?anio=` (**`estadisticas:read`**, capability propia desde
   2026-08-13 — migración `0002` se la dio a los roles que ya tenían `facturaciones:read`) →
   **Estadísticas** (`views/dashboard/EstadisticasPage.vue`, también en Principal): mensual
-  abonos vs proyectos, abonos por servicio y facturación por área, con el selector de año
-  único. El gating fino por gráfico (facturaciones, cobranzas, servicios, áreas) sigue dentro
-  del service; si los tres vienen null la pantalla lo explica.
+  abonos vs proyectos, abonos por servicio, facturación por área y **progreso de sueldos**,
+  con el selector de año único. El gating fino por gráfico (facturaciones, cobranzas,
+  servicios, áreas, sueldos) sigue dentro del service; si todos vienen null la pantalla lo
+  explica.
+  **Progreso de sueldos** (2026-11-03, `sueldosPorEmpleado` en `estadisticas.service.js`,
+  exige `sueldos:read` + `empleados:read`): una línea por empleado **activo**. El valor de
+  cada mes NO sale de una tabla: usa `salarioEnMesPuro` **importada del módulo sueldos** (por
+  eso `dependsOn` ganó `empleados` y `sueldos`), porque esa función tiene reglas que no son
+  obvias —vale el último registro con fecha ≤ FIN de mes, desempata fecha DESC e id DESC, y
+  el primer registro se extiende hacia atrás— y reimplementarlas garantizaba que el gráfico
+  dijera un número distinto al de la pantalla de Sueldos. ⚠️ Dos recortes a `null` (hueco, no
+  cero): **antes del `fechaIngreso`** —la extensión hacia atrás es correcta para «qué sueldo
+  tenía registrado» pero mentiría acá— y **los meses futuros** del año en curso, porque
+  repetir el sueldo de hoy hasta diciembre es una proyección. Solo ACTIVOS: la ficha no tiene
+  fecha de egreso, así que de uno dado de baja no se sabe cuándo dejó de cobrar y su línea
+  quedaría plana todo el año afirmando un sueldo que no se pagó. Series ordenadas por sueldo
+  actual DESC (con ocho líneas encimadas, que la leyenda siga ese orden es lo que la hace
+  legible). `aniosDisponibles` suma los años de `sueldo_actualizaciones`: el mismo selector
+  gobierna este gráfico y un año con sueldos pero sin facturación tiene que poder elegirse.
+  ⚠️ `GraficoLinea` ganó dos cosas: la **paleta pasó de 8 a 12 colores** (los 8 primeros
+  intactos, así que ningún gráfico existente cambia) porque con una línea por empleado dos
+  personas compartían color, y una prop **`relleno`** para apagar el área bajo la línea —
+  con ocho series de magnitudes muy distintas los tintes al 8% se apilan y lavan las líneas
+  de abajo. `Serie.data` ahora es `(number | null)[]`.
 
 En el menú, «Análisis de tareas» va junto a Tareas en el grupo **Proyectos**, pero se otorga
 con su capability propia (`tareas:analisis`), no con «tener algo de tareas».

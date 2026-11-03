@@ -25,6 +25,8 @@ interface Estadisticas {
   mensual: { abonos: number[]; proyectos: number[]; totalAbonos: number; totalProyectos: number } | null
   servicios: SerieStats[] | null
   areas: SerieStats[] | null
+  /** Una línea por empleado activo. `null` en `data` = mes fuera de su período. */
+  sueldos: Array<{ empleadoId: number; label: string; data: (number | null)[]; actual: number }> | null
 }
 
 const toast = useToast()
@@ -44,10 +46,12 @@ const serieMensual = computed<Serie[]>(() => {
 })
 const serieServicios = computed<Serie[]>(() => (data.value?.servicios ?? []) as Serie[])
 const serieAreas = computed<Serie[]>(() => (data.value?.areas ?? []) as Serie[])
+const serieSueldos = computed<Serie[]>(() =>
+  (data.value?.sueldos ?? []).map(e => ({ label: e.label, data: e.data })))
 
-/** ¿El rol no habilita ningún gráfico? (los tres llegaron en null). */
+/** ¿El rol no habilita ningún gráfico? (todos llegaron en null). */
 const sinPermisos = computed(() =>
-  !!data.value && !data.value.mensual && !data.value.servicios && !data.value.areas
+  !!data.value && !data.value.mensual && !data.value.servicios && !data.value.areas && !data.value.sueldos
 )
 
 async function load(): Promise<void> {
@@ -159,10 +163,28 @@ onIonViewWillEnter(() => { if (loadedOnce) void load() })
             </template>
           </div>
 
+          <!-- Progreso de sueldos: una línea por empleado activo. Va a lo ancho y más alto
+               que los otros porque son nueve líneas que hay que poder separar a ojo. -->
+          <div v-if="data.sueldos" class="ds-card min-w-0 p-4">
+            <h2 class="text-xs font-semibold text-ink mb-2">Progreso de sueldos</h2>
+            <p v-if="!serieSueldos.length" class="text-xs text-ink-faint py-8 text-center">
+              Sin empleados activos con sueldo en {{ data.anio }}.
+            </p>
+            <template v-else>
+              <GraficoLinea :series="serieSueldos" :alto="280" :relleno="false" />
+              <p class="text-2xs text-ink-faint mt-2">
+                El sueldo de cada mes es el vigente a fin de mes, el mismo que muestra la pantalla
+                de Sueldos. La línea arranca en el mes de ingreso y llega hasta el mes actual: los
+                meses que la persona no estuvo —y los que todavía no pasaron— quedan vacíos en vez
+                de repetir un sueldo que no se pagó.
+              </p>
+            </template>
+          </div>
+
           <!-- Sin permisos para ningún gráfico -->
           <div v-if="sinPermisos" class="ds-card px-6 py-10 text-center">
             <p class="text-sm font-medium text-ink">Los permisos de tu rol no alcanzan para ver estos gráficos.</p>
-            <p class="text-xs text-ink-faint mt-1">Cada uno exige ver todas sus fuentes: facturaciones, cobranzas, servicios o áreas.</p>
+            <p class="text-xs text-ink-faint mt-1">Cada uno exige ver todas sus fuentes: facturaciones, cobranzas, servicios, áreas o sueldos.</p>
           </div>
         </template>
       </div>

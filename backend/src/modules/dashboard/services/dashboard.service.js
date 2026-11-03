@@ -13,7 +13,7 @@ import { getRoleCapabilities } from '../../../kernel/index.js';
 import {
     getConfigAbonos, precioEnPesos, estadoActualizacion, SQL_DIAS_ACTUALIZACION
 } from '../../abonos/services/abono.service.js';
-import { aniosDisponibles, serieMensual, porServicio, porArea } from './estadisticas.service.js';
+import { aniosDisponibles, serieMensual, porServicio, porArea, sueldosPorEmpleado } from './estadisticas.service.js';
 
 /** Ventana de "próximo a entregar" en días para proyectos (regla del legado). */
 const VENTANA_PROYECTOS = 5;
@@ -235,13 +235,17 @@ export const armarEstadisticas = async (models, user, anio) => {
     const verChartMensual = verFacturaciones && verCobranzas;
     const verChartServicio = verFacturaciones && puede(caps, 'servicios:read');
     const verChartAreas = verFacturaciones && verCobranzas && puede(caps, 'areas:read');
+    // Dos capabilities, como el resto: el gráfico muestra el SUELDO de cada persona con su
+    // nombre, así que exige ver las dos cosas. Ver sueldos sin poder ver empleados no alcanza.
+    const verChartSueldos = puede(caps, 'sueldos:read') && puede(caps, 'empleados:read') && !!models.SueldoActualizacion;
 
-    const [mensual, servicios, areas, anios] = await Promise.all([
+    const [mensual, servicios, areas, sueldos, anios] = await Promise.all([
         verChartMensual ? serieMensual(models, anioStats) : Promise.resolve(null),
         verChartServicio ? porServicio(models, anioStats) : Promise.resolve(null),
         verChartAreas ? porArea(models, anioStats) : Promise.resolve(null),
+        verChartSueldos ? sueldosPorEmpleado(models, anioStats) : Promise.resolve(null),
         aniosDisponibles(models, anioStats),
     ]);
 
-    return { anio: anioStats, anios, mensual, servicios, areas };
+    return { anio: anioStats, anios, mensual, servicios, areas, sueldos };
 };

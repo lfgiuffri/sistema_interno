@@ -410,11 +410,28 @@ test.describe('M11: Abonos', () => {
     const body = await expectSuccess(res, 200);
     expect(body.data.anio).toBe(new Date().getFullYear());
     expect(Array.isArray(body.data.anios)).toBe(true);
-    // Admin (comodín) ve los tres gráficos: mensual (12 meses), por servicio y por área.
+    // Admin (comodín) ve los cuatro gráficos: mensual (12 meses), por servicio, por área y
+    // el progreso de sueldos.
     expect(body.data.mensual.abonos).toHaveLength(12);
     expect(body.data.mensual.proyectos).toHaveLength(12);
     expect(Array.isArray(body.data.servicios)).toBe(true);
     expect(Array.isArray(body.data.areas)).toBe(true);
+    expect(Array.isArray(body.data.sueldos)).toBe(true);
+
+    // Progreso de sueldos: una serie por empleado ACTIVO, 12 posiciones, y los meses que no
+    // corresponden van en `null` (antes del ingreso, o todavía no transcurridos) y no en 0:
+    // un cero dibujaría un sueldo de cero donde no hubo sueldo.
+    for (const serie of body.data.sueldos as Array<{ label: string; data: (number | null)[]; actual: number }>) {
+      expect(serie.data).toHaveLength(12);
+      expect(typeof serie.label).toBe('string');
+      expect(serie.label.length).toBeGreaterThan(0);
+      for (const v of serie.data) expect(v === null || typeof v === 'number').toBe(true);
+      // Al menos un mes dibujable: una serie entera en null no tiene por qué viajar.
+      expect(serie.data.some(v => v !== null)).toBe(true);
+    }
+    // Ordenadas de mayor a menor sueldo actual: es lo que hace legible la leyenda.
+    const actuales = (body.data.sueldos as Array<{ actual: number }>).map(s => s.actual);
+    expect([...actuales].sort((a, b) => b - a)).toEqual(actuales);
 
     // Año fuera de rango → cae al actual (no rompe).
     const raro = await adminApi.get(`${APP_ENDPOINTS.estadisticas}?anio=1800`);

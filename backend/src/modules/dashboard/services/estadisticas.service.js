@@ -10,30 +10,39 @@
  */
 
 import { Op } from 'sequelize';
+// El sueldo vigente de un mes tiene reglas propias (ver `sueldosPorEmpleado`): se importa la
+// función del módulo que la define en vez de reimplementarla, para que este gráfico no pueda
+// decir un número distinto al de la pantalla de sueldos.
+import { salarioEnMesPuro } from '../../sueldos/services/sueldo.service.js';
 
 /** Serie de 12 ceros (enero..diciembre). */
 const doce = () => Array.from({ length: 12 }, () => 0);
 
 /**
- * Años con movimiento (facturaciones vigentes ∪ cobranzas cobradas) + pedido + actual.
+ * Años con movimiento (facturaciones vigentes ∪ cobranzas cobradas ∪ sueldos) + pedido + actual.
  * @param {object} models - Modelos de la app.
  * @param {number} anio - Año pedido.
  * @returns {Promise<number[]>} Años ordenados.
  */
 export const aniosDisponibles = async (models, anio) => {
-    const { Facturacion, Cobranza } = models;
-    const [f, c] = await Promise.all([
+    const { Facturacion, Cobranza, SueldoActualizacion } = models;
+    const [f, c, s] = await Promise.all([
         Facturacion
             ? Facturacion.findAll({ attributes: [[Facturacion.sequelize.fn('DISTINCT', Facturacion.sequelize.col('anio')), 'anio']], where: { anuladaAt: null }, raw: true })
             : [],
         Cobranza
             ? Cobranza.findAll({ attributes: [[Cobranza.sequelize.fn('DISTINCT', Cobranza.sequelize.col('anio')), 'anio']], where: { cobrado: true }, raw: true })
+            : [],
+        // El mismo selector gobierna ahora el gráfico de sueldos, así que un año con
+        // actualizaciones de sueldo pero sin facturación tiene que poder elegirse.
+        SueldoActualizacion
+            ? SueldoActualizacion.findAll({ attributes: [[SueldoActualizacion.sequelize.fn('DISTINCT', SueldoActualizacion.sequelize.fn('YEAR', SueldoActualizacion.sequelize.col('fecha'))), 'anio']], raw: true })
             : []
     ]);
     return [...new Set([
-        ...f.map(r => Number(r.anio)), ...c.map(r => Number(r.anio)),
+        ...f.map(r => Number(r.anio)), ...c.map(r => Number(r.anio)), ...s.map(r => Number(r.anio)),
         Number(anio), new Date().getFullYear()
-    ])].sort();
+    ])].filter(Boolean).sort();
 };
 
 /**
@@ -174,4 +183,88 @@ export const porArea = async (models, anio) => {
     const resultado = topConOtros([...acum.values()], 'Otras');
     if (sinArea && sinArea.total > 0) resultado.push({ ...sinArea, slot: 'sin-area' });
     return resultado;
+};
+
+/**
+ * Progreso mensual del sueldo de cada empleado durante el año (una línea por persona).
+ *
+ * El valor de cada mes NO se lee de una tabla: sale de `salarioEnMesPuro`, la misma función
+ * que usan el listado de sueldos y la planificación. Es deliberado — esa función tiene reglas
+ * que no son obvias (vale el último registro con fecha <= FIN de mes, desempata fecha DESC e
+ * id DESC, y el primer registro histórico se extiende hacia atrás), y reescribirlas acá
+ * garantizaba que este gráfico dijera un número distinto al de la pantalla de sueldos.
+ *
+ * Dos recortes para no dibujar lo que no pasó:
+ *  - **Antes del ingreso va `null`**, no el sueldo extendido hacia atrás. Esa extensión es
+ *    correcta para «qué sueldo tenía registrado» pero mentiría acá: en enero, alguien que
+ *    entró en mayo no cobraba nada. Con null la línea arranca cuando arrancó la persona.
+ *  - **Los meses futuros van `null`** si el año es el actual: repetir el sueldo de hoy hasta
+ *    diciembre es una proyección, y un gráfico de progreso no proyecta.
+ *
+ * Solo empleados ACTIVOS: la ficha no tiene fecha de egreso, así que de uno dado de baja no
+ * se sabe CUÁNDO dejó de cobrar y su línea quedaría plana todo el año, afirmando un sueldo
+ * que no se pagó. Es preferible no dibujarlo a dibujarlo mal.
+ * @param {object} models - Modelos de la app.
+ * @param {number} anio - Año.
+ * @returns {Promise<Array<{label: string, data: Array<number|null>, actual: number}>>} Una serie por empleado.
+ */
+export const sueldosPorEmpleado = async (models, anio) => {
+    const { Empleado, SueldoActualizacion } = models;
+    if (!Empleado || !SueldoActualizacion) return [];
+
+    const empleados = await Empleado.findAll({
+        where: { activo: true },
+        attributes: ['id', 'nombre', 'sueldo', 'fechaIngreso'],
+        raw: true,
+    });
+    if (!empleados.length) return [];
+
+    // Un solo findAll y agrupado en memoria: son decenas de filas y así se evita el N+1 de
+    // pedir el historial empleado por empleado.
+    const filas = await SueldoActualizacion.findAll({
+        where: { empleadoId: { [Op.in]: empleados.map(e => e.id) } },
+        attributes: ['id', 'empleadoId', 'fecha', 'sueldoNuevo'],
+        raw: true,
+    });
+    const historiales = new Map();
+    for (const f of filas) {
+        if (!historiales.has(f.empleadoId)) historiales.set(f.empleadoId, []);
+        historiales.get(f.empleadoId).push(f);
+    }
+
+    const hoy = new Date();
+    const mesTope = anio === hoy.getFullYear() ? hoy.getMonth() + 1 : 12;
+
+    return empleados
+        .map((e) => {
+            const historial = historiales.get(e.id) ?? [];
+            // Mes de ingreso dentro de ESTE año; si entró antes, cuenta desde enero.
+            const ingreso = e.fechaIngreso ? String(e.fechaIngreso).slice(0, 7) : null;
+            const anioIngreso = ingreso ? Number(ingreso.slice(0, 4)) : null;
+            const mesDesde = (anioIngreso === null || anioIngreso < anio)
+                ? 1
+                : (anioIngreso > anio ? 13 : Number(ingreso.slice(5, 7)));
+
+            const data = Array.from({ length: 12 }, (_, i) => {
+                const mes = i + 1;
+                if (mes < mesDesde || mes > mesTope) return null;
+                return salarioEnMesPuro(historial, e.sueldo, anio, mes);
+            });
+
+            const conValor = data.filter(v => v !== null);
+            return {
+                empleadoId: e.id,
+                // `nombre` del empleado es el nombre COMPLETO: la ficha no separa apellido.
+                label: String(e.nombre).trim(),
+                data,
+                // El último sueldo del año que se dibuja: ordena la leyenda y da el dato que
+                // más se mira («cuánto cobra hoy») sin tener que leerlo del gráfico.
+                actual: conValor.length ? Number(conValor[conValor.length - 1]) : 0,
+            };
+        })
+        // Sin ningún mes dibujable (ingresó el año que viene) no aporta una línea vacía.
+        .filter(s => s.data.some(v => v !== null))
+        // De mayor a menor: con nueve líneas encimadas, que la leyenda siga al orden de los
+        // sueldos es lo que hace que se pueda leer cuál es cuál.
+        .sort((a, b) => b.actual - a.actual);
 };
