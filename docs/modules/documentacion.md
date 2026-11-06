@@ -69,6 +69,17 @@ GET|PUT       /documentacion/admin/usuarios/:userId/espacios       matriz eje US
 - **Historial de versiones append-only** (`documento_versiones`): cada edición que cambia título o cuerpo archiva **el estado anterior** con su autor. Restaurar = escribir la vieja como actual, lo que a su vez archiva la que estaba: nunca se pierde nada.
 - **El cuerpo se sanea en servidor al guardar y al servir**, con la lista blanca compartida en `services/html/sanitizador.service.js` (la misma de las descripciones de tareas: acepta imágenes de `tareas/archivos` y de `documentacion/archivos`).
 - **Los binarios van a `storage/documentacion/`** (disco privado, fuera de `public/`), con las defensas comunes de `services/archivos/archivoPrivado.service.js`: tipo por firma binaria, lista blanca de extensiones, 5 MB imágenes / 15 MB adjuntos, nombre aleatorio `YYYYMM_<20hex>` y headers defensivos al servir.
+  La lista blanca es `png jpg jpeg gif webp · pdf doc docx xls xlsx · csv txt md properties · jks · zip`.
+  ⚠️ **`.jks` son TRES formatos con el mismo nombre de archivo** y la firma acepta los tres, porque
+  desde **Java 9 `keytool` genera PKCS12 por defecto** aunque uno llame al archivo `.jks`: validar
+  solo la firma clásica rechazaría justo el keystore que usa Android hoy. Verificado generando los
+  tres con `keytool`: JKS → `FE ED FE ED`, JCEKS → `CE CE CE CE`, PKCS12 → DER SEQUENCE (`30 82`).
+  `.properties` es texto plano y cae en la misma regla que `txt`/`csv`/`md` (sin bytes nulos en el
+  primer KB), así que un binario con la extensión prestada no entra.
+  ⚠️ Ojo con lo que habilita esta pareja: un `.jks` y su `key.properties` son **la llave de firma
+  de la app y su contraseña**. Guardarlos acá es legítimo —el disco es privado y se sirve con
+  auth—, pero quien tenga acceso a ese espacio de documentación puede firmar releases. Conviene
+  que vivan en un espacio con la matriz de accesos recortada, no en uno general.
 - **`orden` en listas y documentos** sostiene el drag & drop; se guarda en múltiplos de 10 para poder insertar sin renumerar todo.
 - **`docEspacioId` va desnormalizado en `documentos`** (además de `docListaId`) para filtrar por permisos y buscar sin joins; al mover un documento se actualizan los dos campos juntos.
 

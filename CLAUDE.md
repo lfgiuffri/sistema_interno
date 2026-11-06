@@ -492,6 +492,14 @@ recortes distintos a los tableros y sus accesos se administran aparte. Doc compl
   evento (iOS, o el navegador ya no lo ofrece), muestra las instrucciones manuales.
 - **Buscador** por título y contenido, acotado a los espacios visibles, y **orden manual**
   (drag & drop) de listas y documentos con `orden` en múltiplos de 10.
+- **Lista blanca de adjuntos** (`archivoPrivado.service.js`, compartida con tareas):
+  `png jpg jpeg gif webp · pdf doc docx xls xlsx · csv txt md properties · jks · zip`.
+  ⚠️ `.jks` son **tres formatos** con el mismo nombre y se aceptan los tres: desde Java 9
+  `keytool` genera **PKCS12 por defecto** aunque el archivo se llame `.jks`, así que validar
+  solo `FE ED FE ED` rechazaría el keystore que usa Android hoy (JKS `FEEDFEED`, JCEKS
+  `CECECECE`, PKCS12 DER `30 82`). `.properties` es texto plano → misma regla que `txt`.
+  **Empleados tiene su PROPIA lista** (`archivoEmpleado.service.js`): ampliar una no amplía
+  la otra.
 - **Refactors para no duplicar**: las defensas de archivos subidos viven en
   `services/archivos/archivoPrivado.service.js` y el saneado de HTML en
   `services/html/sanitizador.service.js` (antes dentro de tareas) — UNA sola copia de cada

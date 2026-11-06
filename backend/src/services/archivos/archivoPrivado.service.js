@@ -18,7 +18,7 @@ import path from 'path';
 import crypto from 'crypto';
 
 /** Regex del nombre en disco (mismo esquema que el legado, extensiones ampliadas). */
-export const NOMBRE_RE = /^\d{6}_[0-9a-f]{20}\.(png|jpg|jpeg|gif|webp|pdf|doc|docx|xls|xlsx|csv|txt|md|zip)$/;
+export const NOMBRE_RE = /^\d{6}_[0-9a-f]{20}\.(png|jpg|jpeg|gif|webp|pdf|doc|docx|xls|xlsx|csv|txt|md|properties|jks|zip)$/;
 
 /** Límite de las imágenes embebidas (bytes). */
 export const MAX_IMAGEN = 5 * 1024 * 1024;
@@ -38,6 +38,13 @@ export const MIME_POR_EXT = {
     // no lo renderiza, y el servido fuerza `attachment` + `nosniff` para todo lo que no sea
     // imagen — así que el mime acá es para que el archivo baje con su identidad correcta.
     md: 'text/markdown',
+    // `.properties` de Java es texto plano (ISO-8859-1 por defecto). No tiene mime registrado,
+    // así que va como texto: es lo que es.
+    properties: 'text/plain',
+    // Un keystore no tiene mime registrado tampoco, y `application/x-java-keystore` es
+    // inventado. `octet-stream` es lo honesto: el servido fuerza `attachment` + `nosniff`
+    // para todo lo que no sea imagen, así que baja como archivo igual.
+    jks: 'application/octet-stream',
     zip: 'application/zip'
 };
 
@@ -87,7 +94,15 @@ export const firmaAdjuntoValida = (buf, ext) => {
         // que verificar— así que cae en la misma regla. El efecto colateral querido es que un
         // binario renombrado a .md no entra; el no querido, que un .md guardado en UTF-16 se
         // rechaza, lo mismo que ya pasaba con .txt y .csv.
-        case 'csv': case 'txt': case 'md': return !buf.slice(0, 1024).includes(0);
+        case 'csv': case 'txt': case 'md': case 'properties': return !buf.slice(0, 1024).includes(0);
+        // Keystores de Java. Son TRES formatos con el mismo nombre de archivo, y hay que
+        // aceptar los tres: `keytool` genera **PKCS12 por defecto desde Java 9** aunque uno
+        // llame al archivo `.jks`, así que validar solo la firma clásica rechazaría justo el
+        // keystore que usa Android hoy (verificado generando los tres con keytool).
+        //   JKS clásico → FE ED FE ED · JCEKS → CE CE CE CE · PKCS12 → DER SEQUENCE (30 82)
+        case 'jks': return (buf[0] === 0xfe && buf[1] === 0xed && buf[2] === 0xfe && buf[3] === 0xed)
+            || (buf[0] === 0xce && buf[1] === 0xce && buf[2] === 0xce && buf[3] === 0xce)
+            || (buf[0] === 0x30 && buf[1] === 0x82);
         default: return false;
     }
 };
@@ -124,7 +139,7 @@ export const resolverArchivo = (file, destino = 'editor') => {
         // Dice ser imagen pero el contenido no lo es → afuera (regla del legado).
         throw bizError(400, 'El archivo no es una imagen válida');
     } else {
-        if (!MIME_POR_EXT[extDeclarada]) throw bizError(400, 'Tipo de archivo no permitido (pdf, doc, xls, csv, txt, md o zip)');
+        if (!MIME_POR_EXT[extDeclarada]) throw bizError(400, 'Tipo de archivo no permitido (pdf, doc, xls, csv, txt, md, properties, jks o zip)');
         if (file.size > MAX_ARCHIVO) throw bizError(400, 'El archivo supera los 15 MB');
         if (!firmaAdjuntoValida(file.buffer, extDeclarada)) throw bizError(400, 'El contenido no coincide con el tipo de archivo');
         ext = extDeclarada;

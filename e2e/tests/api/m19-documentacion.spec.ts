@@ -120,6 +120,43 @@ test.describe('M19: Documentación', () => {
     await adminApi.delete(`${APP_ENDPOINTS.documentacion}/documentos/${doc2.id}`);
   });
 
+  test('M19.10 - adjuntos .jks y .properties: los TRES formatos de keystore, y nada disfrazado', async ({ playwright, adminTokens }) => {
+    const upload = await playwright.request.newContext({
+      baseURL: `${API_BASE}/`,
+      extraHTTPHeaders: { 'x-access-token': adminTokens.accessToken },
+    });
+    const subir = (name: string, buffer: Buffer) =>
+      upload.post(`${APP_ENDPOINTS.documentacion}/archivos`, {
+        multipart: { archivo: { name, mimeType: 'application/octet-stream', buffer } },
+      });
+
+    // Un `.jks` es TRES formatos distintos con el mismo nombre de archivo, y hay que aceptar
+    // los tres: desde Java 9 `keytool` genera PKCS12 por defecto aunque el archivo se llame
+    // `.jks`, así que validar solo la firma clásica rechazaría el keystore que usa Android hoy.
+    const keystores: Array<[string, Buffer]> = [
+      ['clasico.jks', Buffer.from([0xfe, 0xed, 0xfe, 0xed, 0, 0, 0, 2])],   // JKS
+      ['jce.jks', Buffer.from([0xce, 0xce, 0xce, 0xce, 0, 0, 0, 2])],       // JCEKS
+      ['moderno.jks', Buffer.from([0x30, 0x82, 0x09, 0x49, 0x02, 0x01, 0x03])], // PKCS12
+    ];
+    for (const [nombre, buf] of keystores) {
+      const r = (await expectSuccess(await subir(nombre, buf), 201)).data;
+      expect(r.tipo).toBe('archivo');
+      expect(r.nombre).toMatch(/\.jks$/);
+    }
+
+    // key.properties de Android: texto plano, se guarda como archivo (no va al cuerpo).
+    const props = (await expectSuccess(
+      await subir('key.properties', Buffer.from('storePassword=x\nkeyAlias=t\n')), 201)).data;
+    expect(props.tipo).toBe('archivo');
+    expect(props.nombre).toMatch(/\.properties$/);
+
+    // Y lo que NO tiene que entrar: un binario con la extensión prestada.
+    await expectError(await subir('falso.jks', Buffer.from([0x7f, 0x45, 0x4c, 0x46, 0x02, 0x01])), 400);
+    await expectError(await subir('falso.properties', Buffer.from('clave=ok\u0000\u0000bin')), 400);
+
+    await upload.dispose();
+  });
+
   test('M19.3c - archivoIds inválido → 422', async ({ adminApi }) => {
     const res = await adminApi.post(`${APP_ENDPOINTS.documentacion}/documentos`, {
       data: { docEspacioId: espacioId, docListaId: listaId, titulo: 'Ids raros', archivoIds: ['x'] },
